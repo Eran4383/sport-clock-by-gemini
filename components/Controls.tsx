@@ -9,6 +9,13 @@ interface ControlsProps {
   resetCycleCount: () => void;
   showTimer: boolean;
   showStopwatchControls: boolean;
+  isWorkoutActive: boolean;
+  nextStep: () => void;
+  previousStep: () => void;
+  workoutStepInfo?: {
+    current: number;
+    total: number;
+  };
 }
 
 const Button: React.FC<{ onClick: () => void; className?: string; children: React.ReactNode; ariaLabel: string, disabled?: boolean }> = ({ onClick, className = '', children, ariaLabel, disabled = false }) => (
@@ -22,26 +29,26 @@ const Button: React.FC<{ onClick: () => void; className?: string; children: Reac
   </button>
 );
 
-export const Controls: React.FC<ControlsProps> = ({ isRunning, start, stop, reset, cycleCount, resetCycleCount, showTimer, showStopwatchControls }) => {
+export const Controls: React.FC<ControlsProps> = ({ 
+  isRunning, start, stop, reset, cycleCount, resetCycleCount, showTimer, showStopwatchControls,
+  isWorkoutActive, nextStep, previousStep, workoutStepInfo 
+}) => {
   const buttonColor = 'bg-gray-500/30 hover:bg-gray-500/40 text-white';
 
-  return (
-    <div 
-      className="flex justify-center items-center gap-8 w-full"
-      style={{ transform: 'scale(var(--stopwatch-controls-scale))' }}
-    >
-      {showTimer && showStopwatchControls && (
-        <Button 
-          onClick={reset} 
-          ariaLabel={'Reset Timer'}
-          className={buttonColor}
-          disabled={isRunning}
-          >
-          Reset
-        </Button>
-      )}
-      
-      {cycleCount !== null && (
+  const CycleDisplay = () => {
+    if (workoutStepInfo) {
+      return (
+        <div className="text-center w-28">
+            <span className="tabular-nums text-4xl font-bold">
+                {workoutStepInfo.current}<span className="text-2xl text-gray-400">/{workoutStepInfo.total}</span>
+            </span>
+            <span className="block text-xs text-gray-400 uppercase tracking-wider">Step</span>
+        </div>
+      );
+    }
+    
+    if (cycleCount !== null) {
+      return (
         <div className="relative group text-center w-24">
           <span className="tabular-nums text-4xl font-bold">{cycleCount}</span>
           <span className="block text-xs text-gray-400 uppercase tracking-wider">Cycles</span>
@@ -56,16 +63,56 @@ export const Controls: React.FC<ControlsProps> = ({ isRunning, start, stop, rese
             </svg>
           </button>
         </div>
+      );
+    }
+
+    return <div className="w-28"></div>; // Placeholder for alignment
+  };
+
+  const StopwatchControls = () => {
+    if (showTimer && showStopwatchControls) {
+      return (
+        <>
+          <Button 
+            onClick={reset} 
+            ariaLabel={'Reset Timer'}
+            className={buttonColor}
+            disabled={isRunning}
+          >
+            Reset
+          </Button>
+          <CycleDisplay />
+          <Button 
+            onClick={isRunning ? stop : start} 
+            ariaLabel={isRunning ? 'Stop Timer' : 'Start Timer'}
+            className={buttonColor}
+          >
+            {isRunning ? 'Stop' : 'Start'}
+          </Button>
+        </>
+      );
+    }
+    // If controls are hidden but we need the cycle counter
+    return <CycleDisplay />;
+  }
+
+  return (
+    <div 
+      className="flex justify-center items-center gap-4 w-full"
+      style={{ transform: 'scale(var(--stopwatch-controls-scale))' }}
+    >
+      {isWorkoutActive && (
+          <Button onClick={previousStep} ariaLabel="Previous Step" className={buttonColor}>
+            Previous
+          </Button>
       )}
 
-      {showTimer && showStopwatchControls && (
-        <Button 
-          onClick={isRunning ? stop : start} 
-          ariaLabel={isRunning ? 'Stop Timer' : 'Start Timer'}
-          className={buttonColor}
-          >
-          {isRunning ? 'Stop' : 'Start'}
-        </Button>
+      <StopwatchControls />
+
+      {isWorkoutActive && (
+          <Button onClick={nextStep} ariaLabel="Skip Step" className={buttonColor}>
+            Skip
+          </Button>
       )}
     </div>
   );

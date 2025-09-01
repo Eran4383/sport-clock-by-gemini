@@ -7,11 +7,12 @@ interface CountdownControlsProps {
   reset: () => void;
 }
 
-const ControlButton: React.FC<{ onClick: () => void; className?: string; children: React.ReactNode; ariaLabel: string }> = ({ onClick, className = '', children, ariaLabel }) => (
+const ControlButton: React.FC<{ onClick: () => void; className?: string; children: React.ReactNode; ariaLabel: string, disabled?: boolean }> = ({ onClick, className = '', children, ariaLabel, disabled = false }) => (
   <button
     onClick={onClick}
     aria-label={ariaLabel}
-    className={`w-28 px-6 py-2 rounded-md text-lg font-semibold transition-colors duration-200 focus:outline-none ${className}`}
+    disabled={disabled}
+    className={`w-28 px-6 py-2 rounded-md text-lg font-semibold transition-colors duration-200 focus:outline-none ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${className}`}
   >
     {children}
   </button>
@@ -29,6 +30,7 @@ export const CountdownControls: React.FC<CountdownControlsProps> = ({ isRunning,
         onClick={reset} 
         ariaLabel={'Reset Countdown'}
         className={buttonColor}
+        disabled={isRunning}
       >
         Reset
       </ControlButton>

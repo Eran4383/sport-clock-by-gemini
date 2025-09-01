@@ -159,7 +159,7 @@ export const SettingsMenu: React.FC = () => {
 
   return (
     <>
-      <div className="absolute top-4 right-4 z-10 group">
+      <div className="absolute top-4 right-4 menu-container group">
         <button 
           onClick={() => setIsOpen(!isOpen)} 
           aria-label="Open settings menu"
