@@ -1,0 +1,65 @@
+import { useState, useEffect, useCallback } from 'react';
+
+export interface Settings {
+  showTimer: boolean;
+  showCountdown: boolean;
+  showCycleCounter: boolean;
+  stealthModeEnabled: boolean;
+  countdownDuration: number;
+  countdownRestDuration: number;
+  allSoundsEnabled: boolean;
+  playSoundAtHalfway: boolean;
+  playSoundAtEnd: boolean;
+  playSoundOnRestart: boolean;
+  volume: number;
+  isMuted: boolean;
+  countdownSize: number;
+  stopwatchSize: number;
+  controlsSize: number;
+}
+
+const defaultSettings: Settings = {
+  showTimer: true,
+  showCountdown: true,
+  showCycleCounter: true,
+  stealthModeEnabled: false,
+  countdownDuration: 40,
+  countdownRestDuration: 3,
+  allSoundsEnabled: true,
+  playSoundAtHalfway: true,
+  playSoundAtEnd: true,
+  playSoundOnRestart: true,
+  volume: 0.5,
+  isMuted: false,
+  countdownSize: 100,
+  stopwatchSize: 100,
+  controlsSize: 100,
+};
+
+const getInitialSettings = (): Settings => {
+  try {
+    const item = window.localStorage.getItem('sportsClockSettings');
+    return item ? { ...defaultSettings, ...JSON.parse(item) } : defaultSettings;
+  } catch (error) {
+    console.error('Error reading settings from localStorage', error);
+    return defaultSettings;
+  }
+};
+
+export const useSettings = () => {
+  const [settings, setSettings] = useState<Settings>(getInitialSettings);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('sportsClockSettings', JSON.stringify(settings));
+    } catch (error) {
+      console.error('Error writing settings to localStorage', error);
+    }
+  }, [settings]);
+
+  const updateSettings = useCallback((newSettings: Partial<Settings>) => {
+    setSettings(prevSettings => ({ ...prevSettings, ...newSettings }));
+  }, []);
+
+  return { settings, updateSettings };
+};
