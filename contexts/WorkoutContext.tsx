@@ -12,6 +12,7 @@ interface WorkoutContextType {
   plans: WorkoutPlan[];
   activeWorkout: ActiveWorkout | null;
   currentStep: WorkoutStep | null;
+  nextUpcomingStep: WorkoutStep | null;
   isWorkoutPaused: boolean;
   isCountdownPaused: boolean;
   savePlan: (plan: WorkoutPlan) => void;
@@ -243,11 +244,13 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
   }, []);
 
   const currentStep = activeWorkout ? activeWorkout.plan.steps[activeWorkout.currentStepIndex] : null;
+  const nextUpcomingStep = activeWorkout ? activeWorkout.plan.steps[activeWorkout.currentStepIndex + 1] || null : null;
 
   const value = {
     plans,
     activeWorkout,
     currentStep,
+    nextUpcomingStep,
     isWorkoutPaused,
     isCountdownPaused,
     savePlan,

@@ -4,47 +4,58 @@ export const useStopwatch = () => {
   const [time, setTime] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
 
-  const animationFrameRef = useRef<number | undefined>(undefined);
-  const lastTickRef = useRef<number>(0);
-  const totalTimeRef = useRef<number>(0);
+  const animationFrameRef = useRef<number | null>(null);
+  // This ref will store the timestamp when the stopwatch was started or resumed.
+  const startTimeRef = useRef<number>(0);
+  // This ref will store the elapsed time when the stopwatch was paused.
+  const pausedTimeRef = useRef<number>(0);
 
   const animate = useCallback((timestamp: number) => {
-    if (lastTickRef.current) {
-      const delta = timestamp - lastTickRef.current;
-      totalTimeRef.current += delta;
-      setTime(totalTimeRef.current);
-    }
-    lastTickRef.current = timestamp;
+    // Calculate time elapsed since the last start/resume
+    const elapsedSinceStart = timestamp - startTimeRef.current;
+    // Total time is the time from previous pauses + time since the last resume
+    setTime(pausedTimeRef.current + elapsedSinceStart);
     animationFrameRef.current = requestAnimationFrame(animate);
   }, []);
 
   const start = useCallback(() => {
     setIsRunning(running => {
-      if (!running) {
-        lastTickRef.current = performance.now();
-        animationFrameRef.current = requestAnimationFrame(animate);
-        return true;
+      if (running) {
+        return true; // Already running, do nothing
       }
-      return running;
+      // Set the start time for this new running interval
+      startTimeRef.current = performance.now();
+      animationFrameRef.current = requestAnimationFrame(animate);
+      return true;
     });
   }, [animate]);
 
   const stop = useCallback(() => {
     setIsRunning(running => {
-      if (running && animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = undefined;
-        return false;
+      if (!running || !animationFrameRef.current) {
+        return false; // Already stopped, do nothing
       }
-      return running;
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+      
+      // Calculate the time elapsed during the last run and add it to pausedTimeRef
+      const elapsedSinceStart = performance.now() - startTimeRef.current;
+      pausedTimeRef.current = pausedTimeRef.current + elapsedSinceStart;
+
+      return false;
     });
   }, []);
 
   const reset = useCallback(() => {
-    stop();
+    setIsRunning(false);
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
     setTime(0);
-    totalTimeRef.current = 0;
-  }, [stop]);
+    pausedTimeRef.current = 0;
+    startTimeRef.current = 0;
+  }, []);
 
   return { time, isRunning, start, stop, reset };
 };

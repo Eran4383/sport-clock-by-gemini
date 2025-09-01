@@ -68,6 +68,30 @@ const generateCircuitSteps = (steps: WorkoutStep[]): WorkoutStep[] => {
   return circuitSteps;
 };
 
+const COLORS = ['#3b82f6', '#ef4444', '#22c55e', '#eab308', '#8b5cf6', '#14b8a6', '#f97316'];
+
+const useExerciseColorMap = (steps: WorkoutStep[]): Map<string, string> => {
+  return useMemo(() => {
+    const map = new Map<string, string>();
+    const uniqueExercises: string[] = [];
+    
+    steps.forEach(step => {
+      if (step.type === 'exercise') {
+        const baseName = getBaseExerciseName(step.name);
+        if (!uniqueExercises.includes(baseName)) {
+          uniqueExercises.push(baseName);
+        }
+      }
+    });
+    
+    uniqueExercises.forEach((name, index) => {
+      map.set(name, COLORS[index % COLORS.length]);
+    });
+
+    return map;
+  }, [steps]);
+};
+
 const PlanListItem: React.FC<{
   plan: WorkoutPlan;
   onSelectPlan: (plan: WorkoutPlan) => void;
@@ -84,7 +108,8 @@ const PlanListItem: React.FC<{
   index: number;
 }> = ({ plan, onSelectPlan, onInitiateDelete, isSelected, onToggleSelection, isDraggable, onDragStart, onDragOver, onDrop, onDragEnd, onDragLeave, isDragTarget, index }) => {
   const { 
-      activeWorkout, 
+      activeWorkout,
+      currentStep,
       isCountdownPaused,
       startWorkout, 
       stopWorkout, 
@@ -94,8 +119,16 @@ const PlanListItem: React.FC<{
       savePlan,
   } = useWorkout();
   const [isExpanded, setIsExpanded] = useState(false);
+  const exerciseColorMap = useExerciseColorMap(plan.steps);
 
   const isActive = activeWorkout?.sourcePlanIds.includes(plan.id) ?? false;
+
+  useEffect(() => {
+    // Automatically expand the active workout plan
+    if (isActive) {
+      setIsExpanded(true);
+    }
+  }, [isActive]);
 
   const displayedSteps = useMemo(() => {
     if (plan.executionMode === 'circuit') {
@@ -160,7 +193,7 @@ const PlanListItem: React.FC<{
         onDragEnd={onDragEnd}
         onDragLeave={onDragLeave}
     >
-      <div className="p-4" onClick={() => !isActive && setIsExpanded(!isExpanded)}>
+      <div className="p-4" onClick={() => setIsExpanded(!isExpanded)}>
         <div className="flex justify-between items-center">
           <div className="flex-1 min-w-0 flex items-center gap-3">
             {!activeWorkout && (
@@ -233,15 +266,24 @@ const PlanListItem: React.FC<{
             </button>
          )}
       </div>
-      {isExpanded && !isActive && (
+      {isExpanded && (
         <div className="border-t border-gray-600/50 px-4 pb-4 pt-2">
             <h4 className="text-sm font-semibold text-gray-300 mb-2">Steps:</h4>
-            <ol className="list-decimal list-inside text-gray-300 space-y-1">
-                {displayedSteps.map((step, index) => (
-                    <li key={`${step.id}-${index}`}>
-                        {step.name} - <span className="text-gray-400">{step.isRepBased ? `${step.reps} reps` : `${step.duration}s`}</span>
-                    </li>
-                ))}
+            <ol className="text-gray-300 space-y-1">
+                {displayedSteps.map((step, index) => {
+                    const isCurrent = isActive && step.id === currentStep?.id;
+                    const color = step.type === 'exercise' ? exerciseColorMap.get(getBaseExerciseName(step.name)) : 'transparent';
+                    
+                    return (
+                        <li 
+                          key={`${step.id}-${index}`} 
+                          className={`flex items-center gap-2 transition-all duration-200 rounded ${isCurrent ? 'bg-blue-500/20 font-bold p-1 -m-1' : ''}`}
+                        >
+                            <span className="w-1.5 h-4 rounded" style={{ backgroundColor: color }}></span>
+                            <span>{step.name} - <span className="text-gray-400 font-normal">{step.isRepBased ? `${step.reps} reps` : `${step.duration}s`}</span></span>
+                        </li>
+                    )
+                })}
             </ol>
         </div>
       )}
@@ -253,7 +295,9 @@ const PlanList: React.FC<{
   onSelectPlan: (plan: WorkoutPlan) => void;
   onCreateNew: () => void;
   onInitiateDelete: (planId: string) => void;
-}> = ({ onSelectPlan, onCreateNew, onInitiateDelete }) => {
+  isPinned: boolean;
+  onTogglePin: () => void;
+}> = ({ onSelectPlan, onCreateNew, onInitiateDelete, isPinned, onTogglePin }) => {
   const { plans, reorderPlans, startWorkout, activeWorkout } = useWorkout();
   const [selectedPlanIds, setSelectedPlanIds] = useState<string[]>([]);
   const dragItemIndex = useRef<number | null>(null);
@@ -310,13 +354,25 @@ const PlanList: React.FC<{
     <div>
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold text-white">Workout Plans</h2>
-        <button 
-          onClick={onCreateNew}
-          className="px-4 py-2 bg-blue-500 text-white rounded-lg font-semibold hover:bg-blue-600 transition-colors disabled:opacity-50"
-          disabled={!!activeWorkout}
-        >
-          + Create New
-        </button>
+        <div className="flex items-center gap-2">
+            <button 
+                onClick={onTogglePin}
+                className={`p-2 rounded-full hover:bg-gray-500/30 ${isPinned ? 'text-blue-400' : 'text-gray-400'}`}
+                title={isPinned ? 'Unpin Menu' : 'Pin Menu (Keep open during workout)'}
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 3a1 1 0 01.707.293l3 3a1 1 0 01-1.414 1.414L10 5.414 7.707 7.707a1 1 0 01-1.414-1.414l3-3A1 1 0 0110 3zm-3.707 9.293a1 1 0 011.414 0L10 14.586l2.293-2.293a1 1 0 011.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" transform="rotate(45 10 10)" />
+                  {isPinned && <path d="M10 18a8 8 0 100-16 8 8 0 000 16z" opacity="0.1" />}
+                </svg>
+            </button>
+            <button 
+              onClick={onCreateNew}
+              className="px-4 py-2 bg-blue-500 text-white rounded-lg font-semibold hover:bg-blue-600 transition-colors disabled:opacity-50"
+              disabled={!!activeWorkout}
+            >
+              + Create New
+            </button>
+        </div>
       </div>
 
       {selectedPlanIds.length > 0 && !activeWorkout && (
@@ -424,6 +480,7 @@ const PlanEditor: React.FC<{
     const { settings, updateSettings } = useSettings();
 
     const [editedPlan, setEditedPlan] = useState<WorkoutPlan | null>(null);
+    const exerciseColorMap = useExerciseColorMap(editedPlan?.steps || []);
 
     useEffect(() => {
         if (plan) {
@@ -528,59 +585,62 @@ const PlanEditor: React.FC<{
 
 
                 <div className="space-y-3 max-h-[45vh] overflow-y-auto pr-2">
-                   {editedPlan.steps.map((step, index) => (
-                       <div key={step.id} className="bg-gray-700/50 p-3 rounded-lg space-y-3">
-                           <div className="flex items-center gap-2">
-                               <span className="text-gray-400 font-bold">#{index + 1}</span>
-                               <input 
-                                   type="text"
-                                   value={step.name}
-                                   onChange={e => updateStep(index, { name: e.target.value })}
-                                   className="flex-grow bg-gray-600 p-2 rounded-md focus:outline-none focus:ring-1 ring-blue-500"
-                                   title="Name of this step (e.g., Push-ups)"
-                               />
-                               <button onClick={() => removeStep(index)} className="p-2 text-gray-400 hover:text-red-500" title="Remove step">
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                               </button>
-                           </div>
-                           
-                           <div className="grid grid-cols-2 gap-3">
-                               <div>
-                                   <label className="text-sm text-gray-400">Type</label>
-                                   <div className="flex rounded-md border border-gray-500 overflow-hidden mt-1">
-                                       <button onClick={() => updateStep(index, { type: 'exercise' })} className={`flex-1 px-2 py-1 text-sm ${step.type === 'exercise' ? 'bg-blue-500' : 'bg-transparent'}`}>Exercise</button>
-                                       <button onClick={() => updateStep(index, { type: 'rest' })} className={`flex-1 px-2 py-1 text-sm ${step.type === 'rest' ? 'bg-blue-500' : 'bg-transparent'}`}>Rest</button>
-                                   </div>
+                   {editedPlan.steps.map((step, index) => {
+                       const color = step.type === 'exercise' ? exerciseColorMap.get(getBaseExerciseName(step.name)) : undefined;
+                       return (
+                           <div key={step.id} className="bg-gray-700/50 p-3 rounded-lg space-y-3" style={{ borderLeft: `3px solid ${color || 'transparent'}` }}>
+                               <div className="flex items-center gap-2">
+                                   <span className="text-gray-400 font-bold">#{index + 1}</span>
+                                   <input 
+                                       type="text"
+                                       value={step.name}
+                                       onChange={e => updateStep(index, { name: e.target.value })}
+                                       className="flex-grow bg-gray-600 p-2 rounded-md focus:outline-none focus:ring-1 ring-blue-500"
+                                       title="Name of this step (e.g., Push-ups)"
+                                   />
+                                   <button onClick={() => removeStep(index)} className="p-2 text-gray-400 hover:text-red-500" title="Remove step">
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                   </button>
                                </div>
-                                {step.type === 'exercise' && (
-                                    <div>
-                                        <label className="text-sm text-gray-400">Mode</label>
-                                        <div className="flex rounded-md border border-gray-500 overflow-hidden mt-1">
-                                            <button onClick={() => updateStep(index, { isRepBased: false })} className={`flex-1 px-2 py-1 text-sm ${!step.isRepBased ? 'bg-blue-500' : 'bg-transparent'}`}>Time</button>
-                                            <button onClick={() => updateStep(index, { isRepBased: true })} className={`flex-1 px-2 py-1 text-sm ${step.isRepBased ? 'bg-blue-500' : 'bg-transparent'}`}>Reps</button>
+                               
+                               <div className="grid grid-cols-2 gap-3">
+                                   <div>
+                                       <label className="text-sm text-gray-400">Type</label>
+                                       <div className="flex rounded-md border border-gray-500 overflow-hidden mt-1">
+                                           <button onClick={() => updateStep(index, { type: 'exercise' })} className={`flex-1 px-2 py-1 text-sm ${step.type === 'exercise' ? 'bg-blue-500' : 'bg-transparent'}`}>Exercise</button>
+                                           <button onClick={() => updateStep(index, { type: 'rest' })} className={`flex-1 px-2 py-1 text-sm ${step.type === 'rest' ? 'bg-blue-500' : 'bg-transparent'}`}>Rest</button>
+                                       </div>
+                                   </div>
+                                    {step.type === 'exercise' && (
+                                        <div>
+                                            <label className="text-sm text-gray-400">Mode</label>
+                                            <div className="flex rounded-md border border-gray-500 overflow-hidden mt-1">
+                                                <button onClick={() => updateStep(index, { isRepBased: false })} className={`flex-1 px-2 py-1 text-sm ${!step.isRepBased ? 'bg-blue-500' : 'bg-transparent'}`}>Time</button>
+                                                <button onClick={() => updateStep(index, { isRepBased: true })} className={`flex-1 px-2 py-1 text-sm ${step.isRepBased ? 'bg-blue-500' : 'bg-transparent'}`}>Reps</button>
+                                            </div>
                                         </div>
-                                    </div>
-                                )}
-                           </div>
-                           
-                           <div>
-                                <label className="text-sm text-gray-400">{step.isRepBased ? 'Reps' : 'Duration (s)'}</label>
-                                {step.isRepBased ? (
-                                    <HoverNumberInput min={1} value={step.reps} onChange={newValue => updateStep(index, { reps: newValue })} title="Number of repetitions" className="w-full mt-1 bg-gray-600 text-center p-2 rounded-md" />
-                                ) : (
-                                    <div className="flex items-center gap-2 mt-1">
-                                        <HoverNumberInput min={1} value={step.duration} onChange={newValue => updateStep(index, { duration: newValue })} title={step.type === 'exercise' ? 'Exercise duration in seconds' : 'Rest duration in seconds'} className="w-full bg-gray-600 text-center p-2 rounded-md" />
-                                        <PinButton 
-                                            onClick={() => updateSettings(step.type === 'exercise' ? { defaultExerciseDuration: step.duration } : { defaultRestDuration: step.duration })}
-                                            isActive={step.type === 'exercise' ? settings.defaultExerciseDuration === step.duration : settings.defaultRestDuration === step.duration}
-                                            title="Set as default time for new steps"
-                                        />
-                                    </div>
-                                )}
-                           </div>
+                                    )}
+                               </div>
+                               
+                               <div>
+                                    <label className="text-sm text-gray-400">{step.isRepBased ? 'Reps' : 'Duration (s)'}</label>
+                                    {step.isRepBased ? (
+                                        <HoverNumberInput min={1} value={step.reps} onChange={newValue => updateStep(index, { reps: newValue })} title="Number of repetitions" className="w-full mt-1 bg-gray-600 text-center p-2 rounded-md" />
+                                    ) : (
+                                        <div className="flex items-center gap-2 mt-1">
+                                            <HoverNumberInput min={1} value={step.duration} onChange={newValue => updateStep(index, { duration: newValue })} title={step.type === 'exercise' ? 'Exercise duration in seconds' : 'Rest duration in seconds'} className="w-full bg-gray-600 text-center p-2 rounded-md" />
+                                            <PinButton 
+                                                onClick={() => updateSettings(step.type === 'exercise' ? { defaultExerciseDuration: step.duration } : { defaultRestDuration: step.duration })}
+                                                isActive={step.type === 'exercise' ? settings.defaultExerciseDuration === step.duration : settings.defaultRestDuration === step.duration}
+                                                title="Set as default time for new steps"
+                                            />
+                                        </div>
+                                    )}
+                               </div>
 
-                       </div>
-                   ))}
+                           </div>
+                       )
+                   })}
                 </div>
                 
                 <div className="flex gap-4">
@@ -636,6 +696,7 @@ const ConfirmDeleteModal: React.FC<{
 
 export const WorkoutMenu: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isPinned, setIsPinned] = useState(false);
   const [editingPlan, setEditingPlan] = useState<WorkoutPlan | null>(null);
   const [view, setView] = useState<'list' | 'editor'>('list');
   const [confirmDeletePlanId, setConfirmDeletePlanId] = useState<string | null>(null);
@@ -647,6 +708,7 @@ export const WorkoutMenu: React.FC = () => {
 
   useEffect(() => {
     if (!isOpen) {
+        setIsPinned(false); // Unpin when manually closed
         setTimeout(() => {
              setView('list');
              setEditingPlan(null);
@@ -677,10 +739,10 @@ export const WorkoutMenu: React.FC = () => {
   };
 
   useEffect(() => {
-      if(activeWorkout) {
+      if(activeWorkout && !isPinned) {
           setIsOpen(false);
       }
-  }, [activeWorkout]);
+  }, [activeWorkout, isPinned]);
 
 
   return (
@@ -698,7 +760,7 @@ export const WorkoutMenu: React.FC = () => {
       {isOpen && (
         <div 
           className="fixed inset-0 bg-black/60 z-40"
-          onClick={() => setIsOpen(false)}
+          onClick={() => !isPinned && setIsOpen(false)}
         ></div>
       )}
 
@@ -719,6 +781,8 @@ export const WorkoutMenu: React.FC = () => {
                     onSelectPlan={handleSelectPlan} 
                     onCreateNew={handleCreateNew} 
                     onInitiateDelete={setConfirmDeletePlanId}
+                    isPinned={isPinned}
+                    onTogglePin={() => setIsPinned(!isPinned)}
                 />
             ) : (
                 <PlanEditor plan={editingPlan} onBack={handleBack} />

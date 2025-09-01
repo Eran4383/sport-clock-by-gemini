@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 
 interface HoverNumberInputProps {
   value: number;
@@ -22,6 +22,14 @@ export const HoverNumberInput: React.FC<HoverNumberInputProps> = ({
   ...props
 }) => {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [displayValue, setDisplayValue] = useState<string>(value.toString());
+
+  useEffect(() => {
+    // Sync display value if parent value changes, but not while the user is typing.
+    if (document.activeElement !== inputRef.current) {
+      setDisplayValue(value.toString());
+    }
+  }, [value]);
 
   useEffect(() => {
     const handleWheel = (e: WheelEvent) => {
@@ -33,7 +41,8 @@ export const HoverNumberInput: React.FC<HoverNumberInputProps> = ({
       }
       
       const delta = e.deltaY > 0 ? -step : step;
-      const currentValue = Number(value) || 0;
+      // Read from the displayValue in case the user has typed something not yet committed to parent state
+      const currentValue = Number(displayValue) || 0;
       let newValue = currentValue + delta;
 
       if (min !== -Infinity) newValue = Math.max(min, newValue);
@@ -52,28 +61,40 @@ export const HoverNumberInput: React.FC<HoverNumberInputProps> = ({
         element.removeEventListener('wheel', handleWheel);
       }
     };
-  }, [value, onChange, min, max, step]);
+  }, [displayValue, onChange, min, max, step]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const numValue = parseInt(e.target.value, 10);
+      // Only update the local string value, allowing it to be empty
+      setDisplayValue(e.target.value);
+  };
+  
+  const handleBlur = () => {
+      const numValue = parseInt(displayValue, 10);
+      let finalValue = min !== -Infinity ? min : 0; // Sensible default
+
+      // If parsing was successful, use the parsed number
       if (!isNaN(numValue)) {
-          let clampedValue = numValue;
-          if (min !== -Infinity) clampedValue = Math.max(min, clampedValue);
-          if (max !== Infinity) clampedValue = Math.min(max, clampedValue);
-          onChange(clampedValue);
-      } else if (e.target.value === '') {
-          onChange(min !== -Infinity ? min : 0);
+          finalValue = numValue;
       }
+
+      // Clamp the value to the min/max range
+      if (min !== -Infinity) finalValue = Math.max(min, finalValue);
+      if (max !== Infinity) finalValue = Math.min(max, finalValue);
+      
+      // Update parent and sync local display to the sanitized value
+      onChange(finalValue);
+      setDisplayValue(finalValue.toString());
   };
 
   return (
     <input
       ref={inputRef}
       type="number"
-      value={value}
+      value={displayValue}
       onChange={handleChange}
-      min={min}
-      max={max}
+      onBlur={handleBlur}
+      min={min === -Infinity ? undefined : min}
+      max={max === Infinity ? undefined : max}
       className={`[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${className}`}
       {...props}
     />

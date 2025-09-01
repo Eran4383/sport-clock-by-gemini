@@ -21,6 +21,7 @@ export interface Settings {
   showStopwatchControls: boolean;
   defaultExerciseDuration: number;
   defaultRestDuration: number;
+  showNextExercise: boolean;
 }
 
 const defaultSettings: Settings = {
@@ -44,6 +45,7 @@ const defaultSettings: Settings = {
   showStopwatchControls: true,
   defaultExerciseDuration: 40,
   defaultRestDuration: 20,
+  showNextExercise: true,
 };
 
 const getInitialSettings = (): Settings => {

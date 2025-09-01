@@ -59,15 +59,19 @@ export const SettingsMenu: React.FC = () => {
   const durationInputRef = useRef<HTMLInputElement>(null);
   const restInputRef = useRef<HTMLInputElement>(null);
   
-  const [localCountdownDuration, setLocalCountdownDuration] = useState(settings.countdownDuration);
-  const [localRestDuration, setLocalRestDuration] = useState(settings.countdownRestDuration);
+  const [localCountdownDurationStr, setLocalCountdownDurationStr] = useState(settings.countdownDuration.toString());
+  const [localRestDurationStr, setLocalRestDurationStr] = useState(settings.countdownRestDuration.toString());
 
   useEffect(() => {
-    setLocalCountdownDuration(settings.countdownDuration);
+    if (document.activeElement !== durationInputRef.current) {
+      setLocalCountdownDurationStr(settings.countdownDuration.toString());
+    }
   }, [settings.countdownDuration]);
   
   useEffect(() => {
-    setLocalRestDuration(settings.countdownRestDuration);
+    if (document.activeElement !== restInputRef.current) {
+      setLocalRestDurationStr(settings.countdownRestDuration.toString());
+    }
   }, [settings.countdownRestDuration]);
 
   // Auto-close logic
@@ -89,7 +93,7 @@ export const SettingsMenu: React.FC = () => {
   useEffect(() => {
     const handleWheel = (
       e: WheelEvent,
-      stateUpdater: React.Dispatch<React.SetStateAction<number>>,
+      stateUpdater: React.Dispatch<React.SetStateAction<string>>,
       min: number
     ) => {
       // Prevent parent from scrolling
@@ -102,9 +106,10 @@ export const SettingsMenu: React.FC = () => {
       
       const delta = e.deltaY > 0 ? -1 : 1; // Invert for natural scrolling
       stateUpdater(prev => {
-          const nextVal = prev + delta;
-          if (nextVal < min) return min;
-          return nextVal;
+          const currentVal = parseInt(prev, 10) || 0;
+          const nextVal = currentVal + delta;
+          if (nextVal < min) return min.toString();
+          return nextVal.toString();
       });
     };
 
@@ -112,8 +117,8 @@ export const SettingsMenu: React.FC = () => {
     const restEl = restInputRef.current;
 
     // We need to create these wrapper functions because addEventListener and removeEventListener need the exact same function reference.
-    const durationWheelHandler = (e: WheelEvent) => handleWheel(e, setLocalCountdownDuration, 1);
-    const restWheelHandler = (e: WheelEvent) => handleWheel(e, setLocalRestDuration, 0);
+    const durationWheelHandler = (e: WheelEvent) => handleWheel(e, setLocalCountdownDurationStr, 1);
+    const restWheelHandler = (e: WheelEvent) => handleWheel(e, setLocalRestDurationStr, 0);
     
     if (durationEl) {
       durationEl.addEventListener('wheel', durationWheelHandler, { passive: false });
@@ -130,7 +135,7 @@ export const SettingsMenu: React.FC = () => {
         restEl.removeEventListener('wheel', restWheelHandler);
       }
     };
-  }, []); // State setters are stable, so empty dependency array is correct.
+  }, []);
 
   const handleMouseEnter = () => {
     if (closeTimerRef.current) {
@@ -138,27 +143,25 @@ export const SettingsMenu: React.FC = () => {
       closeTimerRef.current = null;
     }
   };
-
-  const handleSettingChange = (key: string, value: string | boolean | number) => {
-    updateSettings({ [key]: value });
-  };
   
   const handleDurationBlur = () => {
-     handleSettingChange('countdownDuration', localCountdownDuration || 1);
+     const num = parseInt(localCountdownDurationStr, 10);
+     const finalValue = !isNaN(num) && num >= 1 ? num : 1;
+     setLocalCountdownDurationStr(finalValue.toString());
+     updateSettings({ countdownDuration: finalValue });
   };
   
   const handleRestBlur = () => {
-     handleSettingChange('countdownRestDuration', localRestDuration || 0);
+     const num = parseInt(localRestDurationStr, 10);
+     const finalValue = !isNaN(num) && num >= 0 ? num : 0;
+     setLocalRestDurationStr(finalValue.toString());
+     updateSettings({ countdownRestDuration: finalValue });
   };
 
   const handleClose = () => {
     // Save any pending changes before closing
-    if (settings.countdownDuration !== localCountdownDuration) {
-      handleSettingChange('countdownDuration', localCountdownDuration || 1);
-    }
-    if (settings.countdownRestDuration !== localRestDuration) {
-      handleSettingChange('countdownRestDuration', localRestDuration || 0);
-    }
+    handleDurationBlur();
+    handleRestBlur();
     setIsOpen(false);
   };
 
@@ -229,8 +232,8 @@ export const SettingsMenu: React.FC = () => {
               <div>
                 <h3 className="text-lg font-semibold text-gray-300 mb-3">Countdown</h3>
                 <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
-                  <Toggle id="showCountdownToggle" label="Show Countdown" checked={settings.showCountdown} onChange={(e) => handleSettingChange('showCountdown', e.target.checked)} />
-                  <Toggle id="showCountdownControlsToggle" label="Show Controls" checked={settings.showCountdownControls} onChange={(e) => handleSettingChange('showCountdownControls', e.target.checked)} />
+                  <Toggle id="showCountdownToggle" label="Show Countdown" checked={settings.showCountdown} onChange={(e) => updateSettings({ showCountdown: e.target.checked })} />
+                  <Toggle id="showCountdownControlsToggle" label="Show Controls" checked={settings.showCountdownControls} onChange={(e) => updateSettings({ showCountdownControls: e.target.checked })} />
 
                   <div className="flex items-center justify-between">
                      <label htmlFor="countdownDuration" className="text-white">Duration (s)</label>
@@ -240,8 +243,8 @@ export const SettingsMenu: React.FC = () => {
                         id="countdownDuration"
                         min="1"
                         className="w-20 bg-gray-600 text-white text-center rounded-md p-1 focus:ring-2 focus:outline-none ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                        value={localCountdownDuration}
-                        onChange={(e) => setLocalCountdownDuration(parseInt(e.target.value, 10) || 0)}
+                        value={localCountdownDurationStr}
+                        onChange={(e) => setLocalCountdownDurationStr(e.target.value)}
                         onBlur={handleDurationBlur}
                      />
                   </div>
@@ -253,22 +256,38 @@ export const SettingsMenu: React.FC = () => {
                         id="countdownRestDuration"
                         min="0"
                         className="w-20 bg-gray-600 text-white text-center rounded-md p-1 focus:ring-2 focus:outline-none ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                        value={localRestDuration}
-                        onChange={(e) => setLocalRestDuration(parseInt(e.target.value, 10) || 0)}
+                        value={localRestDurationStr}
+                        onChange={(e) => setLocalRestDurationStr(e.target.value)}
                         onBlur={handleRestBlur}
                      />
                   </div>
                 </div>
               </div>
+
+              <div>
+                <h3 className="text-lg font-semibold text-gray-300 mb-3">Stopwatch</h3>
+                <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
+                  <Toggle id="showTimerToggle" label="Show Stopwatch" checked={settings.showTimer} onChange={(e) => updateSettings({ showTimer: e.target.checked })} />
+                  <Toggle id="showStopwatchControlsToggle" label="Show Controls" checked={settings.showStopwatchControls} onChange={(e) => updateSettings({ showStopwatchControls: e.target.checked })} />
+                   <Toggle id="showCycleCounterToggle" label="Show Cycle Counter" checked={settings.showCycleCounter} onChange={(e) => updateSettings({ showCycleCounter: e.target.checked })} />
+                </div>
+              </div>
               
+              <div>
+                <h3 className="text-lg font-semibold text-gray-300 mb-3">Workout Display</h3>
+                <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
+                  <Toggle id="showNextExercise" label="Show Next Exercise" checked={settings.showNextExercise} onChange={(e) => updateSettings({ showNextExercise: e.target.checked })} />
+                </div>
+              </div>
+
                <div>
                 <h3 className="text-lg font-semibold text-gray-300 mb-3">Sounds</h3>
                 <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
-                  <Toggle id="allSoundsEnabled" label="Enable All Sounds" checked={settings.allSoundsEnabled} onChange={(e) => handleSettingChange('allSoundsEnabled', e.target.checked)} />
+                  <Toggle id="allSoundsEnabled" label="Enable All Sounds" checked={settings.allSoundsEnabled} onChange={(e) => updateSettings({ allSoundsEnabled: e.target.checked })} />
                   <hr className="border-gray-600" />
-                  <Toggle id="playSoundAtHalfway" label="Play at halfway" checked={settings.playSoundAtHalfway} onChange={(e) => handleSettingChange('playSoundAtHalfway', e.target.checked)} disabled={!settings.allSoundsEnabled} />
-                  <Toggle id="playSoundAtEnd" label="Play at end" checked={settings.playSoundAtEnd} onChange={(e) => handleSettingChange('playSoundAtEnd', e.target.checked)} disabled={!settings.allSoundsEnabled} />
-                  <Toggle id="playSoundOnRestart" label="Play on restart" checked={settings.playSoundOnRestart} onChange={(e) => handleSettingChange('playSoundOnRestart', e.target.checked)} disabled={!settings.allSoundsEnabled} />
+                  <Toggle id="playSoundAtHalfway" label="Play at halfway" checked={settings.playSoundAtHalfway} onChange={(e) => updateSettings({ playSoundAtHalfway: e.target.checked })} disabled={!settings.allSoundsEnabled} />
+                  <Toggle id="playSoundAtEnd" label="Play at end" checked={settings.playSoundAtEnd} onChange={(e) => updateSettings({ playSoundAtEnd: e.target.checked })} disabled={!settings.allSoundsEnabled} />
+                  <Toggle id="playSoundOnRestart" label="Play on restart" checked={settings.playSoundOnRestart} onChange={(e) => updateSettings({ playSoundOnRestart: e.target.checked })} disabled={!settings.allSoundsEnabled} />
                   
                   <div className={`pt-2 ${!settings.allSoundsEnabled ? 'opacity-50' : ''}`}>
                     <label htmlFor="volumeControl" className="text-white mb-2 block">Volume</label>
@@ -302,23 +321,14 @@ export const SettingsMenu: React.FC = () => {
                   </div>
                 </div>
               </div>
-
-              <div>
-                <h3 className="text-lg font-semibold text-gray-300 mb-3">Stopwatch</h3>
-                <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
-                  <Toggle id="showTimerToggle" label="Show Stopwatch" checked={settings.showTimer} onChange={(e) => handleSettingChange('showTimer', e.target.checked)} />
-                  <Toggle id="showStopwatchControlsToggle" label="Show Controls" checked={settings.showStopwatchControls} onChange={(e) => handleSettingChange('showStopwatchControls', e.target.checked)} />
-                   <Toggle id="showCycleCounterToggle" label="Show Cycle Counter" checked={settings.showCycleCounter} onChange={(e) => handleSettingChange('showCycleCounter', e.target.checked)} />
-                </div>
-              </div>
               
               <div>
                 <h3 className="text-lg font-semibold text-gray-300 mb-3">Display Sizes</h3>
                 <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
-                    <RangeSlider id="countdownSize" label="Countdown" value={settings.countdownSize} onChange={e => handleSettingChange('countdownSize', parseInt(e.target.value, 10))} />
-                    <RangeSlider id="stopwatchSize" label="Stopwatch" value={settings.stopwatchSize} onChange={e => handleSettingChange('stopwatchSize', parseInt(e.target.value, 10))} />
-                    <RangeSlider id="countdownControlsSize" label="Countdown Controls" value={settings.countdownControlsSize} onChange={e => handleSettingChange('countdownControlsSize', parseInt(e.target.value, 10))} />
-                    <RangeSlider id="stopwatchControlsSize" label="Stopwatch Controls" value={settings.stopwatchControlsSize} onChange={e => handleSettingChange('stopwatchControlsSize', parseInt(e.target.value, 10))} />
+                    <RangeSlider id="countdownSize" label="Countdown" value={settings.countdownSize} onChange={e => updateSettings({ countdownSize: parseInt(e.target.value, 10) })} />
+                    <RangeSlider id="stopwatchSize" label="Stopwatch" value={settings.stopwatchSize} onChange={e => updateSettings({ stopwatchSize: parseInt(e.target.value, 10) })} />
+                    <RangeSlider id="countdownControlsSize" label="Countdown Controls" value={settings.countdownControlsSize} onChange={e => updateSettings({ countdownControlsSize: parseInt(e.target.value, 10) })} />
+                    <RangeSlider id="stopwatchControlsSize" label="Stopwatch Controls" value={settings.stopwatchControlsSize} onChange={e => updateSettings({ stopwatchControlsSize: parseInt(e.target.value, 10) })} />
                 </div>
               </div>
 
