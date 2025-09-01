@@ -4,12 +4,11 @@ export const useStopwatch = () => {
   const [time, setTime] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
 
-  // FIX: useRef must be initialized. Using `undefined` as the initial value.
   const animationFrameRef = useRef<number | undefined>(undefined);
   const lastTickRef = useRef<number>(0);
   const totalTimeRef = useRef<number>(0);
 
-  const animate = (timestamp: number) => {
+  const animate = useCallback((timestamp: number) => {
     if (lastTickRef.current) {
       const delta = timestamp - lastTickRef.current;
       totalTimeRef.current += delta;
@@ -17,22 +16,29 @@ export const useStopwatch = () => {
     }
     lastTickRef.current = timestamp;
     animationFrameRef.current = requestAnimationFrame(animate);
-  };
+  }, []);
 
   const start = useCallback(() => {
-    if (!isRunning) {
-      setIsRunning(true);
-      lastTickRef.current = performance.now();
-      animationFrameRef.current = requestAnimationFrame(animate);
-    }
-  }, [isRunning]);
+    setIsRunning(running => {
+      if (!running) {
+        lastTickRef.current = performance.now();
+        animationFrameRef.current = requestAnimationFrame(animate);
+        return true;
+      }
+      return running;
+    });
+  }, [animate]);
 
   const stop = useCallback(() => {
-    if (isRunning && animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current);
-      setIsRunning(false);
-    }
-  }, [isRunning]);
+    setIsRunning(running => {
+      if (running && animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = undefined;
+        return false;
+      }
+      return running;
+    });
+  }, []);
 
   const reset = useCallback(() => {
     stop();

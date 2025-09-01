@@ -84,10 +84,10 @@ export const Controls: React.FC<ControlsProps> = ({
           <CycleDisplay />
           <Button 
             onClick={isRunning ? stop : start} 
-            ariaLabel={isRunning ? 'Stop Timer' : 'Start Timer'}
+            ariaLabel={isRunning ? 'Pause Timer' : 'Start Timer'}
             className={buttonColor}
           >
-            {isRunning ? 'Stop' : 'Start'}
+            {isRunning ? 'Pause' : 'Start'}
           </Button>
         </>
       );

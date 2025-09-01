@@ -55,7 +55,8 @@ const RangeSlider: React.FC<{
 export const SettingsMenu: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const { settings, updateSettings } = useSettings();
-  const closeTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // FIX: Use ReturnType<typeof setTimeout> instead of NodeJS.Timeout for browser compatibility.
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   const [localCountdownDuration, setLocalCountdownDuration] = useState(settings.countdownDuration);
   const [localRestDuration, setLocalRestDuration] = useState(settings.countdownRestDuration);
