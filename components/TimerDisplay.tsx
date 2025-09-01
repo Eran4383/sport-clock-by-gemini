@@ -8,7 +8,7 @@ interface TimerDisplayProps {
 export const TimerDisplay: React.FC<TimerDisplayProps> = ({ time }) => {
   return (
     <div 
-      className={`font-mono font-bold tracking-tight w-full text-center mb-4`}
+      className={`tabular-nums font-bold tracking-tight w-full text-center`}
       style={{ fontSize: 'var(--stopwatch-font-size)' }}
     >
       {formatTime(time)}

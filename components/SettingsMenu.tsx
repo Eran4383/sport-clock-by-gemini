@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSettings } from '../contexts/SettingsContext';
 import { playNotificationSound } from '../utils/sound';
 
@@ -55,6 +55,7 @@ const RangeSlider: React.FC<{
 export const SettingsMenu: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const { settings, updateSettings } = useSettings();
+  const closeTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   const [localCountdownDuration, setLocalCountdownDuration] = useState(settings.countdownDuration);
   const [localRestDuration, setLocalRestDuration] = useState(settings.countdownRestDuration);
@@ -66,6 +67,36 @@ export const SettingsMenu: React.FC = () => {
   useEffect(() => {
     setLocalRestDuration(settings.countdownRestDuration);
   }, [settings.countdownRestDuration]);
+
+  // Auto-close logic
+  useEffect(() => {
+    // Clear timer if menu is closed manually
+    if (!isOpen && closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+    // Cleanup on unmount
+    return () => {
+      if (closeTimerRef.current) {
+        clearTimeout(closeTimerRef.current);
+      }
+    };
+  }, [isOpen]);
+
+  const handleMouseEnter = () => {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  };
+
+  const handleMouseLeave = () => {
+    if (isOpen) {
+      closeTimerRef.current = setTimeout(() => {
+        setIsOpen(false);
+      }, 10000); // 10 seconds
+    }
+  };
 
   const handleSettingChange = (key: string, value: string | boolean | number) => {
     updateSettings({ [key]: value });
@@ -101,14 +132,38 @@ export const SettingsMenu: React.FC = () => {
     }
   };
 
+  const handleWheelOnNumberInput = (
+    e: React.WheelEvent<HTMLInputElement>,
+    stateUpdater: React.Dispatch<React.SetStateAction<number>>,
+    min: number,
+    max: number = Infinity
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // If the input is focused, the browser's default scroll behavior will also fire.
+    // Blurring the input prevents this "double-dip" and ensures only our logic runs.
+    if (document.activeElement === e.currentTarget) {
+      e.currentTarget.blur();
+    }
+    
+    const delta = e.deltaY > 0 ? -1 : 1; // Invert for natural scrolling (up = increment)
+    stateUpdater(prev => {
+        const nextVal = prev + delta;
+        if (nextVal > max) return max;
+        if (nextVal < min) return min;
+        return nextVal;
+    });
+  };
+
 
   return (
     <>
-      <div className="absolute top-4 right-4 z-10">
+      <div className="absolute top-4 right-4 z-10 group">
         <button 
           onClick={() => setIsOpen(!isOpen)} 
           aria-label="Open settings menu"
-          className={`w-12 h-12 flex items-center justify-center rounded-full bg-gray-500/20 text-gray-400 hover:bg-gray-500/30 transition-colors focus:outline-none`}
+          className="w-12 h-12 flex items-center justify-center rounded-full bg-gray-500/20 text-gray-400 hover:bg-gray-500/30 transition-opacity duration-1000 focus:outline-none opacity-0 group-hover:opacity-100"
         >
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
         </button>
@@ -121,7 +176,11 @@ export const SettingsMenu: React.FC = () => {
         ></div>
       )}
 
-      <div className={`fixed top-0 right-0 h-full w-full max-w-sm bg-gray-800/80 backdrop-blur-md shadow-2xl z-50 transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+      <div 
+        className={`fixed top-0 right-0 h-full w-full max-w-sm bg-gray-800/80 backdrop-blur-md shadow-2xl z-50 transform transition-all ease-in-out ${isOpen ? 'duration-500' : 'duration-[1500ms]'} ${isOpen ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0 pointer-events-none'}`}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        >
           <div className="p-6 overflow-y-auto h-full">
             <div className="flex justify-between items-center mb-8">
               <h2 className="text-2xl font-bold text-white">Settings</h2>
@@ -131,20 +190,12 @@ export const SettingsMenu: React.FC = () => {
             </div>
             
             <div className="space-y-8">
-
-              <div>
-                <h3 className="text-lg font-semibold text-gray-300 mb-3">Display Sizes</h3>
-                <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
-                    <RangeSlider id="countdownSize" label="Countdown" value={settings.countdownSize} onChange={e => handleSettingChange('countdownSize', parseInt(e.target.value, 10))} />
-                    <RangeSlider id="stopwatchSize" label="Stopwatch" value={settings.stopwatchSize} onChange={e => handleSettingChange('stopwatchSize', parseInt(e.target.value, 10))} />
-                    <RangeSlider id="controlsSize" label="Controls" value={settings.controlsSize} onChange={e => handleSettingChange('controlsSize', parseInt(e.target.value, 10))} />
-                </div>
-              </div>
               
               <div>
                 <h3 className="text-lg font-semibold text-gray-300 mb-3">Countdown</h3>
                 <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
                   <Toggle id="showCountdownToggle" label="Show Countdown" checked={settings.showCountdown} onChange={(e) => handleSettingChange('showCountdown', e.target.checked)} />
+                  <Toggle id="showCountdownControlsToggle" label="Show Controls" checked={settings.showCountdownControls} onChange={(e) => handleSettingChange('showCountdownControls', e.target.checked)} />
 
                   <div className="flex items-center justify-between">
                      <label htmlFor="countdownDuration" className="text-white">Duration (s)</label>
@@ -152,10 +203,11 @@ export const SettingsMenu: React.FC = () => {
                         type="number"
                         id="countdownDuration"
                         min="1"
-                        className="w-20 bg-gray-600 text-white text-center rounded-md p-1 focus:ring-2 focus:outline-none ring-blue-500"
+                        className="w-20 bg-gray-600 text-white text-center rounded-md p-1 focus:ring-2 focus:outline-none ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         value={localCountdownDuration}
-                        onChange={(e) => setLocalCountdownDuration(parseInt(e.target.value, 10))}
+                        onChange={(e) => setLocalCountdownDuration(parseInt(e.target.value, 10) || 0)}
                         onBlur={handleDurationBlur}
+                        onWheel={e => handleWheelOnNumberInput(e, setLocalCountdownDuration, 1)}
                      />
                   </div>
                    <div className="flex items-center justify-between">
@@ -164,10 +216,11 @@ export const SettingsMenu: React.FC = () => {
                         type="number"
                         id="countdownRestDuration"
                         min="0"
-                        className="w-20 bg-gray-600 text-white text-center rounded-md p-1 focus:ring-2 focus:outline-none ring-blue-500"
+                        className="w-20 bg-gray-600 text-white text-center rounded-md p-1 focus:ring-2 focus:outline-none ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         value={localRestDuration}
-                        onChange={(e) => setLocalRestDuration(parseInt(e.target.value, 10))}
+                        onChange={(e) => setLocalRestDuration(parseInt(e.target.value, 10) || 0)}
                         onBlur={handleRestBlur}
+                        onWheel={e => handleWheelOnNumberInput(e, setLocalRestDuration, 0)}
                      />
                   </div>
                 </div>
@@ -219,10 +272,21 @@ export const SettingsMenu: React.FC = () => {
                 <h3 className="text-lg font-semibold text-gray-300 mb-3">Stopwatch</h3>
                 <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
                   <Toggle id="showTimerToggle" label="Show Stopwatch" checked={settings.showTimer} onChange={(e) => handleSettingChange('showTimer', e.target.checked)} />
+                  <Toggle id="showStopwatchControlsToggle" label="Show Controls" checked={settings.showStopwatchControls} onChange={(e) => handleSettingChange('showStopwatchControls', e.target.checked)} />
                    <Toggle id="showCycleCounterToggle" label="Show Cycle Counter" checked={settings.showCycleCounter} onChange={(e) => handleSettingChange('showCycleCounter', e.target.checked)} />
                 </div>
               </div>
               
+              <div>
+                <h3 className="text-lg font-semibold text-gray-300 mb-3">Display Sizes</h3>
+                <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
+                    <RangeSlider id="countdownSize" label="Countdown" value={settings.countdownSize} onChange={e => handleSettingChange('countdownSize', parseInt(e.target.value, 10))} />
+                    <RangeSlider id="stopwatchSize" label="Stopwatch" value={settings.stopwatchSize} onChange={e => handleSettingChange('stopwatchSize', parseInt(e.target.value, 10))} />
+                    <RangeSlider id="countdownControlsSize" label="Countdown Controls" value={settings.countdownControlsSize} onChange={e => handleSettingChange('countdownControlsSize', parseInt(e.target.value, 10))} />
+                    <RangeSlider id="stopwatchControlsSize" label="Stopwatch Controls" value={settings.stopwatchControlsSize} onChange={e => handleSettingChange('stopwatchControlsSize', parseInt(e.target.value, 10))} />
+                </div>
+              </div>
+
             </div>
           </div>
         </div>

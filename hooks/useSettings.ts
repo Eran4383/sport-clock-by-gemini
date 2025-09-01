@@ -15,7 +15,10 @@ export interface Settings {
   isMuted: boolean;
   countdownSize: number;
   stopwatchSize: number;
-  controlsSize: number;
+  countdownControlsSize: number;
+  stopwatchControlsSize: number;
+  showCountdownControls: boolean;
+  showStopwatchControls: boolean;
 }
 
 const defaultSettings: Settings = {
@@ -33,7 +36,10 @@ const defaultSettings: Settings = {
   isMuted: false,
   countdownSize: 100,
   stopwatchSize: 100,
-  controlsSize: 100,
+  countdownControlsSize: 100,
+  stopwatchControlsSize: 100,
+  showCountdownControls: true,
+  showStopwatchControls: true,
 };
 
 const getInitialSettings = (): Settings => {

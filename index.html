@@ -6,15 +6,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Advanced Sports Clock</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
       body {
-        font-family: 'Inter', sans-serif;
+        font-family: Arial, sans-serif;
       }
       .font-mono {
-        font-family: 'Roboto Mono', monospace;
+        /* Ensure even elements with font-mono class get the requested font */
+        font-family: Arial, sans-serif;
+      }
+      .tabular-nums {
+        /* Keeps numbers from shifting width as they change */
+        font-variant-numeric: tabular-nums;
       }
       /* Simple transition for theme changes */
       .theme-transition {
@@ -32,7 +34,7 @@
 }
 </script>
 </head>
-  <body>
+  <body style="background-color: black; color: white;">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
   </body>

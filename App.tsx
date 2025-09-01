@@ -111,31 +111,32 @@ const AppContent: React.FC = () => {
   const dynamicStyles = {
     '--countdown-font-size': `${10 + (settings.countdownSize / 100) * 10}rem`,
     '--stopwatch-font-size': `${2 + (settings.stopwatchSize / 100) * 1.5}rem`,
-    '--controls-scale': settings.controlsSize / 100,
+    '--countdown-controls-scale': settings.countdownControlsSize / 100,
+    '--stopwatch-controls-scale': settings.stopwatchControlsSize / 100,
   } as React.CSSProperties;
 
   return (
     <div className="min-h-screen flex flex-col p-4 select-none" style={dynamicStyles}>
       <SettingsMenu />
       <main className="flex-grow flex flex-col items-center justify-center w-full max-w-4xl mx-auto">
-        {settings.showCountdown ? (
+        {settings.showCountdown && (
           <>
             <CountdownDisplay timeLeft={countdown.timeLeft} />
-            <CountdownControls
-              isRunning={countdown.isRunning || countdown.isResting}
-              start={countdown.start}
-              stop={countdown.stop}
-              reset={countdown.reset}
-            />
+            {settings.showCountdownControls && (
+                <CountdownControls
+                isRunning={countdown.isRunning || countdown.isResting}
+                start={countdown.start}
+                stop={countdown.stop}
+                reset={countdown.reset}
+                />
+            )}
           </>
-        ) : (
-           null
         )}
       </main>
 
-      {settings.showTimer && (
-        <footer className="w-full max-w-lg mx-auto flex flex-col items-center pt-8">
-            <TimerDisplay time={stopwatch.time} />
+      {(settings.showTimer || settings.showCycleCounter) && (
+        <footer className="w-full max-w-lg mx-auto flex flex-col items-center gap-1">
+            {settings.showTimer && <TimerDisplay time={stopwatch.time} />}
             <Controls 
               isRunning={stopwatch.isRunning}
               start={stopwatch.start}
@@ -143,6 +144,8 @@ const AppContent: React.FC = () => {
               reset={stopwatch.reset}
               cycleCount={settings.showCycleCounter ? countdown.cycleCount : null}
               resetCycleCount={countdown.resetCycleCount}
+              showTimer={settings.showTimer}
+              showStopwatchControls={settings.showStopwatchControls}
             />
         </footer>
       )}

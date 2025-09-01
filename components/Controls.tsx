@@ -7,6 +7,8 @@ interface ControlsProps {
   reset: () => void;
   cycleCount: number | null;
   resetCycleCount: () => void;
+  showTimer: boolean;
+  showStopwatchControls: boolean;
 }
 
 const Button: React.FC<{ onClick: () => void; className?: string; children: React.ReactNode; ariaLabel: string, disabled?: boolean }> = ({ onClick, className = '', children, ariaLabel, disabled = false }) => (
@@ -20,26 +22,28 @@ const Button: React.FC<{ onClick: () => void; className?: string; children: Reac
   </button>
 );
 
-export const Controls: React.FC<ControlsProps> = ({ isRunning, start, stop, reset, cycleCount, resetCycleCount }) => {
+export const Controls: React.FC<ControlsProps> = ({ isRunning, start, stop, reset, cycleCount, resetCycleCount, showTimer, showStopwatchControls }) => {
   const buttonColor = 'bg-gray-500/30 hover:bg-gray-500/40 text-white';
 
   return (
     <div 
-      className="flex justify-center items-center gap-8 w-full mt-4"
-      style={{ transform: 'scale(var(--controls-scale))' }}
+      className="flex justify-center items-center gap-8 w-full"
+      style={{ transform: 'scale(var(--stopwatch-controls-scale))' }}
     >
-      <Button 
-        onClick={reset} 
-        ariaLabel={'Reset Timer'}
-        className={buttonColor}
-        disabled={isRunning}
-        >
-        Reset
-      </Button>
+      {showTimer && showStopwatchControls && (
+        <Button 
+          onClick={reset} 
+          ariaLabel={'Reset Timer'}
+          className={buttonColor}
+          disabled={isRunning}
+          >
+          Reset
+        </Button>
+      )}
       
       {cycleCount !== null && (
         <div className="relative group text-center w-24">
-          <span className="font-mono text-4xl font-bold">{cycleCount}</span>
+          <span className="tabular-nums text-4xl font-bold">{cycleCount}</span>
           <span className="block text-xs text-gray-400 uppercase tracking-wider">Cycles</span>
           <button 
             onClick={resetCycleCount}
@@ -54,13 +58,15 @@ export const Controls: React.FC<ControlsProps> = ({ isRunning, start, stop, rese
         </div>
       )}
 
-      <Button 
-        onClick={isRunning ? stop : start} 
-        ariaLabel={isRunning ? 'Stop Timer' : 'Start Timer'}
-        className={buttonColor}
-        >
-        {isRunning ? 'Stop' : 'Start'}
-      </Button>
+      {showTimer && showStopwatchControls && (
+        <Button 
+          onClick={isRunning ? stop : start} 
+          ariaLabel={isRunning ? 'Stop Timer' : 'Start Timer'}
+          className={buttonColor}
+          >
+          {isRunning ? 'Stop' : 'Start'}
+        </Button>
+      )}
     </div>
   );
 };

@@ -7,7 +7,7 @@ interface CountdownDisplayProps {
 export const CountdownDisplay: React.FC<CountdownDisplayProps> = ({ timeLeft }) => {
   return (
     <div 
-      className={`font-mono font-bold tracking-tighter w-full text-center leading-none`}
+      className={`tabular-nums font-bold tracking-tighter w-full text-center leading-none`}
       style={{ fontSize: 'var(--countdown-font-size)' }}
     >
       {Math.ceil(timeLeft)}

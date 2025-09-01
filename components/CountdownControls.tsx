@@ -22,8 +22,8 @@ export const CountdownControls: React.FC<CountdownControlsProps> = ({ isRunning,
 
   return (
     <div 
-      className="flex gap-4 mt-8"
-      style={{ transform: 'scale(var(--controls-scale))' }}
+      className="flex gap-4 mt-4"
+      style={{ transform: 'scale(var(--countdown-controls-scale))' }}
     >
       <ControlButton 
         onClick={reset} 
