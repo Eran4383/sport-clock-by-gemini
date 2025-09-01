@@ -229,13 +229,16 @@ const AppContent: React.FC = () => {
     <div onDoubleClick={(e) => { if (e.target === e.currentTarget) toggleFullScreen(); }} className={`min-h-screen flex flex-col p-4 select-none theme-transition ${settings.stealthModeEnabled ? 'bg-black text-white' : themeClasses}`} style={dynamicStyles}>
       <SettingsMenu />
       <WorkoutMenu />
-      <main className="flex-grow flex flex-col items-center justify-center w-full max-w-4xl mx-auto">
-        {isWorkoutActive && (
-            <div className="text-center mb-2 text-gray-400">
-                <p className="text-xl font-bold">{activeWorkout.plan.name}</p>
-                <p className="text-2xl text-white">{isWorkoutPaused ? 'PAUSED' : (isCountdownPaused ? `${currentStep.name} (Paused)` : currentStep.name)}</p>
+      <main onDoubleClick={toggleFullScreen} className="flex-grow flex flex-col items-center justify-center w-full max-w-4xl mx-auto">
+        {/* RENDER REST TITLE ABOVE */}
+        {isWorkoutActive && currentStep.type === 'rest' && (
+            <div className="text-center mb-2">
+                <p className="text-4xl font-bold text-white">
+                    {isWorkoutPaused ? 'PAUSED' : (isCountdownPaused ? 'מנוחה (Paused)' : 'מנוחה')}
+                </p>
             </div>
         )}
+
         {settings.showCountdown && (
           <>
             {isRepStep ? (
@@ -255,10 +258,24 @@ const AppContent: React.FC = () => {
             )}
           </>
         )}
+
+        {/* RENDER EXERCISE TITLE BELOW */}
+        {isWorkoutActive && currentStep.type === 'exercise' && (
+            <div className="text-center mt-4">
+                <p className="text-2xl text-white">
+                    {isWorkoutPaused ? 'PAUSED' : (isCountdownPaused ? `${currentStep.name} (Paused)` : currentStep.name)}
+                </p>
+            </div>
+        )}
       </main>
 
       {(settings.showTimer || settings.showCycleCounter) && (
         <footer className="w-full max-w-3xl mx-auto flex flex-col items-center gap-1">
+            {isWorkoutActive && (
+                <div className="text-center mb-2 text-gray-400">
+                    <p className="text-xl font-bold">{activeWorkout.plan.name}</p>
+                </div>
+            )}
             {settings.showTimer && <TimerDisplay time={stopwatch.time} />}
             <Controls 
               isRunning={stopwatch.isRunning}

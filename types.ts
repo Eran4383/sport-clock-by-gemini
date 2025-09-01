@@ -14,4 +14,6 @@ export interface WorkoutPlan {
   id: string;
   name: string;
   steps: WorkoutStep[];
+  executionMode?: 'linear' | 'circuit';
+  color?: string;
 }

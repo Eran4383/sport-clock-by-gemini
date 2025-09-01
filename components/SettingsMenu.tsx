@@ -55,8 +55,9 @@ const RangeSlider: React.FC<{
 export const SettingsMenu: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const { settings, updateSettings } = useSettings();
-  // FIX: Use ReturnType<typeof setTimeout> instead of NodeJS.Timeout for browser compatibility.
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const durationInputRef = useRef<HTMLInputElement>(null);
+  const restInputRef = useRef<HTMLInputElement>(null);
   
   const [localCountdownDuration, setLocalCountdownDuration] = useState(settings.countdownDuration);
   const [localRestDuration, setLocalRestDuration] = useState(settings.countdownRestDuration);
@@ -84,18 +85,57 @@ export const SettingsMenu: React.FC = () => {
     };
   }, [isOpen]);
 
+  // Effect to handle wheel events on number inputs without scrolling the parent
+  useEffect(() => {
+    const handleWheel = (
+      e: WheelEvent,
+      stateUpdater: React.Dispatch<React.SetStateAction<number>>,
+      min: number
+    ) => {
+      // Prevent parent from scrolling
+      e.preventDefault();
+      
+      const input = e.currentTarget as HTMLInputElement;
+      if (document.activeElement === input) {
+        input.blur();
+      }
+      
+      const delta = e.deltaY > 0 ? -1 : 1; // Invert for natural scrolling
+      stateUpdater(prev => {
+          const nextVal = prev + delta;
+          if (nextVal < min) return min;
+          return nextVal;
+      });
+    };
+
+    const durationEl = durationInputRef.current;
+    const restEl = restInputRef.current;
+
+    // We need to create these wrapper functions because addEventListener and removeEventListener need the exact same function reference.
+    const durationWheelHandler = (e: WheelEvent) => handleWheel(e, setLocalCountdownDuration, 1);
+    const restWheelHandler = (e: WheelEvent) => handleWheel(e, setLocalRestDuration, 0);
+    
+    if (durationEl) {
+      durationEl.addEventListener('wheel', durationWheelHandler, { passive: false });
+    }
+    if (restEl) {
+      restEl.addEventListener('wheel', restWheelHandler, { passive: false });
+    }
+
+    return () => {
+      if (durationEl) {
+        durationEl.removeEventListener('wheel', durationWheelHandler);
+      }
+      if (restEl) {
+        restEl.removeEventListener('wheel', restWheelHandler);
+      }
+    };
+  }, []); // State setters are stable, so empty dependency array is correct.
+
   const handleMouseEnter = () => {
     if (closeTimerRef.current) {
       clearTimeout(closeTimerRef.current);
       closeTimerRef.current = null;
-    }
-  };
-
-  const handleMouseLeave = () => {
-    if (isOpen) {
-      closeTimerRef.current = setTimeout(() => {
-        setIsOpen(false);
-      }, 10000); // 10 seconds
     }
   };
 
@@ -109,6 +149,25 @@ export const SettingsMenu: React.FC = () => {
   
   const handleRestBlur = () => {
      handleSettingChange('countdownRestDuration', localRestDuration || 0);
+  };
+
+  const handleClose = () => {
+    // Save any pending changes before closing
+    if (settings.countdownDuration !== localCountdownDuration) {
+      handleSettingChange('countdownDuration', localCountdownDuration || 1);
+    }
+    if (settings.countdownRestDuration !== localRestDuration) {
+      handleSettingChange('countdownRestDuration', localRestDuration || 0);
+    }
+    setIsOpen(false);
+  };
+
+  const handleMouseLeave = () => {
+    if (isOpen) {
+      closeTimerRef.current = setTimeout(() => {
+        handleClose();
+      }, 10000); // 10 seconds
+    }
   };
 
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -133,36 +192,11 @@ export const SettingsMenu: React.FC = () => {
     }
   };
 
-  const handleWheelOnNumberInput = (
-    e: React.WheelEvent<HTMLInputElement>,
-    stateUpdater: React.Dispatch<React.SetStateAction<number>>,
-    min: number,
-    max: number = Infinity
-  ) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    // If the input is focused, the browser's default scroll behavior will also fire.
-    // Blurring the input prevents this "double-dip" and ensures only our logic runs.
-    if (document.activeElement === e.currentTarget) {
-      e.currentTarget.blur();
-    }
-    
-    const delta = e.deltaY > 0 ? -1 : 1; // Invert for natural scrolling (up = increment)
-    stateUpdater(prev => {
-        const nextVal = prev + delta;
-        if (nextVal > max) return max;
-        if (nextVal < min) return min;
-        return nextVal;
-    });
-  };
-
-
   return (
     <>
       <div className="absolute top-4 right-4 menu-container group">
         <button 
-          onClick={() => setIsOpen(!isOpen)} 
+          onClick={() => isOpen ? handleClose() : setIsOpen(true)} 
           aria-label="Open settings menu"
           className="w-12 h-12 flex items-center justify-center rounded-full bg-gray-500/20 text-gray-400 hover:bg-gray-500/30 transition-opacity duration-1000 focus:outline-none opacity-0 group-hover:opacity-100"
         >
@@ -173,7 +207,7 @@ export const SettingsMenu: React.FC = () => {
       {isOpen && (
         <div 
           className="fixed inset-0 bg-black/60 z-40"
-          onClick={() => setIsOpen(false)}
+          onClick={handleClose}
         ></div>
       )}
 
@@ -185,7 +219,7 @@ export const SettingsMenu: React.FC = () => {
           <div className="p-6 overflow-y-auto h-full">
             <div className="flex justify-between items-center mb-8">
               <h2 className="text-2xl font-bold text-white">Settings</h2>
-              <button onClick={() => setIsOpen(false)} aria-label="Close settings menu" className="p-2 rounded-full hover:bg-gray-500/30">
+              <button onClick={handleClose} aria-label="Close settings menu" className="p-2 rounded-full hover:bg-gray-500/30">
                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
               </button>
             </div>
@@ -201,6 +235,7 @@ export const SettingsMenu: React.FC = () => {
                   <div className="flex items-center justify-between">
                      <label htmlFor="countdownDuration" className="text-white">Duration (s)</label>
                      <input
+                        ref={durationInputRef}
                         type="number"
                         id="countdownDuration"
                         min="1"
@@ -208,12 +243,12 @@ export const SettingsMenu: React.FC = () => {
                         value={localCountdownDuration}
                         onChange={(e) => setLocalCountdownDuration(parseInt(e.target.value, 10) || 0)}
                         onBlur={handleDurationBlur}
-                        onWheel={e => handleWheelOnNumberInput(e, setLocalCountdownDuration, 1)}
                      />
                   </div>
                    <div className="flex items-center justify-between">
                      <label htmlFor="countdownRestDuration" className="text-white">Rest Duration (s)</label>
                      <input
+                        ref={restInputRef}
                         type="number"
                         id="countdownRestDuration"
                         min="0"
@@ -221,7 +256,6 @@ export const SettingsMenu: React.FC = () => {
                         value={localRestDuration}
                         onChange={(e) => setLocalRestDuration(parseInt(e.target.value, 10) || 0)}
                         onBlur={handleRestBlur}
-                        onWheel={e => handleWheelOnNumberInput(e, setLocalRestDuration, 0)}
                      />
                   </div>
                 </div>

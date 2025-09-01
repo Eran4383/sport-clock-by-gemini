@@ -1,11 +1,77 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useWorkout } from '../contexts/WorkoutContext';
 import { WorkoutPlan, WorkoutStep } from '../types';
 import { useSettings } from '../contexts/SettingsContext';
+import { HoverNumberInput } from './HoverNumberInput';
+
+/**
+ * Extracts the base name of an exercise, stripping set/rep counts.
+ * e.g., "Push-ups (Set 1/3)" -> "Push-ups"
+ */
+const getBaseExerciseName = (name: string): string => {
+  const match = name.match(/(.+?)\s*\((Set|Rep|סט)\s*\d+/i);
+  return match ? match[1].trim() : name;
+};
+
+/**
+ * Re-orders a list of workout steps from a linear to a circuit structure.
+ * This is a copy of the function in WorkoutContext for display purposes.
+ */
+const generateCircuitSteps = (steps: WorkoutStep[]): WorkoutStep[] => {
+  if (!steps || steps.length === 0) return [];
+
+  const exerciseGroups = new Map<string, WorkoutStep[][]>();
+  const exerciseOrder: string[] = [];
+
+  let i = 0;
+  while (i < steps.length) {
+    const currentStep = steps[i];
+    if (currentStep.type === 'exercise') {
+      const baseName = getBaseExerciseName(currentStep.name);
+      
+      let setBlock: WorkoutStep[] = [currentStep];
+      
+      if (i + 1 < steps.length && steps[i + 1].type === 'rest') {
+        setBlock.push(steps[i + 1]);
+        i++;
+      }
+      
+      if (!exerciseGroups.has(baseName)) {
+        exerciseGroups.set(baseName, []);
+        exerciseOrder.push(baseName);
+      }
+      exerciseGroups.get(baseName)!.push(setBlock);
+      
+      i++;
+    } else {
+      i++;
+    }
+  }
+
+  const circuitSteps: WorkoutStep[] = [];
+  let maxSets = 0;
+  exerciseGroups.forEach(sets => {
+    if (sets.length > maxSets) {
+      maxSets = sets.length;
+    }
+  });
+
+  for (let setIndex = 0; setIndex < maxSets; setIndex++) {
+    for (const baseName of exerciseOrder) {
+      const sets = exerciseGroups.get(baseName);
+      if (sets && setIndex < sets.length) {
+        circuitSteps.push(...sets[setIndex]);
+      }
+    }
+  }
+
+  return circuitSteps;
+};
 
 const PlanListItem: React.FC<{
   plan: WorkoutPlan;
   onSelectPlan: (plan: WorkoutPlan) => void;
+  onInitiateDelete: (planId: string) => void;
   isSelected: boolean;
   onToggleSelection: (planId: string) => void;
   isDraggable: boolean;
@@ -16,7 +82,7 @@ const PlanListItem: React.FC<{
   onDragLeave: () => void;
   isDragTarget: boolean;
   index: number;
-}> = ({ plan, onSelectPlan, isSelected, onToggleSelection, isDraggable, onDragStart, onDragOver, onDrop, onDragEnd, onDragLeave, isDragTarget, index }) => {
+}> = ({ plan, onSelectPlan, onInitiateDelete, isSelected, onToggleSelection, isDraggable, onDragStart, onDragOver, onDrop, onDragEnd, onDragLeave, isDragTarget, index }) => {
   const { 
       activeWorkout, 
       isCountdownPaused,
@@ -25,11 +91,18 @@ const PlanListItem: React.FC<{
       pauseStepCountdown, 
       resumeStepCountdown, 
       restartCurrentStep, 
-      deletePlan 
+      savePlan,
   } = useWorkout();
   const [isExpanded, setIsExpanded] = useState(false);
 
   const isActive = activeWorkout?.sourcePlanIds.includes(plan.id) ?? false;
+
+  const displayedSteps = useMemo(() => {
+    if (plan.executionMode === 'circuit') {
+        return generateCircuitSteps(plan.steps);
+    }
+    return plan.steps;
+  }, [plan.steps, plan.executionMode]);
 
   const getTotalDuration = (plan: WorkoutPlan) => {
     const totalSeconds = plan.steps.reduce((sum, step) => sum + (step.isRepBased ? 0 : step.duration), 0);
@@ -38,18 +111,27 @@ const PlanListItem: React.FC<{
     const seconds = (totalSeconds % 60).toString().padStart(2, '0');
     return `${minutes}:${seconds}`;
   };
-
-  const handleDelete = (e: React.MouseEvent) => {
+  
+  const handleToggleMode = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (window.confirm(`Are you sure you want to delete "${plan.name}"?`)) {
-      deletePlan(plan.id);
-    }
+    const newMode = plan.executionMode === 'circuit' ? 'linear' : 'circuit';
+    savePlan({ ...plan, executionMode: newMode });
   };
 
   const handleStop = (e: React.MouseEvent) => {
       e.stopPropagation();
       stopWorkout();
   }
+  
+  const handleEdit = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      onSelectPlan(plan);
+  };
+
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onInitiateDelete(plan.id);
+  };
 
   const handleTogglePause = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -70,6 +152,7 @@ const PlanListItem: React.FC<{
   return (
     <div 
         className={`bg-gray-700/50 rounded-lg transition-all duration-300 ${isDraggable ? 'cursor-grab' : ''} ${dragStyles}`}
+        style={{ borderLeft: `5px solid ${plan.color || 'transparent'}` }}
         draggable={isDraggable}
         onDragStart={(e) => onDragStart(e, index)}
         onDragOver={(e) => onDragOver(e, index)}
@@ -100,18 +183,35 @@ const PlanListItem: React.FC<{
                 </p>
             </div>
           </div>
-          <div className="flex gap-2 items-center ml-2 flex-shrink-0">
-            <button 
-              onClick={(e) => { e.stopPropagation(); onSelectPlan(plan); }}
-              className="p-2 text-gray-300 hover:text-white hover:bg-gray-600/50 rounded-full"
-              aria-label="Edit plan" title="Edit plan" disabled={!!activeWorkout}
+          <div className="flex gap-1 items-center ml-2 flex-shrink-0">
+            <button
+                onClick={handleToggleMode}
+                className="p-2 text-gray-300 hover:text-white hover:bg-gray-600/50 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label={plan.executionMode === 'circuit' ? "Switch to Linear Mode" : "Switch to Circuit Mode"}
+                title={plan.executionMode === 'circuit' ? "Circuit Mode" : "Linear Mode"}
+                disabled={!!activeWorkout}
+            >
+                {plan.executionMode === 'circuit' ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 110 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" /></svg>
+                ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM9 15a1 1 0 011-1h6a1 1 0 110 2h-6a1 1 0 01-1-1z" clipRule="evenodd" /></svg>
+                )}
+            </button>
+            <button
+              onClick={handleEdit}
+              className="p-2 text-gray-300 hover:text-white hover:bg-gray-600/50 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
+              aria-label="Edit plan"
+              title="Edit Plan"
+              disabled={!!activeWorkout}
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" /><path fillRule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clipRule="evenodd" /></svg>
             </button>
-            <button 
+            <button
               onClick={handleDelete}
-              className="p-2 text-gray-300 hover:text-red-500 hover:bg-gray-600/50 rounded-full"
-              aria-label="Delete plan" title="Delete plan" disabled={!!activeWorkout}
+              className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-500/10 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
+              aria-label="Delete plan"
+              title="Delete Plan"
+              disabled={!!activeWorkout}
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" /></svg>
             </button>
@@ -137,8 +237,8 @@ const PlanListItem: React.FC<{
         <div className="border-t border-gray-600/50 px-4 pb-4 pt-2">
             <h4 className="text-sm font-semibold text-gray-300 mb-2">Steps:</h4>
             <ol className="list-decimal list-inside text-gray-300 space-y-1">
-                {plan.steps.map(step => (
-                    <li key={step.id}>
+                {displayedSteps.map((step, index) => (
+                    <li key={`${step.id}-${index}`}>
                         {step.name} - <span className="text-gray-400">{step.isRepBased ? `${step.reps} reps` : `${step.duration}s`}</span>
                     </li>
                 ))}
@@ -152,7 +252,8 @@ const PlanListItem: React.FC<{
 const PlanList: React.FC<{
   onSelectPlan: (plan: WorkoutPlan) => void;
   onCreateNew: () => void;
-}> = ({ onSelectPlan, onCreateNew }) => {
+  onInitiateDelete: (planId: string) => void;
+}> = ({ onSelectPlan, onCreateNew, onInitiateDelete }) => {
   const { plans, reorderPlans, startWorkout, activeWorkout } = useWorkout();
   const [selectedPlanIds, setSelectedPlanIds] = useState<string[]>([]);
   const dragItemIndex = useRef<number | null>(null);
@@ -237,6 +338,7 @@ const PlanList: React.FC<{
                 plan={plan} 
                 index={index}
                 onSelectPlan={onSelectPlan}
+                onInitiateDelete={onInitiateDelete}
                 isSelected={selectedPlanIds.includes(plan.id)}
                 onToggleSelection={handleToggleSelection}
                 isDraggable={!activeWorkout}
@@ -289,24 +391,26 @@ const SetBuilder: React.FC<{ onAddSets: (steps: WorkoutStep[]) => void }> = ({ o
         }
         onAddSets(newSteps);
     };
+    
+    const commonInputClass = "w-full bg-gray-600 p-2 rounded-md focus:outline-none focus:ring-1 ring-blue-500 text-center";
 
     return (
         <div className="bg-gray-700/50 p-3 rounded-lg space-y-3 mt-4">
             <h4 className="text-md font-semibold text-center text-gray-300">Set Builder</h4>
-            <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Exercise Name" title="Name of the exercise for this set" className="w-full bg-gray-600 p-2 rounded-md focus:outline-none focus:ring-1 ring-blue-500" />
+            <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Exercise Name" title="Name of the exercise for this set" className={`${commonInputClass} text-left`} />
             <div className="flex gap-2">
                 <button onClick={() => setIsRepBased(false)} className={`flex-1 py-1 rounded ${!isRepBased ? 'bg-blue-500' : 'bg-gray-600'}`}>Time</button>
                 <button onClick={() => setIsRepBased(true)} className={`flex-1 py-1 rounded ${isRepBased ? 'bg-blue-500' : 'bg-gray-600'}`}>Reps</button>
             </div>
             <div className="grid grid-cols-2 gap-2 text-center">
                 {isRepBased ? (
-                    <input type="number" min="1" value={reps} onChange={e => setReps(parseInt(e.target.value, 10) || 1)} title="Number of repetitions per set" className="w-full bg-gray-600 p-2 rounded-md [appearance:textfield]" />
+                     <HoverNumberInput value={reps} onChange={setReps} min={1} title="Number of repetitions per set" className={commonInputClass} />
                 ) : (
-                    <input type="number" min="1" value={duration} onChange={e => setDuration(parseInt(e.target.value, 10) || 1)} title="Duration in seconds per set" className="w-full bg-gray-600 p-2 rounded-md [appearance:textfield]" />
+                    <HoverNumberInput value={duration} onChange={setDuration} min={1} title="Duration in seconds per set" className={commonInputClass} />
                 )}
-                <input type="number" min="1" value={sets} onChange={e => setSets(parseInt(e.target.value, 10) || 1)} title="Total number of sets to perform" className="w-full bg-gray-600 p-2 rounded-md [appearance:textfield]" placeholder="Sets"/>
+                <HoverNumberInput value={sets} onChange={setSets} min={1} title="Total number of sets to perform" className={commonInputClass} placeholder="Sets"/>
             </div>
-            <input type="number" min="0" value={rest} onChange={e => setRest(parseInt(e.target.value, 10) || 0)} title="Rest time in seconds between sets" className="w-full bg-gray-600 p-2 rounded-md [appearance:textfield]" placeholder="Rest between sets (s)" />
+            <HoverNumberInput value={rest} onChange={setRest} min={0} title="Rest time in seconds between sets" className={commonInputClass} placeholder="Rest between sets (s)" />
             <button onClick={handleAdd} className="w-full py-2 bg-blue-500/80 hover:bg-blue-500 rounded-lg">+ Add to Plan</button>
         </div>
     );
@@ -329,6 +433,8 @@ const PlanEditor: React.FC<{
                 id: `new_${Date.now()}`,
                 name: '',
                 steps: [],
+                executionMode: 'linear',
+                color: '#808080',
             });
         }
     }, [plan]);
@@ -408,7 +514,20 @@ const PlanEditor: React.FC<{
                     className="w-full bg-gray-600 text-white p-3 rounded-lg text-lg focus:outline-none focus:ring-2 ring-blue-500"
                 />
 
-                <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-2">
+                <div className="flex items-center gap-3 bg-gray-600 p-2 rounded-lg">
+                    <label htmlFor="planColor" className="text-white font-semibold">Plan Color</label>
+                    <input 
+                        type="color"
+                        id="planColor"
+                        value={editedPlan.color || '#808080'}
+                        onChange={e => setEditedPlan(p => p ? { ...p, color: e.target.value } : null)}
+                        className="w-10 h-10 p-0 bg-transparent border-none rounded-md cursor-pointer"
+                        title="Choose a color for this plan"
+                    />
+                </div>
+
+
+                <div className="space-y-3 max-h-[45vh] overflow-y-auto pr-2">
                    {editedPlan.steps.map((step, index) => (
                        <div key={step.id} className="bg-gray-700/50 p-3 rounded-lg space-y-3">
                            <div className="flex items-center gap-2">
@@ -447,10 +566,10 @@ const PlanEditor: React.FC<{
                            <div>
                                 <label className="text-sm text-gray-400">{step.isRepBased ? 'Reps' : 'Duration (s)'}</label>
                                 {step.isRepBased ? (
-                                    <input type="number" min="1" value={step.reps} onChange={e => updateStep(index, { reps: parseInt(e.target.value, 10) || 1 })} title="Number of repetitions" className="w-full mt-1 bg-gray-600 text-center p-2 rounded-md [appearance:textfield]" />
+                                    <HoverNumberInput min={1} value={step.reps} onChange={newValue => updateStep(index, { reps: newValue })} title="Number of repetitions" className="w-full mt-1 bg-gray-600 text-center p-2 rounded-md" />
                                 ) : (
                                     <div className="flex items-center gap-2 mt-1">
-                                        <input type="number" min="1" value={step.duration} onChange={e => updateStep(index, { duration: parseInt(e.target.value, 10) || 1 })} title={step.type === 'exercise' ? 'Exercise duration in seconds' : 'Rest duration in seconds'} className="w-full bg-gray-600 text-center p-2 rounded-md [appearance:textfield]" />
+                                        <HoverNumberInput min={1} value={step.duration} onChange={newValue => updateStep(index, { duration: newValue })} title={step.type === 'exercise' ? 'Exercise duration in seconds' : 'Rest duration in seconds'} className="w-full bg-gray-600 text-center p-2 rounded-md" />
                                         <PinButton 
                                             onClick={() => updateSettings(step.type === 'exercise' ? { defaultExerciseDuration: step.duration } : { defaultRestDuration: step.duration })}
                                             isActive={step.type === 'exercise' ? settings.defaultExerciseDuration === step.duration : settings.defaultRestDuration === step.duration}
@@ -479,12 +598,52 @@ const PlanEditor: React.FC<{
     );
 };
 
+const ConfirmDeleteModal: React.FC<{
+  planName: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}> = ({ planName, onConfirm, onCancel }) => (
+    <div 
+        className="fixed inset-0 bg-black/70 z-[100] flex items-center justify-center"
+        onClick={onCancel}
+        aria-modal="true"
+        role="dialog"
+    >
+        <div 
+            className="bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-sm"
+            onClick={e => e.stopPropagation()}
+        >
+            <h3 className="text-xl font-bold text-white">Confirm Deletion</h3>
+            <p className="text-gray-300 mt-2">Are you sure you want to delete the plan "{planName}"?</p>
+            <div className="mt-6 flex justify-end gap-4">
+                <button 
+                    onClick={onCancel}
+                    className="px-4 py-2 rounded-md text-white bg-gray-600 hover:bg-gray-500 font-semibold"
+                >
+                    Cancel
+                </button>
+                <button 
+                    onClick={onConfirm}
+                    className="px-4 py-2 rounded-md text-white bg-red-600 hover:bg-red-700 font-semibold"
+                >
+                    Delete
+                </button>
+            </div>
+        </div>
+    </div>
+);
+
 
 export const WorkoutMenu: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState<WorkoutPlan | null>(null);
   const [view, setView] = useState<'list' | 'editor'>('list');
-  const { activeWorkout } = useWorkout();
+  const [confirmDeletePlanId, setConfirmDeletePlanId] = useState<string | null>(null);
+  const { activeWorkout, plans, deletePlan } = useWorkout();
+
+  const planToDelete = useMemo(() => {
+    return plans.find(p => p.id === confirmDeletePlanId) || null;
+  }, [confirmDeletePlanId, plans]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -510,6 +669,13 @@ export const WorkoutMenu: React.FC = () => {
       setEditingPlan(null);
   };
   
+  const handleConfirmDelete = () => {
+    if (confirmDeletePlanId) {
+        deletePlan(confirmDeletePlanId);
+        setConfirmDeletePlanId(null);
+    }
+  };
+
   useEffect(() => {
       if(activeWorkout) {
           setIsOpen(false);
@@ -536,12 +702,24 @@ export const WorkoutMenu: React.FC = () => {
         ></div>
       )}
 
+      {planToDelete && (
+          <ConfirmDeleteModal 
+              planName={planToDelete.name}
+              onConfirm={handleConfirmDelete}
+              onCancel={() => setConfirmDeletePlanId(null)}
+          />
+      )}
+
       <div 
         className={`fixed top-0 left-0 h-full w-full max-w-sm bg-gray-800/80 backdrop-blur-md shadow-2xl z-50 transform transition-all ease-in-out ${isOpen ? 'duration-500' : 'duration-[1500ms]'} ${isOpen ? 'translate-x-0 opacity-100' : '-translate-x-full opacity-0 pointer-events-none'}`}
         >
           <div className="p-6 overflow-y-auto h-full">
             {view === 'list' ? (
-                <PlanList onSelectPlan={handleSelectPlan} onCreateNew={handleCreateNew} />
+                <PlanList 
+                    onSelectPlan={handleSelectPlan} 
+                    onCreateNew={handleCreateNew} 
+                    onInitiateDelete={setConfirmDeletePlanId}
+                />
             ) : (
                 <PlanEditor plan={editingPlan} onBack={handleBack} />
             )}
