@@ -160,6 +160,27 @@ const PlanListItem: React.FC<{
       e.stopPropagation();
       onSelectPlan(plan);
   };
+  
+  const handleExport = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+        const planJson = JSON.stringify(plan, null, 2);
+        const blob = new Blob([planJson], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        // Sanitize file name
+        const fileName = `${plan.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.json`;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    } catch (error) {
+        console.error("Failed to export plan:", error);
+        alert("Could not export the plan.");
+    }
+  };
 
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -231,6 +252,15 @@ const PlanListItem: React.FC<{
                 )}
             </button>
             <button
+              onClick={handleExport}
+              className="p-2 text-gray-300 hover:text-white hover:bg-gray-600/50 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
+              aria-label="Export plan"
+              title="Export Plan"
+              disabled={!!activeWorkout}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M15 8a3 3 0 10-2.977-2.63l-4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 10.895-1.789l-4.94-2.47a3.027 3.027 0 000-.74l4.94-2.47C13.456 7.68 14.19 8 15 8z" /></svg>
+            </button>
+            <button
               onClick={handleEdit}
               className="p-2 text-gray-300 hover:text-white hover:bg-gray-600/50 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
               aria-label="Edit plan"
@@ -298,10 +328,11 @@ const PlanList: React.FC<{
   isPinned: boolean;
   onTogglePin: () => void;
 }> = ({ onSelectPlan, onCreateNew, onInitiateDelete, isPinned, onTogglePin }) => {
-  const { plans, reorderPlans, startWorkout, activeWorkout } = useWorkout();
+  const { plans, reorderPlans, startWorkout, importPlan, activeWorkout } = useWorkout();
   const [selectedPlanIds, setSelectedPlanIds] = useState<string[]>([]);
   const dragItemIndex = useRef<number | null>(null);
   const [dragTargetIndex, setDragTargetIndex] = useState<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleToggleSelection = (planId: string) => {
     setSelectedPlanIds(prev =>
@@ -312,6 +343,38 @@ const PlanList: React.FC<{
   const handleStartSelected = () => {
       startWorkout(selectedPlanIds);
       setSelectedPlanIds([]);
+  };
+  
+  const handleImportClick = () => {
+      fileInputRef.current?.click();
+  };
+  
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const text = e.target?.result as string;
+            const importedPlan = JSON.parse(text);
+            // Basic validation
+            if (importedPlan && typeof importedPlan.name === 'string' && Array.isArray(importedPlan.steps)) {
+                importPlan(importedPlan);
+            } else {
+                throw new Error("Invalid plan structure.");
+            }
+        } catch (error) {
+            console.error("Failed to import plan:", error);
+            alert("Could not import plan. The file may be corrupted or in the wrong format.");
+        } finally {
+            // Reset the input so the same file can be imported again
+            if(fileInputRef.current) {
+                fileInputRef.current.value = '';
+            }
+        }
+    };
+    reader.readAsText(file);
   };
 
   const onDragStart = (e: React.DragEvent, index: number) => {
@@ -355,6 +418,22 @@ const PlanList: React.FC<{
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold text-white">Workout Plans</h2>
         <div className="flex items-center gap-2">
+            <button
+                onClick={handleImportClick}
+                className="p-2 rounded-full hover:bg-gray-500/30 text-gray-400"
+                title="Import Plan from File"
+                disabled={!!activeWorkout}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clipRule="evenodd" /></svg>
+            </button>
+            <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                accept=".json,application/json"
+                className="hidden"
+            />
+
             <button 
                 onClick={onTogglePin}
                 className={`p-2 rounded-full hover:bg-gray-500/30 ${isPinned ? 'text-blue-400' : 'text-gray-400'}`}

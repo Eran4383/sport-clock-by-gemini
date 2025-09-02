@@ -162,7 +162,6 @@ const AppContent: React.FC = () => {
 
   // Update document title with countdown
   useEffect(() => {
-    const originalTitle = "Advanced Sports Clock";
     const mutePrefix = settings.isMuted ? '🔇 ' : '';
 
     if (workoutCompleted) {
@@ -179,7 +178,6 @@ const AppContent: React.FC = () => {
     } else {
         document.title = `${mutePrefix}⏱️`;
     }
-    return () => { document.title = originalTitle; };
   }, [countdown.isRunning, countdown.timeLeft, settings.showCountdown, isWorkoutActive, currentStep, isWorkoutPaused, settings.isMuted, workoutCompleted]);
 
   // Start main clock on initial load

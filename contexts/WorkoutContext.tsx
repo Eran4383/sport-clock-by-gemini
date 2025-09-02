@@ -16,6 +16,7 @@ interface WorkoutContextType {
   isWorkoutPaused: boolean;
   isCountdownPaused: boolean;
   savePlan: (plan: WorkoutPlan) => void;
+  importPlan: (plan: WorkoutPlan) => void;
   deletePlan: (planId: string) => void;
   reorderPlans: (reorderedPlans: WorkoutPlan[]) => void;
   startWorkout: (planIds: string[]) => void;
@@ -136,6 +137,21 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
       }
     });
   }, []);
+  
+  const importPlan = useCallback((planToImport: WorkoutPlan) => {
+    // Sanitize and prepare the imported plan to prevent conflicts
+    const newPlan: WorkoutPlan = {
+      ...planToImport,
+      id: `${Date.now()}_imported`,
+      name: `${planToImport.name} (Imported)`,
+      steps: planToImport.steps.map((step, index) => ({
+        ...step,
+        id: `${Date.now()}_imported_step_${index}`
+      }))
+    };
+    
+    setPlans(prevPlans => [...prevPlans, newPlan]);
+  }, []);
 
   const deletePlan = useCallback((planId: string) => {
     setPlans(prevPlans => prevPlans.filter(p => p.id !== planId));
@@ -254,6 +270,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     isWorkoutPaused,
     isCountdownPaused,
     savePlan,
+    importPlan,
     deletePlan,
     reorderPlans,
     startWorkout,
