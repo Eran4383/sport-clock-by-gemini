@@ -89,7 +89,6 @@ export const useCountdown = (initialDuration: number, restDuration: number, sett
         setTimeLeft(remaining);
       }
     } else if (currentPhase === 'resting') {
-      setTimeLeft(0); // Show 0 during rest
       if (remaining <= 0) {
         if (canPlaySound && currentSettings.playSoundOnRestart) {
           playNotificationSound(volume);
@@ -98,6 +97,8 @@ export const useCountdown = (initialDuration: number, restDuration: number, sett
         halfwaySoundPlayedRef.current = false;
         setTimeLeft(durationMsRef.current);
         endTimeRef.current = performance.now() + durationMsRef.current;
+      } else {
+        setTimeLeft(remaining);
       }
     }
 
@@ -124,16 +125,11 @@ export const useCountdown = (initialDuration: number, restDuration: number, sett
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = undefined;
 
-      if (phaseRef.current === 'running') {
-          const remaining = endTimeRef.current - performance.now();
-          const newTimeLeft = Math.max(0, remaining);
-          setTimeLeft(newTimeLeft);
-          timeLeftOnPauseRef.current = newTimeLeft;
-      } else {
-        // If stopped during rest, reset to full duration
-        setTimeLeft(durationMsRef.current);
-        timeLeftOnPauseRef.current = durationMsRef.current;
-      }
+      const remaining = endTimeRef.current - performance.now();
+      const newTimeLeft = Math.max(0, remaining);
+      setTimeLeft(newTimeLeft);
+      timeLeftOnPauseRef.current = newTimeLeft;
+      
       setPhase('stopped');
     }
   }, []);

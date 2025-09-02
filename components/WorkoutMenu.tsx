@@ -120,6 +120,8 @@ const PlanListItem: React.FC<{
   } = useWorkout();
   const [isExpanded, setIsExpanded] = useState(false);
   const exerciseColorMap = useExerciseColorMap(plan.steps);
+  const [showCopyConfirmation, setShowCopyConfirmation] = useState(false);
+
 
   const isActive = activeWorkout?.sourcePlanIds.includes(plan.id) ?? false;
 
@@ -181,6 +183,30 @@ const PlanListItem: React.FC<{
         alert("Could not export the plan.");
     }
   };
+  
+  const handleShare = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+        const planJson = JSON.stringify(plan);
+        const base64Data = btoa(unescape(encodeURIComponent(planJson)));
+        
+        // Create a clean base URL, removing existing hash and search params
+        const url = new URL(window.location.href);
+        url.hash = '';
+        url.search = '';
+        const cleanBaseUrl = url.toString().endsWith('/') ? url.toString().slice(0, -1) : url.toString();
+        
+        const shareableLink = `${cleanBaseUrl}#import=${base64Data}`;
+        
+        navigator.clipboard.writeText(shareableLink).then(() => {
+            setShowCopyConfirmation(true);
+            setTimeout(() => setShowCopyConfirmation(false), 2000);
+        });
+    } catch (error) {
+        console.error("Failed to create share link:", error);
+        alert("Could not create a share link.");
+    }
+  };
 
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -214,9 +240,9 @@ const PlanListItem: React.FC<{
         onDragEnd={onDragEnd}
         onDragLeave={onDragLeave}
     >
-      <div className="p-4" onClick={() => setIsExpanded(!isExpanded)}>
-        <div className="flex justify-between items-center">
-          <div className="flex-1 min-w-0 flex items-center gap-3">
+      <div className="p-3 cursor-pointer" onClick={() => setIsExpanded(!isExpanded)}>
+        <div className="flex justify-between items-start gap-3">
+          <div className="flex-1 min-w-0 flex items-start gap-3">
             {!activeWorkout && (
                 <input
                     type="checkbox"
@@ -226,18 +252,20 @@ const PlanListItem: React.FC<{
                         onToggleSelection(plan.id);
                     }}
                     onClick={(e) => e.stopPropagation()}
-                    className="form-checkbox h-5 w-5 rounded bg-gray-600 border-gray-500 text-blue-500 focus:ring-blue-500 shrink-0"
+                    className="form-checkbox h-5 w-5 rounded bg-gray-600 border-gray-500 text-blue-500 focus:ring-blue-500 shrink-0 mt-1"
                     aria-label={`Select plan ${plan.name}`}
                 />
             )}
             <div className="flex-1 min-w-0">
-                <h3 className="text-xl font-semibold text-white truncate">{plan.name}</h3>
+                <h3 className="text-xl font-semibold text-white break-words" title={plan.name}>{plan.name}</h3>
                 <p className="text-sm text-gray-400">
-                {plan.steps.length} steps, Total: {getTotalDuration(plan)}
+                  {plan.steps.length} steps, Total: {getTotalDuration(plan)}
                 </p>
             </div>
           </div>
-          <div className="flex gap-1 items-center ml-2 flex-shrink-0">
+        </div>
+        
+        <div className="flex gap-1 items-center mt-3 justify-end relative">
             <button
                 onClick={handleToggleMode}
                 className="p-2 text-gray-300 hover:text-white hover:bg-gray-600/50 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
@@ -252,13 +280,23 @@ const PlanListItem: React.FC<{
                 )}
             </button>
             <button
+              onClick={handleShare}
+              className="p-2 text-gray-300 hover:text-white hover:bg-gray-600/50 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
+              aria-label="Share plan via link"
+              title="Share Plan"
+              disabled={!!activeWorkout}
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M15 8a3 3 0 10-2.977-2.63l-4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 10.895-1.789l-4.94-2.47a3.027 3.027 0 000-.74l4.94-2.47C13.456 7.68 14.19 8 15 8z" /></svg>
+            </button>
+            {showCopyConfirmation && <span className="absolute -top-8 right-0 bg-gray-900 text-white text-xs px-2 py-1 rounded">Link Copied!</span>}
+            <button
               onClick={handleExport}
               className="p-2 text-gray-300 hover:text-white hover:bg-gray-600/50 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
-              aria-label="Export plan"
+              aria-label="Export plan to file"
               title="Export Plan"
               disabled={!!activeWorkout}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M15 8a3 3 0 10-2.977-2.63l-4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 10.895-1.789l-4.94-2.47a3.027 3.027 0 000-.74l4.94-2.47C13.456 7.68 14.19 8 15 8z" /></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
             </button>
             <button
               onClick={handleEdit}
@@ -278,8 +316,8 @@ const PlanListItem: React.FC<{
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" /></svg>
             </button>
-          </div>
         </div>
+        
          {isActive ? (
              <div className="mt-3 grid grid-cols-3 gap-2">
                 <button onClick={handleStop} className="py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 transition-colors text-sm">Stop</button>
@@ -297,7 +335,7 @@ const PlanListItem: React.FC<{
          )}
       </div>
       {isExpanded && (
-        <div className="border-t border-gray-600/50 px-4 pb-4 pt-2">
+        <div className="border-t border-gray-600/50 px-3 pb-3 pt-2">
             <h4 className="text-sm font-semibold text-gray-300 mb-2">Steps:</h4>
             <ol className="text-gray-300 space-y-1">
                 {displayedSteps.map((step, index) => {
@@ -308,9 +346,10 @@ const PlanListItem: React.FC<{
                         <li 
                           key={`${step.id}-${index}`} 
                           className={`flex items-center gap-2 transition-all duration-200 rounded ${isCurrent ? 'bg-blue-500/20 font-bold p-1 -m-1' : ''}`}
+                          title={step.name}
                         >
                             <span className="w-1.5 h-4 rounded" style={{ backgroundColor: color }}></span>
-                            <span>{step.name} - <span className="text-gray-400 font-normal">{step.isRepBased ? `${step.reps} reps` : `${step.duration}s`}</span></span>
+                            <span className="truncate">{step.name} - <span className="text-gray-400 font-normal">{step.isRepBased ? `${step.reps} reps` : `${step.duration}s`}</span></span>
                         </li>
                     )
                 })}
@@ -319,6 +358,35 @@ const PlanListItem: React.FC<{
       )}
     </div>
   );
+};
+
+const ImportTextModal: React.FC<{ onImport: (text: string) => void; onCancel: () => void; }> = ({ onImport, onCancel }) => {
+    const [jsonText, setJsonText] = useState('');
+    
+    const handleImportClick = () => {
+        if (jsonText.trim()) {
+            onImport(jsonText);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/70 z-[100] flex items-center justify-center" onClick={onCancel} aria-modal="true" role="dialog">
+            <div className="bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-lg" onClick={e => e.stopPropagation()}>
+                <h3 className="text-xl font-bold text-white">Import Plan from Text</h3>
+                <p className="text-gray-300 mt-2">Paste the JSON content of a workout plan below.</p>
+                <textarea
+                    value={jsonText}
+                    onChange={e => setJsonText(e.target.value)}
+                    className="w-full h-48 mt-4 p-2 bg-gray-900 text-gray-300 rounded-md font-mono text-sm focus:outline-none focus:ring-2 ring-blue-500"
+                    placeholder='{ "id": "...", "name": "...", "steps": [...] }'
+                />
+                <div className="mt-6 flex justify-end gap-4">
+                    <button onClick={onCancel} className="px-4 py-2 rounded-md text-white bg-gray-600 hover:bg-gray-500 font-semibold">Cancel</button>
+                    <button onClick={handleImportClick} className="px-4 py-2 rounded-md text-white bg-blue-600 hover:bg-blue-700 font-semibold">Import</button>
+                </div>
+            </div>
+        </div>
+    );
 };
 
 const PlanList: React.FC<{
@@ -333,6 +401,7 @@ const PlanList: React.FC<{
   const dragItemIndex = useRef<number | null>(null);
   const [dragTargetIndex, setDragTargetIndex] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isImportTextVisible, setIsImportTextVisible] = useState(false);
 
   const handleToggleSelection = (planId: string) => {
     setSelectedPlanIds(prev =>
@@ -357,24 +426,33 @@ const PlanList: React.FC<{
     reader.onload = (e) => {
         try {
             const text = e.target?.result as string;
-            const importedPlan = JSON.parse(text);
-            // Basic validation
-            if (importedPlan && typeof importedPlan.name === 'string' && Array.isArray(importedPlan.steps)) {
-                importPlan(importedPlan);
-            } else {
-                throw new Error("Invalid plan structure.");
-            }
+            handleJsonImport(text);
         } catch (error) {
-            console.error("Failed to import plan:", error);
-            alert("Could not import plan. The file may be corrupted or in the wrong format.");
+            console.error("Failed to read file:", error);
+            alert("Could not read the file.");
         } finally {
-            // Reset the input so the same file can be imported again
             if(fileInputRef.current) {
                 fileInputRef.current.value = '';
             }
         }
     };
     reader.readAsText(file);
+  };
+
+  const handleJsonImport = (jsonText: string) => {
+    try {
+        const importedPlan = JSON.parse(jsonText);
+        // Basic validation
+        if (importedPlan && typeof importedPlan.name === 'string' && Array.isArray(importedPlan.steps)) {
+            importPlan(importedPlan);
+            setIsImportTextVisible(false); // Close modal on success
+        } else {
+            throw new Error("Invalid plan structure.");
+        }
+    } catch (error) {
+        console.error("Failed to import plan:", error);
+        alert("Could not import plan. The file may be corrupted or in the wrong format.");
+    }
   };
 
   const onDragStart = (e: React.DragEvent, index: number) => {
@@ -419,6 +497,14 @@ const PlanList: React.FC<{
         <h2 className="text-2xl font-bold text-white">Workout Plans</h2>
         <div className="flex items-center gap-2">
             <button
+                onClick={() => setIsImportTextVisible(true)}
+                className="p-2 rounded-full hover:bg-gray-500/30 text-gray-400"
+                title="Import Plan from Text"
+                disabled={!!activeWorkout}
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M6 2a2 2 0 00-2 2v12a2 2 0 002 2h8a2 2 0 002-2V7.414A2 2 0 0015.414 6L12 2.586A2 2 0 0010.586 2H6zm5 6a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V8z" clipRule="evenodd" /></svg>
+            </button>
+            <button
                 onClick={handleImportClick}
                 className="p-2 rounded-full hover:bg-gray-500/30 text-gray-400"
                 title="Import Plan from File"
@@ -453,6 +539,8 @@ const PlanList: React.FC<{
             </button>
         </div>
       </div>
+
+      {isImportTextVisible && <ImportTextModal onImport={handleJsonImport} onCancel={() => setIsImportTextVisible(false)} />}
 
       {selectedPlanIds.length > 0 && !activeWorkout && (
           <button
@@ -515,7 +603,7 @@ const SetBuilder: React.FC<{ onAddSets: (steps: WorkoutStep[]) => void }> = ({ o
             if (rest > 0 && i < sets - 1) { // No rest after the last set
                 const restStep: WorkoutStep = {
                     id: `${Date.now()}-set-${i}-rest`,
-                    name: 'Rest',
+                    name: `Rest (סט ${i + 1}/${sets})`,
                     type: 'rest',
                     isRepBased: false,
                     duration: rest,
@@ -551,6 +639,201 @@ const SetBuilder: React.FC<{ onAddSets: (steps: WorkoutStep[]) => void }> = ({ o
     );
 };
 
+const EditableStepItem: React.FC<{
+    step: WorkoutStep;
+    index: number;
+    updateStep: (index: number, newStep: Partial<WorkoutStep>) => void;
+    removeStep: (index: number) => void;
+    isExpanded: boolean;
+    onToggleExpand: () => void;
+    color?: string;
+    settings: ReturnType<typeof useSettings>['settings'];
+    updateSettings: ReturnType<typeof useSettings>['updateSettings'];
+}> = ({ step, index, updateStep, removeStep, isExpanded, onToggleExpand, color, settings, updateSettings }) => {
+    
+    const PinButton: React.FC<{onClick: () => void; isActive: boolean; title: string}> = ({ onClick, isActive, title }) => (
+        <button onClick={onClick} title={title} className={`p-1 rounded-full ${isActive ? 'text-blue-400' : 'text-gray-500 hover:text-white'}`}>
+             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5.586l2.293-2.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 9.586V4a1 1 0 011-1z" clipRule="evenodd" /><path d="M10 18a8 8 0 100-16 8 8 0 000 16z" /></svg>
+        </button>
+    );
+
+    const stepBgClass = step.type === 'rest' ? 'bg-gray-700/80' : 'bg-gray-700/50';
+
+    return (
+        <div className={`${stepBgClass} rounded-lg`} style={{ borderLeft: `3px solid ${color || 'transparent'}` }}>
+            <div className="p-3 flex items-center gap-2 cursor-pointer" onClick={onToggleExpand}>
+                <span className="text-gray-400 font-bold">#{index + 1}</span>
+                <div className="flex-grow">
+                    <p className="font-semibold text-white truncate" title={step.name}>{step.name}</p>
+                    <p className="text-sm text-gray-400">
+                        {step.type === 'rest' ? 'Rest' : (step.isRepBased ? `${step.reps} reps` : `${step.duration}s`)}
+                    </p>
+                </div>
+                <button className="p-2 text-gray-400 hover:text-white">
+                    <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                    </svg>
+                </button>
+            </div>
+            {isExpanded && (
+                <div className="p-3 border-t border-gray-600/50 space-y-3">
+                   <div className="flex items-center gap-2">
+                       <input 
+                           type="text"
+                           value={step.name}
+                           onChange={e => updateStep(index, { name: e.target.value })}
+                           className="flex-grow bg-gray-600 p-2 rounded-md focus:outline-none focus:ring-1 ring-blue-500"
+                           title="Name of this step (e.g., Push-ups)"
+                       />
+                       <button onClick={() => removeStep(index)} className="p-2 text-gray-400 hover:text-red-500" title="Remove step">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                       </button>
+                   </div>
+                   
+                   <div className="grid grid-cols-2 gap-3">
+                       <div>
+                           <label className="text-sm text-gray-400">Type</label>
+                           <div className="flex rounded-md border border-gray-500 overflow-hidden mt-1">
+                               <button onClick={() => updateStep(index, { type: 'exercise' })} className={`flex-1 px-2 py-1 text-sm ${step.type === 'exercise' ? 'bg-blue-500' : 'bg-transparent'}`}>Exercise</button>
+                               <button onClick={() => updateStep(index, { type: 'rest' })} className={`flex-1 px-2 py-1 text-sm ${step.type === 'rest' ? 'bg-blue-500' : 'bg-transparent'}`}>Rest</button>
+                           </div>
+                       </div>
+                        {step.type === 'exercise' && (
+                            <div>
+                                <label className="text-sm text-gray-400">Mode</label>
+                                <div className="flex rounded-md border border-gray-500 overflow-hidden mt-1">
+                                    <button onClick={() => updateStep(index, { isRepBased: false })} className={`flex-1 px-2 py-1 text-sm ${!step.isRepBased ? 'bg-blue-500' : 'bg-transparent'}`}>Time</button>
+                                    <button onClick={() => updateStep(index, { isRepBased: true })} className={`flex-1 px-2 py-1 text-sm ${step.isRepBased ? 'bg-blue-500' : 'bg-transparent'}`}>Reps</button>
+                                </div>
+                            </div>
+                        )}
+                   </div>
+                   
+                   <div>
+                        <label className="text-sm text-gray-400">{step.isRepBased ? 'Reps' : 'Duration (s)'}</label>
+                        {step.isRepBased ? (
+                            <HoverNumberInput min={1} value={step.reps} onChange={newValue => updateStep(index, { reps: newValue })} title="Number of repetitions" className="w-full mt-1 bg-gray-600 text-center p-2 rounded-md" />
+                        ) : (
+                            <div className="flex items-center gap-2 mt-1">
+                                <HoverNumberInput min={1} value={step.duration} onChange={newValue => updateStep(index, { duration: newValue })} title={step.type === 'exercise' ? 'Exercise duration in seconds' : 'Rest duration in seconds'} className="w-full bg-gray-600 text-center p-2 rounded-md" />
+                                <PinButton 
+                                    onClick={() => updateSettings(step.type === 'exercise' ? { defaultExerciseDuration: step.duration } : { defaultRestDuration: step.duration })}
+                                    isActive={step.type === 'exercise' ? settings.defaultExerciseDuration === step.duration : settings.defaultRestDuration === step.duration}
+                                    title="Set as default time for new steps"
+                                />
+                            </div>
+                        )}
+                   </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+const EditableSetGroup: React.FC<{
+  steps: WorkoutStep[];
+  startIndex: number;
+  updateStep: (index: number, newStep: Partial<WorkoutStep>) => void;
+  removeStep: (index: number) => void;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
+  color?: string;
+  settings: ReturnType<typeof useSettings>['settings'];
+  updateSettings: ReturnType<typeof useSettings>['updateSettings'];
+  expandedSteps: Record<string, boolean>;
+  onToggleStepExpand: (stepId: string) => void;
+}> = ({ steps, startIndex, updateStep, removeStep, isExpanded, onToggleExpand, color, settings, updateSettings, expandedSteps, onToggleStepExpand }) => {
+    
+    if (steps.length === 0) return null;
+
+    const baseName = getBaseExerciseName(steps[0].name);
+    const numSets = steps.filter(s => s.type === 'exercise').length;
+    
+    return (
+        <div className="bg-gray-900/40 rounded-lg" style={{ borderLeft: `3px solid ${color || 'transparent'}` }}>
+            <div className="p-3 flex items-center gap-2 cursor-pointer" onClick={onToggleExpand}>
+                <div className="flex-grow">
+                    <p className="font-semibold text-white truncate" title={`${baseName} (Set)`}>{baseName}</p>
+                    <p className="text-sm text-gray-400">{numSets} sets</p>
+                </div>
+                <button className="p-2 text-gray-400 hover:text-white">
+                    <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                    </svg>
+                </button>
+            </div>
+            {isExpanded && (
+                <div className="p-3 border-t border-gray-600/50 space-y-2">
+                    {steps.map((step, localIndex) => (
+                        <EditableStepItem
+                            key={step.id}
+                            step={step}
+                            index={startIndex + localIndex}
+                            updateStep={updateStep}
+                            removeStep={removeStep}
+                            isExpanded={!!expandedSteps[step.id]}
+                            onToggleExpand={() => onToggleStepExpand(step.id)}
+                            color="transparent" // No individual color border
+                            settings={settings}
+                            updateSettings={updateSettings}
+                        />
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
+// This function groups steps into individual steps or sets of steps.
+const groupSteps = (steps: WorkoutStep[]): (WorkoutStep | WorkoutStep[])[] => {
+    const grouped: (WorkoutStep | WorkoutStep[])[] = [];
+    let i = 0;
+    while (i < steps.length) {
+        const step = steps[i];
+        const match = step.name.match(/(.+?)\s*\((Set|סט)\s*(\d+)\/(\d+)\)/i);
+        
+        if (match && parseInt(match[3], 10) === 1) {
+            // This looks like the start of a set
+            const baseName = match[1].trim();
+            const totalSets = parseInt(match[4], 10);
+            
+            const potentialSet: WorkoutStep[] = [];
+            let currentSetNumber = 1;
+            let j = i;
+
+            while (j < steps.length && currentSetNumber <= totalSets) {
+                const exerciseStep = steps[j];
+                const exerciseMatch = exerciseStep.name.match(new RegExp(`^${baseName}\\s*\\((Set|סט)\\s*(\\d+)\\/(\\d+)\\)$`, 'i'));
+
+                if (exerciseStep.type === 'exercise' && exerciseMatch && parseInt(exerciseMatch[2], 10) === currentSetNumber && parseInt(exerciseMatch[3], 10) === totalSets) {
+                    potentialSet.push(exerciseStep);
+                    j++;
+
+                    if (j < steps.length && steps[j].type === 'rest' && currentSetNumber < totalSets) {
+                        potentialSet.push(steps[j]);
+                        j++;
+                    }
+                    currentSetNumber++;
+                } else {
+                    break; // Pattern broken
+                }
+            }
+
+            if (potentialSet.filter(s => s.type === 'exercise').length === totalSets) {
+                // The pattern is valid, we found a full set
+                grouped.push(potentialSet);
+                i = j; // Move the main index past the processed set
+                continue;
+            }
+        }
+
+        // If it's not a set or the pattern broke, add the step individually
+        grouped.push(step);
+        i++;
+    }
+    return grouped;
+};
+
 const PlanEditor: React.FC<{
   plan: WorkoutPlan | null;
   onBack: () => void;
@@ -559,6 +842,7 @@ const PlanEditor: React.FC<{
     const { settings, updateSettings } = useSettings();
 
     const [editedPlan, setEditedPlan] = useState<WorkoutPlan | null>(null);
+    const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
     const exerciseColorMap = useExerciseColorMap(editedPlan?.steps || []);
 
     useEffect(() => {
@@ -573,6 +857,7 @@ const PlanEditor: React.FC<{
                 color: '#808080',
             });
         }
+        setExpandedGroups({}); // Collapse all on load
     }, [plan]);
 
 
@@ -589,6 +874,10 @@ const PlanEditor: React.FC<{
 
         savePlan(planToSave);
         onBack();
+    };
+
+    const toggleGroupExpansion = (groupId: string) => {
+        setExpandedGroups(prev => ({...prev, [groupId]: !prev[groupId]}));
     };
     
     const updateStep = (index: number, newStep: Partial<WorkoutStep>) => {
@@ -641,6 +930,9 @@ const PlanEditor: React.FC<{
         const newSteps = [...editedPlan.steps];
         const lastStep = newSteps.length > 0 ? newSteps[newSteps.length - 1] : null;
         const firstNewStep = steps[0];
+        
+        const groupId = `group-${steps[0].id}`; // Use first step's ID as group ID
+        setExpandedGroups(prev => ({...prev, [groupId]: false })); // Add new set collapsed
 
         // If the last existing step was an exercise, and the first new step is also an exercise,
         // add a rest step in between.
@@ -661,16 +953,13 @@ const PlanEditor: React.FC<{
         setEditedPlan(p => p ? { ...p, steps: newSteps } : null);
     };
 
-    const PinButton: React.FC<{onClick: () => void; isActive: boolean; title: string}> = ({ onClick, isActive, title }) => (
-        <button onClick={onClick} title={title} className={`p-1 rounded-full ${isActive ? 'text-blue-400' : 'text-gray-500 hover:text-white'}`}>
-             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5.586l2.293-2.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 9.586V4a1 1 0 011-1z" clipRule="evenodd" /><path d="M10 18a8 8 0 100-16 8 8 0 000 16z" /></svg>
-        </button>
-    );
-
     if (!editedPlan) {
         return null;
     }
     
+    const groupedRenderItems = groupSteps(editedPlan.steps);
+    let stepIndexCounter = 0;
+
     return (
         <div>
             <div className="flex items-center mb-6">
@@ -702,63 +991,53 @@ const PlanEditor: React.FC<{
                     />
                 </div>
 
-
                 <div className="space-y-3 max-h-[45vh] overflow-y-auto pr-2">
-                   {editedPlan.steps.map((step, index) => {
-                       const color = step.type === 'exercise' ? exerciseColorMap.get(getBaseExerciseName(step.name)) : undefined;
-                       return (
-                           <div key={step.id} className="bg-gray-700/50 p-3 rounded-lg space-y-3" style={{ borderLeft: `3px solid ${color || 'transparent'}` }}>
-                               <div className="flex items-center gap-2">
-                                   <span className="text-gray-400 font-bold">#{index + 1}</span>
-                                   <input 
-                                       type="text"
-                                       value={step.name}
-                                       onChange={e => updateStep(index, { name: e.target.value })}
-                                       className="flex-grow bg-gray-600 p-2 rounded-md focus:outline-none focus:ring-1 ring-blue-500"
-                                       title="Name of this step (e.g., Push-ups)"
-                                   />
-                                   <button onClick={() => removeStep(index)} className="p-2 text-gray-400 hover:text-red-500" title="Remove step">
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                                   </button>
-                               </div>
-                               
-                               <div className="grid grid-cols-2 gap-3">
-                                   <div>
-                                       <label className="text-sm text-gray-400">Type</label>
-                                       <div className="flex rounded-md border border-gray-500 overflow-hidden mt-1">
-                                           <button onClick={() => updateStep(index, { type: 'exercise' })} className={`flex-1 px-2 py-1 text-sm ${step.type === 'exercise' ? 'bg-blue-500' : 'bg-transparent'}`}>Exercise</button>
-                                           <button onClick={() => updateStep(index, { type: 'rest' })} className={`flex-1 px-2 py-1 text-sm ${step.type === 'rest' ? 'bg-blue-500' : 'bg-transparent'}`}>Rest</button>
-                                       </div>
-                                   </div>
-                                    {step.type === 'exercise' && (
-                                        <div>
-                                            <label className="text-sm text-gray-400">Mode</label>
-                                            <div className="flex rounded-md border border-gray-500 overflow-hidden mt-1">
-                                                <button onClick={() => updateStep(index, { isRepBased: false })} className={`flex-1 px-2 py-1 text-sm ${!step.isRepBased ? 'bg-blue-500' : 'bg-transparent'}`}>Time</button>
-                                                <button onClick={() => updateStep(index, { isRepBased: true })} className={`flex-1 px-2 py-1 text-sm ${step.isRepBased ? 'bg-blue-500' : 'bg-transparent'}`}>Reps</button>
-                                            </div>
-                                        </div>
-                                    )}
-                               </div>
-                               
-                               <div>
-                                    <label className="text-sm text-gray-400">{step.isRepBased ? 'Reps' : 'Duration (s)'}</label>
-                                    {step.isRepBased ? (
-                                        <HoverNumberInput min={1} value={step.reps} onChange={newValue => updateStep(index, { reps: newValue })} title="Number of repetitions" className="w-full mt-1 bg-gray-600 text-center p-2 rounded-md" />
-                                    ) : (
-                                        <div className="flex items-center gap-2 mt-1">
-                                            <HoverNumberInput min={1} value={step.duration} onChange={newValue => updateStep(index, { duration: newValue })} title={step.type === 'exercise' ? 'Exercise duration in seconds' : 'Rest duration in seconds'} className="w-full bg-gray-600 text-center p-2 rounded-md" />
-                                            <PinButton 
-                                                onClick={() => updateSettings(step.type === 'exercise' ? { defaultExerciseDuration: step.duration } : { defaultRestDuration: step.duration })}
-                                                isActive={step.type === 'exercise' ? settings.defaultExerciseDuration === step.duration : settings.defaultRestDuration === step.duration}
-                                                title="Set as default time for new steps"
-                                            />
-                                        </div>
-                                    )}
-                               </div>
+                   {groupedRenderItems.map((item, index) => {
+                       if (Array.isArray(item)) {
+                           // It's a set group
+                           const startIndex = stepIndexCounter;
+                           stepIndexCounter += item.length;
+                           const groupId = `group-${item[0].id}`;
+                           const color = exerciseColorMap.get(getBaseExerciseName(item[0].name));
 
-                           </div>
-                       )
+                           return (
+                               <EditableSetGroup
+                                   key={groupId}
+                                   steps={item}
+                                   startIndex={startIndex}
+                                   updateStep={updateStep}
+                                   removeStep={removeStep}
+                                   isExpanded={!!expandedGroups[groupId]}
+                                   onToggleExpand={() => toggleGroupExpansion(groupId)}
+                                   color={color}
+                                   settings={settings}
+                                   updateSettings={updateSettings}
+                                   expandedSteps={expandedGroups}
+                                   onToggleStepExpand={toggleGroupExpansion}
+                               />
+                           );
+                       } else {
+                           // It's a single step
+                           const step = item;
+                           const stepIndex = stepIndexCounter;
+                           stepIndexCounter++;
+                           const color = step.type === 'exercise' ? exerciseColorMap.get(getBaseExerciseName(step.name)) : undefined;
+                           
+                           return (
+                               <EditableStepItem
+                                   key={step.id}
+                                   step={step}
+                                   index={stepIndex}
+                                   updateStep={updateStep}
+                                   removeStep={removeStep}
+                                   isExpanded={!!expandedGroups[step.id]}
+                                   onToggleExpand={() => toggleGroupExpansion(step.id)}
+                                   color={color}
+                                   settings={settings}
+                                   updateSettings={updateSettings}
+                               />
+                           );
+                       }
                    })}
                 </div>
                 

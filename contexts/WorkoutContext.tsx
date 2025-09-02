@@ -16,7 +16,7 @@ interface WorkoutContextType {
   isWorkoutPaused: boolean;
   isCountdownPaused: boolean;
   savePlan: (plan: WorkoutPlan) => void;
-  importPlan: (plan: WorkoutPlan) => void;
+  importPlan: (plan: WorkoutPlan, source?: string) => void;
   deletePlan: (planId: string) => void;
   reorderPlans: (reorderedPlans: WorkoutPlan[]) => void;
   startWorkout: (planIds: string[]) => void;
@@ -138,11 +138,11 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     });
   }, []);
   
-  const importPlan = useCallback((planToImport: WorkoutPlan) => {
+  const importPlan = useCallback((planToImport: WorkoutPlan, source: string = 'file') => {
     // Sanitize and prepare the imported plan to prevent conflicts
     const newPlan: WorkoutPlan = {
       ...planToImport,
-      id: `${Date.now()}_imported`,
+      id: `${Date.now()}_imported_from_${source}`,
       name: `${planToImport.name} (Imported)`,
       steps: planToImport.steps.map((step, index) => ({
         ...step,
@@ -150,8 +150,45 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
       }))
     };
     
-    setPlans(prevPlans => [...prevPlans, newPlan]);
+    setPlans(prevPlans => {
+      // Avoid adding duplicates if imported multiple times quickly
+      if (prevPlans.some(p => p.name === newPlan.name)) {
+        return prevPlans;
+      }
+      return [...prevPlans, newPlan];
+    });
   }, []);
+
+  // Effect to handle importing a plan from a URL hash on initial load
+  useEffect(() => {
+    const handleImportFromUrl = () => {
+        const hash = window.location.hash;
+        if (hash.startsWith('#import=')) {
+            try {
+                const base64Data = hash.substring(8); // remove '#import='
+                const jsonString = decodeURIComponent(atob(base64Data));
+                const plan = JSON.parse(jsonString);
+                
+                // Basic validation
+                if (plan && typeof plan.name === 'string' && Array.isArray(plan.steps)) {
+                    importPlan(plan, 'url');
+                    alert(`Workout plan "${plan.name}" imported successfully!`);
+                } else {
+                    throw new Error("Invalid plan structure in URL.");
+                }
+            } catch (e) {
+                console.error("Failed to import from URL", e);
+                alert("Could not import workout plan from the link. The link may be invalid or corrupted.");
+            } finally {
+                // Clean the URL to prevent re-importing on refresh
+                window.history.replaceState(null, '', window.location.pathname + window.location.search);
+            }
+        }
+    };
+    
+    handleImportFromUrl();
+  }, [importPlan]);
+
 
   const deletePlan = useCallback((planId: string) => {
     setPlans(prevPlans => prevPlans.filter(p => p.id !== planId));

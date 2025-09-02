@@ -226,7 +226,7 @@ const AppContent: React.FC = () => {
 
     if (workoutCompleted) {
         document.title = `${mutePrefix}סוף האימון!`;
-    } else if (settings.showCountdown && (countdown.isRunning || isWorkoutActive) && !isWorkoutPaused) {
+    } else if (settings.showCountdown && (countdown.isRunning || countdown.isResting || isWorkoutActive) && !isWorkoutPaused) {
         const timeLeftFormatted = Math.ceil(countdown.timeLeft);
         if (isWorkoutActive && currentStep) {
             document.title = `${mutePrefix}${timeLeftFormatted}s - ${currentStep.name}`;
@@ -238,7 +238,8 @@ const AppContent: React.FC = () => {
     } else {
         document.title = `${mutePrefix}⏱️`;
     }
-  }, [countdown.isRunning, countdown.timeLeft, settings.showCountdown, isWorkoutActive, currentStep, isWorkoutPaused, settings.isMuted, workoutCompleted]);
+  }, [countdown.isRunning, countdown.isResting, countdown.timeLeft, settings.showCountdown, isWorkoutActive, currentStep, isWorkoutPaused, settings.isMuted, workoutCompleted]);
+
 
   // Start main clock on initial load
   useEffect(() => {
@@ -297,8 +298,8 @@ const AppContent: React.FC = () => {
   }
 
   const dynamicStyles = {
-    '--countdown-font-size': `${10 + (settings.countdownSize / 100) * 10}rem`,
-    '--stopwatch-font-size': `${2 + (settings.stopwatchSize / 100) * 1.5}rem`,
+    '--countdown-font-size': `clamp(5rem, 30vw, ${10 + (settings.countdownSize / 100) * 10}rem)`,
+    '--stopwatch-font-size': `clamp(1.5rem, 8vw, ${2 + (settings.stopwatchSize / 100) * 1.5}rem)`,
     '--countdown-controls-scale': settings.countdownControlsSize / 100,
     '--stopwatch-controls-scale': settings.stopwatchControlsSize / 100,
   } as React.CSSProperties;
