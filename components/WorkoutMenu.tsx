@@ -415,10 +415,10 @@ const PlanList: React.FC<{
 const SetBuilder: React.FC<{ onAddSets: (steps: WorkoutStep[]) => void }> = ({ onAddSets }) => {
     const [name, setName] = useState('Exercise');
     const [isRepBased, setIsRepBased] = useState(false);
-    const [duration, setDuration] = useState(30);
+    const [duration, setDuration] = useState(40);
     const [reps, setReps] = useState(10);
     const [sets, setSets] = useState(3);
-    const [rest, setRest] = useState(15);
+    const [rest, setRest] = useState(20);
     
     const handleAdd = () => {
         const newSteps: WorkoutStep[] = [];
@@ -520,16 +520,35 @@ const PlanEditor: React.FC<{
     };
     
     const addStep = (type: 'exercise' | 'rest') => {
-        if (!editedPlan) return;
-        const newStep: WorkoutStep = {
-            id: Date.now().toString(),
-            type: type,
-            name: type === 'exercise' ? 'Exercise' : 'Rest',
-            isRepBased: false,
-            duration: type === 'exercise' ? settings.defaultExerciseDuration : settings.defaultRestDuration,
-            reps: 10,
-        };
-        setEditedPlan(p => p ? { ...p, steps: [...p.steps, newStep] } : null);
+      if (!editedPlan) return;
+
+      const stepsToAdd: WorkoutStep[] = [];
+      const lastStep = editedPlan.steps.length > 0 ? editedPlan.steps[editedPlan.steps.length - 1] : null;
+
+      // If adding an exercise and the last step was also an exercise, add a rest step first.
+      if (type === 'exercise' && lastStep && lastStep.type === 'exercise') {
+          const restStep: WorkoutStep = {
+              id: `${Date.now()}-rest`,
+              type: 'rest',
+              name: 'Rest',
+              isRepBased: false,
+              duration: settings.defaultRestDuration,
+              reps: 0,
+          };
+          stepsToAdd.push(restStep);
+      }
+
+      const newStep: WorkoutStep = {
+          id: `${Date.now()}-${type}`,
+          type: type,
+          name: type === 'exercise' ? 'Exercise' : 'Rest',
+          isRepBased: false,
+          duration: type === 'exercise' ? settings.defaultExerciseDuration : settings.defaultRestDuration,
+          reps: 10,
+      };
+      stepsToAdd.push(newStep);
+
+      setEditedPlan(p => p ? { ...p, steps: [...p.steps, ...stepsToAdd] } : null);
     };
 
     const removeStep = (index: number) => {
@@ -538,8 +557,29 @@ const PlanEditor: React.FC<{
     };
 
     const addStepsFromBuilder = (steps: WorkoutStep[]) => {
-        if (!editedPlan) return;
-        setEditedPlan(p => p ? { ...p, steps: [...p.steps, ...steps] } : null);
+        if (!editedPlan || steps.length === 0) return;
+
+        const newSteps = [...editedPlan.steps];
+        const lastStep = newSteps.length > 0 ? newSteps[newSteps.length - 1] : null;
+        const firstNewStep = steps[0];
+
+        // If the last existing step was an exercise, and the first new step is also an exercise,
+        // add a rest step in between.
+        if (lastStep && lastStep.type === 'exercise' && firstNewStep.type === 'exercise') {
+            const restStep: WorkoutStep = {
+                id: `${Date.now()}-rest-builder`,
+                type: 'rest',
+                name: 'Rest',
+                isRepBased: false,
+                duration: settings.defaultRestDuration,
+                reps: 0,
+            };
+            newSteps.push(restStep);
+        }
+
+        newSteps.push(...steps);
+
+        setEditedPlan(p => p ? { ...p, steps: newSteps } : null);
     };
 
     const PinButton: React.FC<{onClick: () => void; isActive: boolean; title: string}> = ({ onClick, isActive, title }) => (

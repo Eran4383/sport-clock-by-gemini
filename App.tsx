@@ -50,15 +50,10 @@ const AppContent: React.FC = () => {
 
   const isPastHalfway = settings.showCountdown && countdown.isRunning && countdown.timeLeft <= countdownDuration / 2 && countdown.timeLeft > 0;
 
-  const themeClasses = useMemo(() => {
-    if (workoutCompleted) {
-        return 'bg-green-300 text-black';
-    }
-    if (isPastHalfway) {
-        return 'bg-red-600 text-white';
-    }
-    return 'bg-black text-white';
-  }, [isPastHalfway, workoutCompleted]);
+  useEffect(() => {
+    // This just sets the "out of bounds" color for overscroll etc.
+    document.body.style.backgroundColor = settings.backgroundColor;
+  }, [settings.backgroundColor]);
 
   const toggleFullScreen = useCallback(() => {
     if (!document.fullscreenElement) {
@@ -177,12 +172,12 @@ const AppContent: React.FC = () => {
         if (isWorkoutActive && currentStep) {
             document.title = `${mutePrefix}${timeLeftFormatted}s - ${currentStep.name}`;
         } else {
-            document.title = `${mutePrefix}${timeLeftFormatted}s - ${originalTitle}`;
+            document.title = `${mutePrefix}${timeLeftFormatted}s`;
         }
     } else if (isWorkoutPaused) {
-        document.title = `${mutePrefix}Paused | ${originalTitle}`;
+        document.title = `${mutePrefix}Paused`;
     } else {
-        document.title = `${mutePrefix}${originalTitle}`;
+        document.title = `${mutePrefix}⏱️`;
     }
     return () => { document.title = originalTitle; };
   }, [countdown.isRunning, countdown.timeLeft, settings.showCountdown, isWorkoutActive, currentStep, isWorkoutPaused, settings.isMuted, workoutCompleted]);
@@ -250,6 +245,41 @@ const AppContent: React.FC = () => {
     '--stopwatch-controls-scale': settings.stopwatchControlsSize / 100,
   } as React.CSSProperties;
 
+  // Logic for background and text color
+  let bgColor = settings.backgroundColor;
+  let textColor = 'white'; // Default
+
+  // Heuristic to decide text color based on the selected background
+  const hexToRgb = (hex: string) => {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+      r: parseInt(result[1], 16),
+      g: parseInt(result[2], 16),
+      b: parseInt(result[3], 16)
+    } : null;
+  }
+  
+  const rgb = hexToRgb(settings.backgroundColor);
+  if (rgb) {
+      // Formula for perceived brightness
+      const brightness = Math.round(((rgb.r * 299) + (rgb.g * 587) + (rgb.b * 114)) / 1000);
+      if (brightness > 125) {
+          textColor = 'black';
+      }
+  }
+
+  if (workoutCompleted) {
+    bgColor = '#6ee7b7'; // A light green color
+    textColor = 'black';
+  } else if (isPastHalfway) {
+    bgColor = settings.halfwayColor;
+    textColor = 'white'; // Assume halfway color is intense and needs white text
+  }
+  
+  dynamicStyles.backgroundColor = bgColor;
+  dynamicStyles.color = textColor;
+
+
   const startStopwatchAndReset = () => {
     if (workoutCompleted) setWorkoutCompleted(false);
     stopwatch.start();
@@ -268,17 +298,19 @@ const AppContent: React.FC = () => {
 
 
   return (
-    <div onDoubleClick={(e) => { if (e.target === e.currentTarget) toggleFullScreen(); }} className={`min-h-screen flex flex-col p-4 select-none theme-transition ${settings.stealthModeEnabled ? 'bg-black text-white' : themeClasses}`} style={dynamicStyles}>
+    <div onDoubleClick={(e) => { if (e.target === e.currentTarget) toggleFullScreen(); }} className={`min-h-screen flex flex-col p-4 select-none theme-transition`} style={dynamicStyles}>
       <SettingsMenu />
       <WorkoutMenu />
       <main onDoubleClick={toggleFullScreen} className="flex-grow flex flex-col items-center justify-center w-full max-w-4xl mx-auto">
         {/* TOP TITLE CONTAINER - reserves space to prevent layout shift */}
         <div className="text-center mb-2 h-28 flex items-end justify-center">
-          {(workoutCompleted || (isWorkoutActive && currentStep.type === 'rest')) && (
+          {(workoutCompleted || (isWorkoutActive && currentStep.type === 'rest') || (!isWorkoutActive && countdown.isResting && settings.showRestTitleOnDefaultCountdown)) && (
             <p className="text-8xl font-bold">
               {workoutCompleted
                 ? 'סוף האימון'
-                : isWorkoutPaused ? 'PAUSED' : (isCountdownPaused ? 'מנוחה (Paused)' : 'מנוחה')}
+                : (isWorkoutActive && isWorkoutPaused) ? 'PAUSED' 
+                : (isWorkoutActive && isCountdownPaused) ? 'מנוחה (Paused)' 
+                : 'מנוחה'}
             </p>
           )}
         </div>

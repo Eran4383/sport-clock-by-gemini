@@ -22,6 +22,9 @@ export interface Settings {
   defaultExerciseDuration: number;
   defaultRestDuration: number;
   showNextExercise: boolean;
+  backgroundColor: string;
+  halfwayColor: string;
+  showRestTitleOnDefaultCountdown: boolean;
 }
 
 const defaultSettings: Settings = {
@@ -46,6 +49,9 @@ const defaultSettings: Settings = {
   defaultExerciseDuration: 40,
   defaultRestDuration: 20,
   showNextExercise: true,
+  backgroundColor: '#000000',
+  halfwayColor: '#FF0000',
+  showRestTitleOnDefaultCountdown: true,
 };
 
 const getInitialSettings = (): Settings => {

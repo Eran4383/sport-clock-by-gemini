@@ -234,6 +234,7 @@ export const SettingsMenu: React.FC = () => {
                 <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
                   <Toggle id="showCountdownToggle" label="Show Countdown" checked={settings.showCountdown} onChange={(e) => updateSettings({ showCountdown: e.target.checked })} />
                   <Toggle id="showCountdownControlsToggle" label="Show Controls" checked={settings.showCountdownControls} onChange={(e) => updateSettings({ showCountdownControls: e.target.checked })} />
+                  <Toggle id="showRestTitleToggle" label="Show 'Rest' Title" checked={settings.showRestTitleOnDefaultCountdown} onChange={(e) => updateSettings({ showRestTitleOnDefaultCountdown: e.target.checked })} />
 
                   <div className="flex items-center justify-between">
                      <label htmlFor="countdownDuration" className="text-white">Duration (s)</label>
@@ -329,6 +330,34 @@ export const SettingsMenu: React.FC = () => {
                     <RangeSlider id="stopwatchSize" label="Stopwatch" value={settings.stopwatchSize} onChange={e => updateSettings({ stopwatchSize: parseInt(e.target.value, 10) })} />
                     <RangeSlider id="countdownControlsSize" label="Countdown Controls" value={settings.countdownControlsSize} onChange={e => updateSettings({ countdownControlsSize: parseInt(e.target.value, 10) })} />
                     <RangeSlider id="stopwatchControlsSize" label="Stopwatch Controls" value={settings.stopwatchControlsSize} onChange={e => updateSettings({ stopwatchControlsSize: parseInt(e.target.value, 10) })} />
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-lg font-semibold text-gray-300 mb-3">Display Colors</h3>
+                <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
+                  <div className="flex items-center justify-between">
+                    <label htmlFor="backgroundColor" className="text-white">Background</label>
+                    <input
+                      type="color"
+                      id="backgroundColor"
+                      value={settings.backgroundColor}
+                      onChange={(e) => updateSettings({ backgroundColor: e.target.value })}
+                      className="w-10 h-10 p-0 bg-transparent border-none rounded-md cursor-pointer"
+                      title="Set the main background color"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <label htmlFor="halfwayColor" className="text-white">Halfway Background</label>
+                    <input
+                      type="color"
+                      id="halfwayColor"
+                      value={settings.halfwayColor}
+                      onChange={(e) => updateSettings({ halfwayColor: e.target.value })}
+                      className="w-10 h-10 p-0 bg-transparent border-none rounded-md cursor-pointer"
+                      title="Set background color for second half of countdown"
+                    />
+                  </div>
                 </div>
               </div>
 
