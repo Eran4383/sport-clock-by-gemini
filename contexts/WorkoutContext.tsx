@@ -15,6 +15,7 @@ interface WorkoutContextType {
   nextUpcomingStep: WorkoutStep | null;
   isWorkoutPaused: boolean;
   isCountdownPaused: boolean;
+  recentlyImportedPlanId: string | null;
   savePlan: (plan: WorkoutPlan) => void;
   importPlan: (plan: WorkoutPlan, source?: string) => void;
   deletePlan: (planId: string) => void;
@@ -116,6 +117,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [activeWorkout, setActiveWorkout] = useState<ActiveWorkout | null>(null);
   const [isWorkoutPaused, setIsWorkoutPaused] = useState(false);
   const [isCountdownPaused, setIsCountdownPaused] = useState(false);
+  const [recentlyImportedPlanId, setRecentlyImportedPlanId] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -140,10 +142,11 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
   
   const importPlan = useCallback((planToImport: WorkoutPlan, source: string = 'file') => {
     // Sanitize and prepare the imported plan to prevent conflicts
+    const newPlanId = `${Date.now()}_imported_from_${source}`;
     const newPlan: WorkoutPlan = {
       ...planToImport,
-      id: `${Date.now()}_imported_from_${source}`,
-      name: `${planToImport.name} (Imported)`,
+      id: newPlanId,
+      name: planToImport.name, // Keep original name, remove "(Imported)" suffix
       steps: planToImport.steps.map((step, index) => ({
         ...step,
         id: `${Date.now()}_imported_step_${index}`
@@ -157,6 +160,10 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
       }
       return [...prevPlans, newPlan];
     });
+
+    // Set the ID for highlighting and clear it after the animation
+    setRecentlyImportedPlanId(newPlanId);
+    setTimeout(() => setRecentlyImportedPlanId(null), 2500);
   }, []);
 
   // Effect to handle importing a plan from a URL hash on initial load
@@ -166,7 +173,16 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         if (hash.startsWith('#import=')) {
             try {
                 const base64Data = hash.substring(8); // remove '#import='
-                const jsonString = decodeURIComponent(atob(base64Data));
+                
+                // Decode Base64 and then use TextDecoder for proper UTF-8 handling
+                const binaryString = atob(base64Data);
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                }
+                const decoder = new TextDecoder('utf-8');
+                const jsonString = decoder.decode(bytes);
+
                 const plan = JSON.parse(jsonString);
                 
                 // Basic validation
@@ -306,6 +322,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     nextUpcomingStep,
     isWorkoutPaused,
     isCountdownPaused,
+    recentlyImportedPlanId,
     savePlan,
     importPlan,
     deletePlan,

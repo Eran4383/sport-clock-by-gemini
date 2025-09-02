@@ -105,8 +105,9 @@ const PlanListItem: React.FC<{
   onDragEnd: () => void;
   onDragLeave: () => void;
   isDragTarget: boolean;
+  isNewlyImported: boolean;
   index: number;
-}> = ({ plan, onSelectPlan, onInitiateDelete, isSelected, onToggleSelection, isDraggable, onDragStart, onDragOver, onDrop, onDragEnd, onDragLeave, isDragTarget, index }) => {
+}> = ({ plan, onSelectPlan, onInitiateDelete, isSelected, onToggleSelection, isDraggable, onDragStart, onDragOver, onDrop, onDragEnd, onDragLeave, isDragTarget, isNewlyImported, index }) => {
   const { 
       activeWorkout,
       currentStep,
@@ -188,15 +189,17 @@ const PlanListItem: React.FC<{
     e.stopPropagation();
     try {
         const planJson = JSON.stringify(plan);
-        const base64Data = btoa(unescape(encodeURIComponent(planJson)));
+        // Use TextEncoder to correctly handle UTF-8 characters for btoa
+        const encoder = new TextEncoder();
+        const data = encoder.encode(planJson);
+        const binaryString = Array.from(data, byte => String.fromCharCode(byte)).join('');
+        const base64Data = btoa(binaryString);
         
-        // Create a clean base URL, removing existing hash and search params
         const url = new URL(window.location.href);
-        url.hash = '';
+        url.hash = `import=${base64Data}`;
         url.search = '';
-        const cleanBaseUrl = url.toString().endsWith('/') ? url.toString().slice(0, -1) : url.toString();
         
-        const shareableLink = `${cleanBaseUrl}#import=${base64Data}`;
+        const shareableLink = url.toString();
         
         navigator.clipboard.writeText(shareableLink).then(() => {
             setShowCopyConfirmation(true);
@@ -228,10 +231,11 @@ const PlanListItem: React.FC<{
   }
 
   const dragStyles = isDragTarget ? 'border-2 border-dashed border-blue-400' : 'border-2 border-transparent';
+  const animationClass = isNewlyImported ? 'animate-flash' : '';
 
   return (
     <div 
-        className={`bg-gray-700/50 rounded-lg transition-all duration-300 ${isDraggable ? 'cursor-grab' : ''} ${dragStyles}`}
+        className={`bg-gray-700/50 rounded-lg transition-all duration-300 ${isDraggable ? 'cursor-grab' : ''} ${dragStyles} ${animationClass}`}
         style={{ borderLeft: `5px solid ${plan.color || 'transparent'}` }}
         draggable={isDraggable}
         onDragStart={(e) => onDragStart(e, index)}
@@ -396,7 +400,7 @@ const PlanList: React.FC<{
   isPinned: boolean;
   onTogglePin: () => void;
 }> = ({ onSelectPlan, onCreateNew, onInitiateDelete, isPinned, onTogglePin }) => {
-  const { plans, reorderPlans, startWorkout, importPlan, activeWorkout } = useWorkout();
+  const { plans, reorderPlans, startWorkout, importPlan, activeWorkout, recentlyImportedPlanId } = useWorkout();
   const [selectedPlanIds, setSelectedPlanIds] = useState<string[]>([]);
   const dragItemIndex = useRef<number | null>(null);
   const [dragTargetIndex, setDragTargetIndex] = useState<number | null>(null);
@@ -571,6 +575,7 @@ const PlanList: React.FC<{
                 onDragEnd={onDragEnd}
                 onDragLeave={onDragLeave}
                 isDragTarget={dragTargetIndex === index}
+                isNewlyImported={plan.id === recentlyImportedPlanId}
             />
           ))
         )}

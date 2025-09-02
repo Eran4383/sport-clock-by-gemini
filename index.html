@@ -27,6 +27,19 @@
       .menu-container {
         z-index: 60;
       }
+      @keyframes flash {
+        0%, 100% {
+          background-color: rgba(55, 65, 81, 0.5); /* bg-gray-700/50 */
+          box-shadow: 0 0 0 0 rgba(99, 102, 241, 0);
+        }
+        50% {
+          background-color: rgba(79, 70, 229, 0.4);
+          box-shadow: 0 0 10px 3px rgba(99, 102, 241, 0.5);
+        }
+      }
+      .animate-flash {
+        animation: flash 2s ease-in-out;
+      }
     </style>
   <script type="importmap">
 {
