@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useMemo } from 'react';
 import { WorkoutPlan, WorkoutStep } from '../types';
 
 interface ActiveWorkout {
@@ -238,6 +238,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
       executionMode: executionMode,
     };
     
+    // FIX: The ActiveWorkout object requires the `sourcePlanIds` property. It was missing, causing a type error.
     setActiveWorkout({ plan: metaPlan, currentStepIndex: 0, sourcePlanIds: planIds, stepRestartKey: 0 });
     setIsWorkoutPaused(false);
     setIsCountdownPaused(false);
@@ -313,7 +314,18 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
   }, []);
 
   const currentStep = activeWorkout ? activeWorkout.plan.steps[activeWorkout.currentStepIndex] : null;
-  const nextUpcomingStep = activeWorkout ? activeWorkout.plan.steps[activeWorkout.currentStepIndex + 1] || null : null;
+
+  const nextUpcomingStep = useMemo(() => {
+    if (!activeWorkout) return null;
+    const { plan, currentStepIndex } = activeWorkout;
+    for (let i = currentStepIndex + 1; i < plan.steps.length; i++) {
+        if (plan.steps[i].type === 'exercise') {
+            return plan.steps[i];
+        }
+    }
+    return null;
+  }, [activeWorkout]);
+
 
   const value = {
     plans,
