@@ -33,6 +33,8 @@ const AppContent: React.FC = () => {
   const stopwatch = useStopwatch();
   const wasWorkoutActive = useRef(false);
   const [workoutCompleted, setWorkoutCompleted] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isWorkoutOpen, setIsWorkoutOpen] = useState(false);
 
 
   const isWorkoutActive = !!(activeWorkout && currentStep);
@@ -71,6 +73,61 @@ const AppContent: React.FC = () => {
     setWorkoutCompleted(false); // Aborting is not completing
     contextStopWorkout();
   };
+  
+    // Refs for swipe gesture detection on the main app body
+    const touchStartX = useRef<number>(0);
+    const touchStartY = useRef<number>(0);
+    const touchEndX = useRef<number>(0);
+    const touchEndY = useRef<number>(0);
+  
+    const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+      const target = e.target as HTMLElement;
+      // Prevent gesture if interacting with controls to avoid conflicts
+      if (target.closest('button, input, a, [role="button"]')) {
+        return;
+      }
+      touchStartX.current = e.targetTouches[0].clientX;
+      touchStartY.current = e.targetTouches[0].clientY;
+      touchEndX.current = 0; // Reset end position
+      touchEndY.current = 0;
+    };
+  
+    const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+      touchEndX.current = e.targetTouches[0].clientX;
+      touchEndY.current = e.targetTouches[0].clientY;
+    };
+  
+    const handleTouchEnd = () => {
+      if (!touchStartX.current || !touchEndX.current) return;
+      
+      const diffX = touchEndX.current - touchStartX.current;
+      const diffY = touchEndY.current - touchStartY.current;
+  
+      const swipeThreshold = 50; // min distance
+      const edgeThreshold = 50; // activation area from edge
+  
+      // Only process horizontal swipes that are longer than vertical swipes
+      if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > swipeThreshold) {
+        // If a menu is already open, don't try to open another one.
+        if (isSettingsOpen || isWorkoutOpen) return;
+        
+        // Swipe right from left edge to open Workout Menu
+        if (diffX > 0 && touchStartX.current < edgeThreshold) {
+          setIsWorkoutOpen(true);
+        }
+        
+        // Swipe left from right edge to open Settings Menu
+        if (diffX < 0 && touchStartX.current > window.innerWidth - edgeThreshold) {
+          setIsSettingsOpen(true);
+        }
+      }
+      
+      // Reset coords
+      touchStartX.current = 0;
+      touchStartY.current = 0;
+      touchEndX.current = 0;
+      touchEndY.current = 0;
+    };
 
   // Keyboard and interaction shortcuts
   useEffect(() => {
@@ -147,6 +204,9 @@ const AppContent: React.FC = () => {
                 if(window.confirm('Are you sure you want to stop the current workout?')) {
                     stopWorkoutAborted();
                 }
+            } else {
+                setIsSettingsOpen(false);
+                setIsWorkoutOpen(false);
             }
             break;
         case 'f':
@@ -296,9 +356,16 @@ const AppContent: React.FC = () => {
 
 
   return (
-    <div onDoubleClick={(e) => { if (e.target === e.currentTarget) toggleFullScreen(); }} className={`min-h-screen flex flex-col p-4 select-none theme-transition`} style={dynamicStyles}>
-      <SettingsMenu />
-      <WorkoutMenu />
+    <div 
+        onDoubleClick={(e) => { if (e.target === e.currentTarget) toggleFullScreen(); }} 
+        className={`min-h-screen flex flex-col p-4 select-none theme-transition`} 
+        style={dynamicStyles}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+    >
+      <SettingsMenu isOpen={isSettingsOpen} setIsOpen={setIsSettingsOpen} />
+      <WorkoutMenu isOpen={isWorkoutOpen} setIsOpen={setIsWorkoutOpen} />
       <main onDoubleClick={toggleFullScreen} className="flex-grow flex flex-col items-center justify-center w-full max-w-4xl mx-auto">
         {/* TOP TITLE CONTAINER - reserves space to prevent layout shift */}
         <div className="text-center mb-2 h-28 flex items-end justify-center">

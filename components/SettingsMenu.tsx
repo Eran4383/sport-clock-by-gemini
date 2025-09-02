@@ -52,8 +52,7 @@ const RangeSlider: React.FC<{
     </div>
 );
 
-export const SettingsMenu: React.FC = () => {
-  const [isOpen, setIsOpen] = useState(false);
+export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean) => void; }> = ({ isOpen, setIsOpen }) => {
   const { settings, updateSettings } = useSettings();
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const durationInputRef = useRef<HTMLInputElement>(null);
@@ -172,6 +171,33 @@ export const SettingsMenu: React.FC = () => {
       }, 10000); // 10 seconds
     }
   };
+  
+    // Touch handlers for swipe-to-close gesture
+  const touchStartX = useRef<number | null>(null);
+  const touchEndX = useRef<number | null>(null);
+  const minSwipeDistance = 50;
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchEndX.current = null; // reset end coordinate
+    touchStartX.current = e.touches[0].clientX;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    touchEndX.current = e.touches[0].clientX;
+  };
+
+  const handleTouchEnd = () => {
+    if (!touchStartX.current || !touchEndX.current) return;
+    const distance = touchEndX.current - touchStartX.current;
+    // Swipe right to close
+    if (distance > minSwipeDistance) {
+        handleClose();
+    }
+    // Reset
+    touchStartX.current = null;
+    touchEndX.current = null;
+  };
+
 
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newVolume = parseFloat(e.target.value);
@@ -218,6 +244,9 @@ export const SettingsMenu: React.FC = () => {
         className={`fixed top-0 right-0 h-full w-full max-w-sm bg-gray-800/80 backdrop-blur-md shadow-2xl z-50 transform transition-all ease-in-out ${isOpen ? 'duration-500' : 'duration-[1500ms]'} ${isOpen ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0 pointer-events-none'}`}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
         >
           <div className="p-6 overflow-y-auto h-full">
             <div className="flex justify-between items-center mb-8">

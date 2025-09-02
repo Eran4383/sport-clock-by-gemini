@@ -813,8 +813,7 @@ const ConfirmDeleteModal: React.FC<{
 );
 
 
-export const WorkoutMenu: React.FC = () => {
-  const [isOpen, setIsOpen] = useState(false);
+export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean) => void; }> = ({ isOpen, setIsOpen }) => {
   const [isPinned, setIsPinned] = useState(false);
   const [editingPlan, setEditingPlan] = useState<WorkoutPlan | null>(null);
   const [view, setView] = useState<'list' | 'editor'>('list');
@@ -824,6 +823,29 @@ export const WorkoutMenu: React.FC = () => {
   const planToDelete = useMemo(() => {
     return plans.find(p => p.id === confirmDeletePlanId) || null;
   }, [confirmDeletePlanId, plans]);
+
+  // Touch handlers for swipe-to-close gesture
+  const touchStartX = useRef<number | null>(null);
+  const touchEndX = useRef<number | null>(null);
+  const minSwipeDistance = 50;
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+      touchEndX.current = null;
+      touchStartX.current = e.touches[0].clientX;
+  };
+  const handleTouchMove = (e: React.TouchEvent) => {
+      touchEndX.current = e.touches[0].clientX;
+  };
+  const handleTouchEnd = () => {
+      if (!touchStartX.current || !touchEndX.current) return;
+      const distance = touchEndX.current - touchStartX.current;
+      // Swipe left to close, respecting the pin
+      if (distance < -minSwipeDistance && !isPinned) {
+          setIsOpen(false);
+      }
+      touchStartX.current = null;
+      touchEndX.current = null;
+  };
 
   useEffect(() => {
     if (!isOpen) {
@@ -893,6 +915,9 @@ export const WorkoutMenu: React.FC = () => {
 
       <div 
         className={`fixed top-0 left-0 h-full w-full max-w-sm bg-gray-800/80 backdrop-blur-md shadow-2xl z-50 transform transition-all ease-in-out ${isOpen ? 'duration-500' : 'duration-[1500ms]'} ${isOpen ? 'translate-x-0 opacity-100' : '-translate-x-full opacity-0 pointer-events-none'}`}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
         >
           <div className="p-6 overflow-y-auto h-full">
             {view === 'list' ? (
