@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useMemo } from 'react';
 import { WorkoutPlan, WorkoutStep, WorkoutLogEntry } from '../types';
+import { prefetchExercises } from '../services/geminiService';
 
 interface ActiveWorkout {
   plan: WorkoutPlan; // This can be a "meta-plan" if multiple plans are selected
@@ -154,6 +155,16 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   }, [workoutHistory]);
 
+  // Prefetch exercise info on initial load
+  useEffect(() => {
+    if (plans && plans.length > 0) {
+        const allExerciseNames = plans.flatMap(plan => plan.steps)
+                                      .filter(step => step.type === 'exercise')
+                                      .map(step => getBaseExerciseName(step.name));
+        prefetchExercises(allExerciseNames);
+    }
+  }, [plans]);
+
 
   const savePlan = useCallback((planToSave: WorkoutPlan) => {
     setPlans(prevPlans => {
@@ -166,6 +177,11 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         return [...prevPlans, planToSave];
       }
     });
+    // Prefetch data for the saved plan
+    const exerciseNames = planToSave.steps
+        .filter(s => s.type === 'exercise')
+        .map(s => getBaseExerciseName(s.name));
+    prefetchExercises(exerciseNames);
   }, []);
   
   const importPlan = useCallback((planToImport: WorkoutPlan, source: string = 'file') => {
@@ -188,6 +204,12 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
       }
       return [...prevPlans, newPlan];
     });
+
+    // Prefetch data for the imported plan
+    const exerciseNames = newPlan.steps
+        .filter(s => s.type === 'exercise')
+        .map(s => getBaseExerciseName(s.name));
+    prefetchExercises(exerciseNames);
 
     // Set the ID for highlighting and clear it after the animation
     setRecentlyImportedPlanId(newPlanId);

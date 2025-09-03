@@ -94,3 +94,35 @@ export async function getExerciseInfo(exerciseName: string): Promise<ExerciseInf
         return getGenericErrorResponse(`Error: ${errorMessage}`);
     }
 }
+
+/**
+ * Pre-fetches exercise information for a list of exercise names and populates the cache.
+ * This is a "fire and forget" function that runs in the background.
+ * @param exerciseNames - An array of exercise names to prefetch.
+ */
+export async function prefetchExercises(exerciseNames: string[]): Promise<void> {
+    const cache = getCache();
+    // Get unique, normalized names
+    const uniqueNames = [...new Set(exerciseNames.map(name => name.trim().toLowerCase()))];
+    const namesToFetch = uniqueNames.filter(name => name && !cache[name]); // also filter out empty names
+
+    if (namesToFetch.length === 0) {
+        return;
+    }
+
+    console.log(`Prefetching info for ${namesToFetch.length} exercises in the background...`);
+
+    // Fire and forget, don't await the whole thing in the calling function
+    const fetchPromises = namesToFetch.map(name => 
+        getExerciseInfo(name).catch(e => {
+            console.error(`Failed to prefetch exercise "${name}":`, e);
+            return null; // Don't let one failure stop others
+        })
+    );
+    
+    // We don't await this promise chain because it's a background task.
+    // The UI shouldn't wait for this.
+    Promise.allSettled(fetchPromises).then(() => {
+        console.log("Prefetching session complete.");
+    });
+}

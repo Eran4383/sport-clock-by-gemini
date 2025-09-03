@@ -48,6 +48,9 @@ const ExerciseInfoModal: React.FC<{
       .map(line => line.trim().replace(/^\d+\.\s*/, '')); // remove "1. "
   }, [info?.instructions]);
 
+  const youtubeSearchQuery = useMemo(() => encodeURIComponent(`${getBaseExerciseName(exerciseName)} exercise tutorial`), [exerciseName]);
+  const embedUrl = `https://www.youtube.com/embed?listType=search&list=${youtubeSearchQuery}`;
+
   const TabButton: React.FC<{
     label: string;
     isActive: boolean;
@@ -73,9 +76,9 @@ const ExerciseInfoModal: React.FC<{
         dir={isHebrew ? 'rtl' : 'ltr'}
       >
         {/* Header */}
-        <div className={`flex justify-between items-center p-4 border-b border-gray-700 ${isHebrew ? 'flex-row-reverse text-right' : 'text-left'}`}>
-          <h3 className="text-xl font-bold text-white break-all">{exerciseName}</h3>
-          <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-700">
+        <div className="relative flex justify-center items-center p-4 border-b border-gray-700">
+          <h3 className="text-xl font-bold text-white break-all text-center mx-10">{exerciseName}</h3>
+          <button onClick={onClose} className="absolute p-1 rounded-full hover:bg-gray-700 top-3 right-3">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
@@ -83,13 +86,15 @@ const ExerciseInfoModal: React.FC<{
         {/* Content */}
         <div className="p-4 flex-grow overflow-hidden flex flex-col">
           {isLoading ? (
-            <p className="text-gray-300">Loading...</p>
+            <div className="flex-grow flex items-center justify-center">
+              <p className="text-gray-300 animate-pulse">Loading Exercise Info...</p>
+            </div>
           ) : error ? (
             <p className="text-red-400">{error}</p>
           ) : info ? (
             <>
               {/* Tabs */}
-              <div className="flex border-b border-gray-700 mb-4">
+              <div className="relative z-10 flex border-b border-gray-700 mb-4">
                 <TabButton label={isHebrew ? "הדרכה" : "How-To"} isActive={activeTab === 'howto'} onClick={() => setActiveTab('howto')} />
                 <TabButton label={isHebrew ? "פרטים" : "Details"} isActive={activeTab === 'details'} onClick={() => setActiveTab('details')} />
               </div>
@@ -98,10 +103,16 @@ const ExerciseInfoModal: React.FC<{
               <div className="flex-grow overflow-y-auto pr-2">
                 {activeTab === 'howto' && (
                   <div className="space-y-4">
-                    {/* Media Placeholder */}
-                    <div className="aspect-video bg-gray-900 rounded-lg flex items-center justify-center text-gray-500">
-                       <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" /></svg>
-                       <span className="sr-only">Video placeholder</span>
+                    {/* YouTube Embed */}
+                    <div className="aspect-video bg-gray-900 rounded-lg overflow-hidden">
+                       <iframe
+                            className="w-full h-full"
+                            src={embedUrl}
+                            title={`YouTube video player for ${exerciseName}`}
+                            frameBorder="0"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowFullScreen
+                        ></iframe>
                     </div>
                     {/* Instructions List */}
                     <h4 className="font-semibold text-lg text-white mt-4">{isHebrew ? "הוראות" : "Instructions"}</h4>
