@@ -13,6 +13,7 @@ const ExerciseInfoModal: React.FC<{
   const [info, setInfo] = useState<ExerciseInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'howto' | 'details'>('howto');
 
   useEffect(() => {
     const fetchInfo = async () => {
@@ -22,7 +23,7 @@ const ExerciseInfoModal: React.FC<{
         const result = await getExerciseInfo(exerciseName);
         setInfo(result);
         // Check if the primary instruction is an error message
-        if (result.instructions.toLowerCase().includes("error") || result.instructions.toLowerCase().includes("failed")) {
+        if (result.instructions.toLowerCase().includes("error") || result.instructions.toLowerCase().includes("failed") || result.instructions.includes("api key")) {
             setError(result.generalInfo);
         }
       } catch (e) {
@@ -35,39 +36,102 @@ const ExerciseInfoModal: React.FC<{
     fetchInfo();
   }, [exerciseName]);
 
+  const isHebrew = useMemo(() => info?.language === 'he', [info]);
+  
+  // Helper to parse instruction text into a list
+  const parsedInstructions = useMemo(() => {
+    if (!info?.instructions) return [];
+    // Split by newline, then filter out empty lines, then trim leading numbers/bullets
+    return info.instructions
+      .split('\n')
+      .filter(line => line.trim() !== '')
+      .map(line => line.trim().replace(/^\d+\.\s*/, '')); // remove "1. "
+  }, [info?.instructions]);
+
+  const TabButton: React.FC<{
+    label: string;
+    isActive: boolean;
+    onClick: () => void;
+  }> = ({ label, isActive, onClick }) => (
+    <button
+      onClick={onClick}
+      className={`px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors focus:outline-none ${
+        isActive
+          ? 'bg-gray-700 text-white'
+          : 'text-gray-400 hover:bg-gray-700/50 hover:text-gray-200'
+      }`}
+    >
+      {label}
+    </button>
+  );
+
   return (
-    <div className="fixed inset-0 bg-black/70 z-[100] flex items-center justify-center" onClick={onClose} aria-modal="true" role="dialog">
-      <div className="bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-lg mx-4" onClick={e => e.stopPropagation()}>
-        <div className="flex justify-between items-center mb-4">
+    <div className="fixed inset-0 bg-black/70 z-[100] flex items-center justify-center p-4" onClick={onClose} aria-modal="true" role="dialog">
+      <div 
+        className="bg-gray-800 rounded-lg shadow-xl w-full max-w-lg flex flex-col max-h-[90vh]"
+        onClick={e => e.stopPropagation()}
+        dir={isHebrew ? 'rtl' : 'ltr'}
+      >
+        {/* Header */}
+        <div className={`flex justify-between items-center p-4 border-b border-gray-700 ${isHebrew ? 'flex-row-reverse text-right' : 'text-left'}`}>
           <h3 className="text-xl font-bold text-white break-all">{exerciseName}</h3>
           <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-700">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
-        <div 
-            className="max-h-[70vh] overflow-y-auto pr-2"
-            dir={info?.language === 'he' ? 'rtl' : 'ltr'}
-        >
-          {isLoading && <p className="text-gray-300">Loading...</p>}
-          {error && <p className="text-red-400">{error}</p>}
-          {!isLoading && info && !error && (
-            <div className="space-y-4">
-                <p className="text-lg font-bold text-gray-100 whitespace-pre-wrap">{info.instructions}</p>
-                
-                {info.tips && info.tips.length > 0 && (
-                    <div>
-                        <h4 className="font-semibold text-gray-300">{info?.language === 'he' ? 'דגשים:' : 'Tips:'}</h4>
-                        <ul className="list-disc list-inside mt-2 text-gray-300 space-y-1">
-                            {info.tips.map((tip, index) => <li key={index}>{tip}</li>)}
-                        </ul>
-                    </div>
-                )}
 
-                {info.generalInfo && (
-                    <p className="mt-4 text-gray-400 whitespace-pre-wrap">{info.generalInfo}</p>
+        {/* Content */}
+        <div className="p-4 flex-grow overflow-hidden flex flex-col">
+          {isLoading ? (
+            <p className="text-gray-300">Loading...</p>
+          ) : error ? (
+            <p className="text-red-400">{error}</p>
+          ) : info ? (
+            <>
+              {/* Tabs */}
+              <div className="flex border-b border-gray-700 mb-4">
+                <TabButton label={isHebrew ? "הדרכה" : "How-To"} isActive={activeTab === 'howto'} onClick={() => setActiveTab('howto')} />
+                <TabButton label={isHebrew ? "פרטים" : "Details"} isActive={activeTab === 'details'} onClick={() => setActiveTab('details')} />
+              </div>
+
+              {/* Tab Content */}
+              <div className="flex-grow overflow-y-auto pr-2">
+                {activeTab === 'howto' && (
+                  <div className="space-y-4">
+                    {/* Media Placeholder */}
+                    <div className="aspect-video bg-gray-900 rounded-lg flex items-center justify-center text-gray-500">
+                       <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" /></svg>
+                       <span className="sr-only">Video placeholder</span>
+                    </div>
+                    {/* Instructions List */}
+                    <h4 className="font-semibold text-lg text-white mt-4">{isHebrew ? "הוראות" : "Instructions"}</h4>
+                    <ol className="list-decimal list-inside space-y-2 text-gray-200">
+                        {parsedInstructions.map((item, index) => <li key={index}>{item}</li>)}
+                    </ol>
+                  </div>
                 )}
-            </div>
-          )}
+                
+                {activeTab === 'details' && (
+                  <div className="space-y-6">
+                    {info.tips && info.tips.length > 0 && (
+                      <div>
+                        <h4 className="font-semibold text-lg text-white mb-2">{isHebrew ? "דגשים" : "Tips"}</h4>
+                        <ul className="list-disc list-inside space-y-1 text-gray-300">
+                          {info.tips.map((tip, index) => <li key={index}>{tip}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                    {info.generalInfo && (
+                      <div>
+                        <h4 className="font-semibold text-lg text-white mb-2">{isHebrew ? "מידע כללי" : "General Info"}</h4>
+                        <p className="text-gray-300 whitespace-pre-wrap">{info.generalInfo}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </>
+          ) : null}
         </div>
       </div>
     </div>
@@ -193,8 +257,12 @@ const PlanListItem: React.FC<{
   } = useWorkout();
   const [isExpanded, setIsExpanded] = useState(false);
   const exerciseColorMap = useExerciseColorMap(plan.steps);
-  const [showCopyConfirmation, setShowCopyConfirmation] = useState(false);
+  const [confirmationMessage, setConfirmationMessage] = useState<string | null>(null);
 
+  const showConfirmation = (message: string) => {
+      setConfirmationMessage(message);
+      setTimeout(() => setConfirmationMessage(null), 2000);
+  };
 
   const isActive = activeWorkout?.sourcePlanIds.includes(plan.id) ?? false;
 
@@ -256,6 +324,19 @@ const PlanListItem: React.FC<{
         alert("Could not export the plan.");
     }
   };
+
+  const handleCopyJson = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+        const planJson = JSON.stringify(plan, null, 2); // Pretty print
+        navigator.clipboard.writeText(planJson).then(() => {
+            showConfirmation("JSON Copied!");
+        });
+    } catch (error) {
+        console.error("Failed to copy JSON:", error);
+        alert("Could not copy JSON.");
+    }
+  };
   
   const handleShare = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -274,8 +355,7 @@ const PlanListItem: React.FC<{
         const shareableLink = url.toString();
         
         navigator.clipboard.writeText(shareableLink).then(() => {
-            setShowCopyConfirmation(true);
-            setTimeout(() => setShowCopyConfirmation(false), 2000);
+            showConfirmation("Link Copied!");
         });
     } catch (error) {
         console.error("Failed to create share link:", error);
@@ -347,6 +427,7 @@ const PlanListItem: React.FC<{
         </div>
         
         <div className="flex gap-1 items-center mt-3 justify-end relative">
+             {confirmationMessage && <span className="absolute -top-8 right-0 bg-gray-900 text-white text-xs px-2 py-1 rounded">{confirmationMessage}</span>}
              <button
                 onClick={handleToggleLock}
                 className={`p-2 hover:bg-gray-600/50 rounded-full disabled:opacity-50 disabled:cursor-not-allowed ${plan.isLocked ? 'text-yellow-400' : 'text-gray-300'}`}
@@ -374,6 +455,17 @@ const PlanListItem: React.FC<{
                 )}
             </button>
             <button
+                onClick={handleCopyJson}
+                className="p-2 text-gray-300 hover:text-white hover:bg-gray-600/50 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label="Copy plan as JSON"
+                title="Copy Plan as JSON"
+                disabled={!!activeWorkout}
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 0 11-1.898-.632l4-12a1 1 0 011.265-.633zM5.707 6.293a1 1 0 010 1.414L3.414 10l2.293 2.293a1 1 0 11-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0zm8.586 0a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 11-1.414-1.414L16.586 10l-2.293-2.293a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+            </button>
+            <button
               onClick={handleShare}
               className="p-2 text-gray-300 hover:text-white hover:bg-gray-600/50 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
               aria-label="Share plan via link"
@@ -382,7 +474,6 @@ const PlanListItem: React.FC<{
             >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M15 8a3 3 0 10-2.977-2.63l-4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 10.895-1.789l-4.94-2.47a3.027 3.027 0 000-.74l4.94-2.47C13.456 7.68 14.19 8 15 8z" /></svg>
             </button>
-            {showCopyConfirmation && <span className="absolute -top-8 right-0 bg-gray-900 text-white text-xs px-2 py-1 rounded">Link Copied!</span>}
             <button
               onClick={handleExport}
               className="p-2 text-gray-300 hover:text-white hover:bg-gray-600/50 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
@@ -513,6 +604,7 @@ const PlanList: React.FC<{
   const [isImportTextVisible, setIsImportTextVisible] = useState(false);
 
   const handleToggleSelection = (planId: string) => {
+    // FIX: Changed `id` to `planId` to correctly add a new plan to the selection. `id` was undefined in this context.
     setSelectedPlanIds(prev =>
       prev.includes(planId) ? prev.filter(id => id !== planId) : [...prev, planId]
     );

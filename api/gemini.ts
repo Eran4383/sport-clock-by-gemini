@@ -50,9 +50,18 @@ Follow this structure:
         },
     });
 
-    // The response text is a JSON string, so we parse it before sending.
-    const exerciseInfo = JSON.parse(response.text);
-    return res.status(200).json(exerciseInfo);
+    const responseText = response.text;
+    
+    // Clean potential markdown fences and trim whitespace.
+    const cleanedJsonString = responseText.replace(/^```json\s*/, '').replace(/\s*```$/, '').trim();
+
+    if (!cleanedJsonString) {
+        throw new Error("Received an empty response from the AI service.");
+    }
+    
+    // Instead of parsing and re-serializing, send the cleaned JSON string directly.
+    res.setHeader('Content-Type', 'application/json');
+    return res.status(200).send(cleanedJsonString);
 
   } catch (error: any) {
     console.error("Error calling Gemini API:", error);

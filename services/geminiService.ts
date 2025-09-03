@@ -5,6 +5,32 @@ export interface ExerciseInfo {
     language: 'en' | 'he' | string;
 }
 
+const CACHE_KEY = 'geminiExerciseCache_v1';
+
+// Helper to get the cache object from localStorage
+const getCache = (): Record<string, ExerciseInfo> => {
+    try {
+        const cachedData = localStorage.getItem(CACHE_KEY);
+        return cachedData ? JSON.parse(cachedData) : {};
+    } catch (error) {
+        console.error("Failed to read from cache", error);
+        return {};
+    }
+};
+
+// Helper to save data to the cache in localStorage
+const saveToCache = (key: string, data: ExerciseInfo) => {
+    try {
+        const cache = getCache();
+        cache[key] = data;
+        localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+    } catch (error)
+    {
+        console.error("Failed to save to cache", error);
+    }
+};
+
+
 const getApiKeyErrorResponse = (): ExerciseInfo => ({
     instructions: "API Key Not Configured on Server",
     tips: [
@@ -26,6 +52,15 @@ const getGenericErrorResponse = (message: string): ExerciseInfo => ({
 });
 
 export async function getExerciseInfo(exerciseName: string): Promise<ExerciseInfo> {
+    const normalizedName = exerciseName.trim().toLowerCase();
+    const cache = getCache();
+
+    // 1. Check cache first
+    if (cache[normalizedName]) {
+        return cache[normalizedName];
+    }
+    
+    // 2. If not in cache, fetch from the server
     try {
         const res = await fetch('/api/gemini', {
             method: 'POST',
@@ -44,6 +79,9 @@ export async function getExerciseInfo(exerciseName: string): Promise<ExerciseInf
             // Use the message from the backend for other errors
             throw new Error(data.message || 'Failed to fetch exercise info from the server.');
         }
+
+        // 3. Save successful response to cache before returning
+        saveToCache(normalizedName, data);
 
         return data as ExerciseInfo;
 
