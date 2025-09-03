@@ -3,6 +3,55 @@ import { useWorkout } from '../contexts/WorkoutContext';
 import { WorkoutPlan, WorkoutStep } from '../types';
 import { useSettings } from '../contexts/SettingsContext';
 import { HoverNumberInput } from './HoverNumberInput';
+import { getExerciseInfo } from '../services/geminiService';
+import { WorkoutLog } from './WorkoutLog';
+
+const ExerciseInfoModal: React.FC<{
+  exerciseName: string;
+  onClose: () => void;
+}> = ({ exerciseName, onClose }) => {
+  const [info, setInfo] = useState<string>('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchInfo = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const result = await getExerciseInfo(exerciseName);
+        setInfo(result);
+      } catch (e) {
+        setError("Failed to fetch exercise information.");
+        console.error(e);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchInfo();
+  }, [exerciseName]);
+
+  return (
+    <div className="fixed inset-0 bg-black/70 z-[100] flex items-center justify-center" onClick={onClose} aria-modal="true" role="dialog">
+      <div className="bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-lg mx-4" onClick={e => e.stopPropagation()}>
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-xl font-bold text-white break-all">{exerciseName}</h3>
+          <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-700">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+        <div>
+          {isLoading && <p className="text-gray-300">Loading...</p>}
+          {error && <p className="text-red-400">{error}</p>}
+          {!isLoading && !error && (
+            <p className="text-gray-300 whitespace-pre-wrap">{info}</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 
 /**
  * Extracts the base name of an exercise, stripping set/rep counts.
@@ -96,6 +145,7 @@ const PlanListItem: React.FC<{
   plan: WorkoutPlan;
   onSelectPlan: (plan: WorkoutPlan) => void;
   onInitiateDelete: (planId: string) => void;
+  onInspectExercise: (exerciseName: string) => void;
   isSelected: boolean;
   onToggleSelection: (planId: string) => void;
   isDraggable: boolean;
@@ -107,7 +157,7 @@ const PlanListItem: React.FC<{
   isDragTarget: boolean;
   isNewlyImported: boolean;
   index: number;
-}> = ({ plan, onSelectPlan, onInitiateDelete, isSelected, onToggleSelection, isDraggable, onDragStart, onDragOver, onDrop, onDragEnd, onDragLeave, isDragTarget, isNewlyImported, index }) => {
+}> = ({ plan, onSelectPlan, onInitiateDelete, onInspectExercise, isSelected, onToggleSelection, isDraggable, onDragStart, onDragOver, onDrop, onDragEnd, onDragLeave, isDragTarget, isNewlyImported, index }) => {
   const { 
       activeWorkout,
       currentStep,
@@ -156,7 +206,7 @@ const PlanListItem: React.FC<{
 
   const handleStop = (e: React.MouseEvent) => {
       e.stopPropagation();
-      stopWorkout();
+      stopWorkout({ completed: false });
   }
   
   const handleEdit = (e: React.MouseEvent) => {
@@ -229,6 +279,11 @@ const PlanListItem: React.FC<{
       e.stopPropagation();
       restartCurrentStep();
   }
+  
+  const handleToggleLock = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    savePlan({ ...plan, isLocked: !plan.isLocked });
+  };
 
   const dragStyles = isDragTarget ? 'border-2 border-dashed border-blue-400' : 'border-2 border-transparent';
   const animationClass = isNewlyImported ? 'animate-flash' : '';
@@ -270,6 +325,19 @@ const PlanListItem: React.FC<{
         </div>
         
         <div className="flex gap-1 items-center mt-3 justify-end relative">
+             <button
+                onClick={handleToggleLock}
+                className={`p-2 hover:bg-gray-600/50 rounded-full disabled:opacity-50 disabled:cursor-not-allowed ${plan.isLocked ? 'text-yellow-400' : 'text-gray-300'}`}
+                aria-label={plan.isLocked ? "Un-lock plan" : "Lock plan"}
+                title={plan.isLocked ? "תוכנית נעולה (לחץ לפתיחה)" : "נעל תוכנית למניעת מחיקה"}
+                disabled={!!activeWorkout}
+            >
+                {plan.isLocked ? (
+                    <svg xmlns="http://www.w.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>
+                ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a5 5 0 00-5 5v2a2 2 0 00-2 2v5a2 2 0 002 2h10a2 2 0 002-2v-5a2 2 0 00-2-2V7a5 5 0 00-5-5zm0 9a3 3 0 100-6 3 3 0 000 6z" /></svg>
+                )}
+            </button>
             <button
                 onClick={handleToggleMode}
                 className="p-2 text-gray-300 hover:text-white hover:bg-gray-600/50 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
@@ -307,7 +375,7 @@ const PlanListItem: React.FC<{
               className="p-2 text-gray-300 hover:text-white hover:bg-gray-600/50 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
               aria-label="Edit plan"
               title="Edit Plan"
-              disabled={!!activeWorkout}
+              disabled={!!activeWorkout || plan.isLocked}
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" /><path fillRule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clipRule="evenodd" /></svg>
             </button>
@@ -316,7 +384,7 @@ const PlanListItem: React.FC<{
               className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-500/10 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
               aria-label="Delete plan"
               title="Delete Plan"
-              disabled={!!activeWorkout}
+              disabled={!!activeWorkout || plan.isLocked}
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" /></svg>
             </button>
@@ -349,8 +417,14 @@ const PlanListItem: React.FC<{
                     return (
                         <li 
                           key={`${step.id}-${index}`} 
-                          className={`flex items-center gap-2 transition-all duration-200 rounded ${isCurrent ? 'bg-blue-500/20 font-bold p-1 -m-1' : ''}`}
+                          className={`flex items-center gap-2 transition-all duration-200 rounded p-1 -m-1 ${isCurrent ? 'bg-blue-500/20 font-bold' : 'hover:bg-gray-600/50'}`}
                           title={step.name}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (step.type === 'exercise') {
+                                onInspectExercise(getBaseExerciseName(step.name));
+                            }
+                          }}
                         >
                             <span className="w-1.5 h-4 rounded" style={{ backgroundColor: color }}></span>
                             <span className="truncate">{step.name} - <span className="text-gray-400 font-normal">{step.isRepBased ? `${step.reps} reps` : `${step.duration}s`}</span></span>
@@ -366,6 +440,12 @@ const PlanListItem: React.FC<{
 
 const ImportTextModal: React.FC<{ onImport: (text: string) => void; onCancel: () => void; }> = ({ onImport, onCancel }) => {
     const [jsonText, setJsonText] = useState('');
+    const textAreaRef = useRef<HTMLTextAreaElement>(null);
+
+    useEffect(() => {
+        // Auto-focus the textarea when the modal appears
+        textAreaRef.current?.focus();
+    }, []);
     
     const handleImportClick = () => {
         if (jsonText.trim()) {
@@ -379,6 +459,7 @@ const ImportTextModal: React.FC<{ onImport: (text: string) => void; onCancel: ()
                 <h3 className="text-xl font-bold text-white">Import Plan from Text</h3>
                 <p className="text-gray-300 mt-2">Paste the JSON content of a workout plan below.</p>
                 <textarea
+                    ref={textAreaRef}
                     value={jsonText}
                     onChange={e => setJsonText(e.target.value)}
                     className="w-full h-48 mt-4 p-2 bg-gray-900 text-gray-300 rounded-md font-mono text-sm focus:outline-none focus:ring-2 ring-blue-500"
@@ -397,9 +478,11 @@ const PlanList: React.FC<{
   onSelectPlan: (plan: WorkoutPlan) => void;
   onCreateNew: () => void;
   onInitiateDelete: (planId: string) => void;
+  onShowLog: () => void;
+  onInspectExercise: (exerciseName: string) => void;
   isPinned: boolean;
   onTogglePin: () => void;
-}> = ({ onSelectPlan, onCreateNew, onInitiateDelete, isPinned, onTogglePin }) => {
+}> = ({ onSelectPlan, onCreateNew, onInitiateDelete, onShowLog, onInspectExercise, isPinned, onTogglePin }) => {
   const { plans, reorderPlans, startWorkout, importPlan, activeWorkout, recentlyImportedPlanId } = useWorkout();
   const [selectedPlanIds, setSelectedPlanIds] = useState<string[]>([]);
   const dragItemIndex = useRef<number | null>(null);
@@ -423,32 +506,34 @@ const PlanList: React.FC<{
   };
   
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        try {
-            const text = e.target?.result as string;
-            handleJsonImport(text);
-        } catch (error) {
-            console.error("Failed to read file:", error);
-            alert("Could not read the file.");
-        } finally {
-            if(fileInputRef.current) {
-                fileInputRef.current.value = '';
+    Array.from(files).forEach(file => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const text = e.target?.result as string;
+                handleJsonImport(text, 'file');
+            } catch (error) {
+                console.error("Failed to read file:", error);
+                alert(`Could not read the file: ${file.name}`);
             }
-        }
-    };
-    reader.readAsText(file);
+        };
+        reader.readAsText(file);
+    });
+
+    if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+    }
   };
 
-  const handleJsonImport = (jsonText: string) => {
+  const handleJsonImport = (jsonText: string, source: string) => {
     try {
         const importedPlan = JSON.parse(jsonText);
         // Basic validation
         if (importedPlan && typeof importedPlan.name === 'string' && Array.isArray(importedPlan.steps)) {
-            importPlan(importedPlan);
+            importPlan(importedPlan, source);
             setIsImportTextVisible(false); // Close modal on success
         } else {
             throw new Error("Invalid plan structure.");
@@ -501,6 +586,13 @@ const PlanList: React.FC<{
         <h2 className="text-2xl font-bold text-white">Workout Plans</h2>
         <div className="flex items-center gap-2">
             <button
+                onClick={onShowLog}
+                className="p-2 rounded-full hover:bg-gray-500/30 text-gray-400"
+                title="View Workout Log"
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" /></svg>
+            </button>
+            <button
                 onClick={() => setIsImportTextVisible(true)}
                 className="p-2 rounded-full hover:bg-gray-500/30 text-gray-400"
                 title="Import Plan from Text"
@@ -511,7 +603,7 @@ const PlanList: React.FC<{
             <button
                 onClick={handleImportClick}
                 className="p-2 rounded-full hover:bg-gray-500/30 text-gray-400"
-                title="Import Plan from File"
+                title="Import Plan from File(s)"
                 disabled={!!activeWorkout}
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clipRule="evenodd" /></svg>
@@ -522,6 +614,7 @@ const PlanList: React.FC<{
                 onChange={handleFileChange}
                 accept=".json,application/json"
                 className="hidden"
+                multiple
             />
 
             <button 
@@ -544,7 +637,7 @@ const PlanList: React.FC<{
         </div>
       </div>
 
-      {isImportTextVisible && <ImportTextModal onImport={handleJsonImport} onCancel={() => setIsImportTextVisible(false)} />}
+      {isImportTextVisible && <ImportTextModal onImport={(text) => handleJsonImport(text, 'text')} onCancel={() => setIsImportTextVisible(false)} />}
 
       {selectedPlanIds.length > 0 && !activeWorkout && (
           <button
@@ -566,6 +659,7 @@ const PlanList: React.FC<{
                 index={index}
                 onSelectPlan={onSelectPlan}
                 onInitiateDelete={onInitiateDelete}
+                onInspectExercise={onInspectExercise}
                 isSelected={selectedPlanIds.includes(plan.id)}
                 onToggleSelection={handleToggleSelection}
                 isDraggable={!activeWorkout}
@@ -1100,8 +1194,9 @@ const ConfirmDeleteModal: React.FC<{
 export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean) => void; }> = ({ isOpen, setIsOpen }) => {
   const [isPinned, setIsPinned] = useState(false);
   const [editingPlan, setEditingPlan] = useState<WorkoutPlan | null>(null);
-  const [view, setView] = useState<'list' | 'editor'>('list');
+  const [view, setView] = useState<'list' | 'editor' | 'log'>('list');
   const [confirmDeletePlanId, setConfirmDeletePlanId] = useState<string | null>(null);
+  const [inspectingExercise, setInspectingExercise] = useState<string | null>(null);
   const { activeWorkout, plans, deletePlan } = useWorkout();
 
   const planToDelete = useMemo(() => {
@@ -1197,6 +1292,13 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
           />
       )}
 
+      {inspectingExercise && (
+        <ExerciseInfoModal 
+            exerciseName={inspectingExercise}
+            onClose={() => setInspectingExercise(null)}
+        />
+      )}
+
       <div 
         className={`fixed top-0 left-0 h-full w-full max-w-sm bg-gray-800/80 backdrop-blur-md shadow-2xl z-50 transform transition-all ease-in-out ${isOpen ? 'duration-500' : 'duration-[1500ms]'} ${isOpen ? 'translate-x-0 opacity-100' : '-translate-x-full opacity-0 pointer-events-none'}`}
         onTouchStart={handleTouchStart}
@@ -1204,16 +1306,22 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
         onTouchEnd={handleTouchEnd}
         >
           <div className="p-6 overflow-y-auto h-full">
-            {view === 'list' ? (
+            {view === 'list' && (
                 <PlanList 
                     onSelectPlan={handleSelectPlan} 
                     onCreateNew={handleCreateNew} 
                     onInitiateDelete={setConfirmDeletePlanId}
+                    onShowLog={() => setView('log')}
+                    onInspectExercise={setInspectingExercise}
                     isPinned={isPinned}
                     onTogglePin={() => setIsPinned(!isPinned)}
                 />
-            ) : (
+            )}
+            {view === 'editor' && (
                 <PlanEditor plan={editingPlan} onBack={handleBack} />
+            )}
+            {view === 'log' && (
+                <WorkoutLog onBack={handleBack} />
             )}
           </div>
         </div>

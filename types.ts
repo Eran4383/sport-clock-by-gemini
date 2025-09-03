@@ -16,4 +16,12 @@ export interface WorkoutPlan {
   steps: WorkoutStep[];
   executionMode?: 'linear' | 'circuit';
   color?: string;
+  isLocked?: boolean;
+}
+
+export interface WorkoutLogEntry {
+    id: string;
+    date: string; // ISO string
+    planName: string;
+    durationSeconds: number;
 }

@@ -7,6 +7,7 @@ import { Controls } from './components/Controls';
 import { SettingsMenu } from './components/SettingsMenu';
 import { WorkoutMenu } from './components/WorkoutMenu';
 import { RepDisplay } from './components/RepDisplay';
+import { PreWorkoutCountdown } from './components/PreWorkoutCountdown';
 import { useStopwatch } from './hooks/useStopwatch';
 import { useCountdown } from './hooks/useCountdown';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
@@ -28,7 +29,10 @@ const AppContent: React.FC = () => {
     isCountdownPaused,
     pauseStepCountdown,
     resumeStepCountdown,
-    restartCurrentStep
+    restartCurrentStep,
+    isPreparingWorkout,
+    commitStartWorkout,
+    clearPreparingWorkout,
   } = useWorkout();
   
   const stopwatch = useStopwatch();
@@ -36,6 +40,7 @@ const AppContent: React.FC = () => {
   const [workoutCompleted, setWorkoutCompleted] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isWorkoutOpen, setIsWorkoutOpen] = useState(false);
+  const [preWorkoutTimeLeft, setPreWorkoutTimeLeft] = useState<number | null>(null);
 
 
   const isWorkoutActive = !!(activeWorkout && currentStep);
@@ -57,6 +62,30 @@ const AppContent: React.FC = () => {
     // This just sets the "out of bounds" color for overscroll etc.
     document.body.style.backgroundColor = settings.backgroundColor;
   }, [settings.backgroundColor]);
+  
+  // Handle the pre-workout countdown
+  useEffect(() => {
+    // FIX: Using `const` for the timer and returning the cleanup function from within the `if` block
+    // solves both the type error (`NodeJS.Timeout` is not a browser type) and a potential runtime
+    // error from trying to clear an uninitialized timer.
+    if (isPreparingWorkout) {
+        setPreWorkoutTimeLeft(10);
+        const timer = setInterval(() => {
+            setPreWorkoutTimeLeft(prev => {
+                if (prev === null || prev <= 1) {
+                    clearInterval(timer);
+                    commitStartWorkout();
+                    return null;
+                }
+                return prev - 1;
+            });
+        }, 1000);
+        return () => clearInterval(timer);
+    } else {
+        setPreWorkoutTimeLeft(null); // Ensure countdown stops if workout is aborted
+    }
+  }, [isPreparingWorkout, commitStartWorkout]);
+
 
   const toggleFullScreen = useCallback(() => {
     if (!document.fullscreenElement) {
@@ -72,7 +101,11 @@ const AppContent: React.FC = () => {
   
   const stopWorkoutAborted = () => {
     setWorkoutCompleted(false); // Aborting is not completing
-    contextStopWorkout();
+    if (isPreparingWorkout) {
+      clearPreparingWorkout();
+    } else {
+      contextStopWorkout({ completed: false });
+    }
   };
   
     // Refs for swipe gesture detection on the main app body
@@ -201,7 +234,7 @@ const AppContent: React.FC = () => {
             updateSettings({ stealthModeEnabled: !settings.stealthModeEnabled });
             break;
         case 'escape':
-            if (isWorkoutActive) {
+            if (isWorkoutActive || isPreparingWorkout) {
                 if(window.confirm('Are you sure you want to stop the current workout?')) {
                     stopWorkoutAborted();
                 }
@@ -219,7 +252,7 @@ const AppContent: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [settings, updateSettings, stopwatch, countdown, isWorkoutActive, isWorkoutPaused, isRepStep, nextStep, resumeWorkout, pauseWorkout, contextStopWorkout, toggleFullScreen, workoutCompleted]);
+  }, [settings, updateSettings, stopwatch, countdown, isWorkoutActive, isWorkoutPaused, isRepStep, nextStep, resumeWorkout, pauseWorkout, contextStopWorkout, toggleFullScreen, workoutCompleted, isPreparingWorkout]);
 
   // Update document title with countdown
   useEffect(() => {
@@ -227,6 +260,8 @@ const AppContent: React.FC = () => {
 
     if (workoutCompleted) {
         document.title = `${mutePrefix}סוף האימון!`;
+    } else if (preWorkoutTimeLeft !== null) {
+        document.title = `${mutePrefix}מתחילים בעוד ${preWorkoutTimeLeft}s`;
     } else if (settings.showCountdown && (countdown.isRunning || countdown.isResting || isWorkoutActive) && !isWorkoutPaused) {
         const timeLeftFormatted = Math.ceil(countdown.timeLeft);
         if (isWorkoutActive && currentStep) {
@@ -239,7 +274,7 @@ const AppContent: React.FC = () => {
     } else {
         document.title = `${mutePrefix}⏱️`;
     }
-  }, [countdown.isRunning, countdown.isResting, countdown.timeLeft, settings.showCountdown, isWorkoutActive, currentStep, isWorkoutPaused, settings.isMuted, workoutCompleted]);
+  }, [countdown.isRunning, countdown.isResting, countdown.timeLeft, settings.showCountdown, isWorkoutActive, currentStep, isWorkoutPaused, settings.isMuted, workoutCompleted, preWorkoutTimeLeft]);
 
 
   // Start main clock on initial load
@@ -280,11 +315,16 @@ const AppContent: React.FC = () => {
         // On workout end
         stopwatch.stop();
         countdown.stop();
+        contextStopWorkout({
+            completed: true,
+            durationMs: stopwatch.time,
+            planName: activeWorkout?.plan.name || 'Unnamed Workout'
+        });
         setWorkoutCompleted(true);
       }
       wasWorkoutActive.current = false;
     }
-  }, [isWorkoutActive, isWorkoutPaused, isCountdownPaused, stopwatch, countdown]);
+  }, [isWorkoutActive, isWorkoutPaused, isCountdownPaused, stopwatch, countdown, contextStopWorkout, activeWorkout]);
 
   // If the user starts the main timers after a workout is complete, reset the completion screen.
   useEffect(() => {
@@ -293,13 +333,16 @@ const AppContent: React.FC = () => {
     }
   }, [workoutCompleted, stopwatch.isRunning, countdown.isRunning]);
 
+  if (preWorkoutTimeLeft !== null) {
+    return <PreWorkoutCountdown timeLeft={preWorkoutTimeLeft} />;
+  }
 
   if (settings.stealthModeEnabled) {
     return <div className="fixed inset-0 bg-black z-[100]"></div>;
   }
 
   const dynamicStyles = {
-    '--countdown-font-size': `clamp(5rem, 30vw, ${10 + (settings.countdownSize / 100) * 10}rem)`,
+    '--countdown-font-size': `clamp(4rem, 25dvh, 20rem)`,
     '--stopwatch-font-size': `clamp(1.5rem, 8vw, ${2 + (settings.stopwatchSize / 100) * 1.5}rem)`,
     '--countdown-controls-scale': settings.countdownControlsSize / 100,
     '--stopwatch-controls-scale': settings.stopwatchControlsSize / 100,
@@ -360,7 +403,7 @@ const AppContent: React.FC = () => {
   return (
     <div 
         onDoubleClick={(e) => { if (e.target === e.currentTarget) toggleFullScreen(); }} 
-        className={`min-h-screen flex flex-col p-4 select-none theme-transition`} 
+        className={`h-screen overflow-y-hidden flex flex-col p-4 select-none theme-transition`} 
         style={dynamicStyles}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}

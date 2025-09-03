@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useMemo } from 'react';
-import { WorkoutPlan, WorkoutStep } from '../types';
+import { WorkoutPlan, WorkoutStep, WorkoutLogEntry } from '../types';
 
 interface ActiveWorkout {
   plan: WorkoutPlan; // This can be a "meta-plan" if multiple plans are selected
@@ -16,12 +16,16 @@ interface WorkoutContextType {
   isWorkoutPaused: boolean;
   isCountdownPaused: boolean;
   recentlyImportedPlanId: string | null;
+  workoutHistory: WorkoutLogEntry[];
+  isPreparingWorkout: boolean;
   savePlan: (plan: WorkoutPlan) => void;
   importPlan: (plan: WorkoutPlan, source?: string) => void;
   deletePlan: (planId: string) => void;
   reorderPlans: (reorderedPlans: WorkoutPlan[]) => void;
   startWorkout: (planIds: string[]) => void;
-  stopWorkout: () => void;
+  commitStartWorkout: () => void;
+  clearPreparingWorkout: () => void;
+  stopWorkout: (options: { completed: boolean; durationMs?: number; planName?: string }) => void;
   nextStep: () => void;
   previousStep: () => void;
   pauseWorkout: () => void;
@@ -30,11 +34,13 @@ interface WorkoutContextType {
   pauseStepCountdown: () => void;
   resumeStepCountdown: () => void;
   restartCurrentStep: () => void;
+  clearWorkoutHistory: () => void;
 }
 
 const WorkoutContext = createContext<WorkoutContextType | undefined>(undefined);
 
 const WORKOUT_PLANS_KEY = 'sportsClockWorkoutPlans';
+const WORKOUT_HISTORY_KEY = 'sportsClockWorkoutHistory';
 
 const getInitialPlans = (): WorkoutPlan[] => {
   try {
@@ -42,6 +48,16 @@ const getInitialPlans = (): WorkoutPlan[] => {
     return item ? JSON.parse(item) : [];
   } catch (error) {
     console.error('Error reading workout plans from localStorage', error);
+    return [];
+  }
+};
+
+const getInitialHistory = (): WorkoutLogEntry[] => {
+  try {
+    const item = window.localStorage.getItem(WORKOUT_HISTORY_KEY);
+    return item ? JSON.parse(item) : [];
+  } catch (error) {
+    console.error('Error reading workout history from localStorage', error);
     return [];
   }
 };
@@ -118,6 +134,9 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [isWorkoutPaused, setIsWorkoutPaused] = useState(false);
   const [isCountdownPaused, setIsCountdownPaused] = useState(false);
   const [recentlyImportedPlanId, setRecentlyImportedPlanId] = useState<string | null>(null);
+  const [workoutHistory, setWorkoutHistory] = useState<WorkoutLogEntry[]>(getInitialHistory);
+  const [plansToStart, setPlansToStart] = useState<string[]>([]);
+  const isPreparingWorkout = plansToStart.length > 0;
 
   useEffect(() => {
     try {
@@ -126,6 +145,15 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
       console.error('Error writing workout plans to localStorage', error);
     }
   }, [plans]);
+
+  useEffect(() => {
+    try {
+        window.localStorage.setItem(WORKOUT_HISTORY_KEY, JSON.stringify(workoutHistory));
+    } catch(error) {
+        console.error("Failed to save workout history", error);
+    }
+  }, [workoutHistory]);
+
 
   const savePlan = useCallback((planToSave: WorkoutPlan) => {
     setPlans(prevPlans => {
@@ -213,23 +241,53 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
   const reorderPlans = useCallback((reorderedPlans: WorkoutPlan[]) => {
       setPlans(reorderedPlans);
   }, []);
+  
+  const logWorkoutCompletion = useCallback((planName: string, durationMs: number) => {
+    const now = new Date();
+    const newEntry: WorkoutLogEntry = {
+        id: now.toISOString(),
+        date: now.toISOString(),
+        planName: planName,
+        durationSeconds: Math.round(durationMs / 1000)
+    };
+    setWorkoutHistory(prev => [...prev, newEntry]);
+  }, []);
+  
+  const clearWorkoutHistory = useCallback(() => {
+    if (window.confirm("Are you sure you want to delete your entire workout history? This action cannot be undone.")) {
+        setWorkoutHistory([]);
+    }
+  }, []);
 
   const startWorkout = useCallback((planIds: string[]) => {
     if (planIds.length === 0) return;
+    setPlansToStart(planIds);
+  }, []);
+  
+  const clearPreparingWorkout = useCallback(() => {
+    setPlansToStart([]);
+  }, []);
+  
+  const commitStartWorkout = useCallback(() => {
+    if (plansToStart.length === 0) return;
     
-    const plansToRun = planIds.map(id => plans.find(p => p.id === id)).filter(Boolean) as WorkoutPlan[];
-    if (plansToRun.length === 0) return;
+    const plansToRun = plansToStart.map(id => plans.find(p => p.id === id)).filter(Boolean) as WorkoutPlan[];
+    if (plansToRun.length === 0) {
+        setPlansToStart([]);
+        return;
+    }
 
-    // A workout is considered 'circuit' only if a single plan with that mode is selected.
     const executionMode = plansToRun.length === 1 ? (plansToRun[0].executionMode || 'linear') : 'linear';
-
     let allSteps = plansToRun.flatMap(p => p.steps);
     
     if (executionMode === 'circuit') {
       allSteps = generateCircuitSteps(allSteps);
     }
 
-    if (allSteps.length === 0) return;
+    if (allSteps.length === 0) {
+        setPlansToStart([]);
+        return;
+    };
 
     const metaPlan: WorkoutPlan = {
       id: `meta_${Date.now()}`,
@@ -238,17 +296,20 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
       executionMode: executionMode,
     };
     
-    // FIX: The ActiveWorkout object requires the `sourcePlanIds` property. It was missing, causing a type error.
-    setActiveWorkout({ plan: metaPlan, currentStepIndex: 0, sourcePlanIds: planIds, stepRestartKey: 0 });
+    setActiveWorkout({ plan: metaPlan, currentStepIndex: 0, sourcePlanIds: plansToStart, stepRestartKey: 0 });
     setIsWorkoutPaused(false);
     setIsCountdownPaused(false);
-  }, [plans]);
+    setPlansToStart([]);
+  }, [plans, plansToStart]);
 
-  const stopWorkout = useCallback(() => {
+  const stopWorkout = useCallback(({ completed, durationMs, planName }: { completed: boolean; durationMs?: number; planName?: string }) => {
+    if (completed && durationMs !== undefined && planName) {
+        logWorkoutCompletion(planName, durationMs);
+    }
     setActiveWorkout(null);
     setIsWorkoutPaused(false);
     setIsCountdownPaused(false);
-  }, []);
+  }, [logWorkoutCompletion]);
 
   const pauseWorkout = useCallback(() => {
     if (activeWorkout) {
@@ -277,7 +338,11 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
       const nextIndex = prev.currentStepIndex + 1;
       if (nextIndex >= prev.plan.steps.length) {
         // Workout finished
-        stopWorkout();
+        stopWorkout({ 
+            completed: true, 
+            durationMs: -1, // Duration is handled by App.tsx which has the stopwatch
+            planName: prev.plan.name 
+        });
         return null;
       }
       return { ...prev, currentStepIndex: nextIndex };
@@ -335,11 +400,15 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     isWorkoutPaused,
     isCountdownPaused,
     recentlyImportedPlanId,
+    workoutHistory,
+    isPreparingWorkout,
     savePlan,
     importPlan,
     deletePlan,
     reorderPlans,
     startWorkout,
+    commitStartWorkout,
+    clearPreparingWorkout,
     stopWorkout,
     nextStep,
     previousStep,
@@ -349,6 +418,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     pauseStepCountdown,
     resumeStepCountdown,
     restartCurrentStep,
+    clearWorkoutHistory,
   };
 
   return <WorkoutContext.Provider value={value}>{children}</WorkoutContext.Provider>;
