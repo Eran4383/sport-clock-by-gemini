@@ -24,4 +24,5 @@ export interface WorkoutLogEntry {
     date: string; // ISO string
     planName: string;
     durationSeconds: number;
+    steps: WorkoutStep[];
 }

@@ -25,7 +25,7 @@ interface WorkoutContextType {
   startWorkout: (planIds: string[]) => void;
   commitStartWorkout: () => void;
   clearPreparingWorkout: () => void;
-  stopWorkout: (options: { completed: boolean; durationMs?: number; planName?: string }) => void;
+  stopWorkout: (options: { completed: boolean; durationMs?: number; planName?: string; steps?: WorkoutStep[] }) => void;
   nextStep: () => void;
   previousStep: () => void;
   pauseWorkout: () => void;
@@ -242,13 +242,14 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
       setPlans(reorderedPlans);
   }, []);
   
-  const logWorkoutCompletion = useCallback((planName: string, durationMs: number) => {
+  const logWorkoutCompletion = useCallback((planName: string, durationMs: number, steps: WorkoutStep[]) => {
     const now = new Date();
     const newEntry: WorkoutLogEntry = {
         id: now.toISOString(),
         date: now.toISOString(),
         planName: planName,
-        durationSeconds: Math.round(durationMs / 1000)
+        durationSeconds: Math.round(durationMs / 1000),
+        steps: steps,
     };
     setWorkoutHistory(prev => [...prev, newEntry]);
   }, []);
@@ -302,9 +303,9 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     setPlansToStart([]);
   }, [plans, plansToStart]);
 
-  const stopWorkout = useCallback(({ completed, durationMs, planName }: { completed: boolean; durationMs?: number; planName?: string }) => {
-    if (completed && durationMs !== undefined && planName) {
-        logWorkoutCompletion(planName, durationMs);
+  const stopWorkout = useCallback(({ completed, durationMs, planName, steps }: { completed: boolean; durationMs?: number; planName?: string; steps?: WorkoutStep[] }) => {
+    if (completed && durationMs !== undefined && planName && steps) {
+        logWorkoutCompletion(planName, durationMs, steps);
     }
     setActiveWorkout(null);
     setIsWorkoutPaused(false);
@@ -341,7 +342,8 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         stopWorkout({ 
             completed: true, 
             durationMs: -1, // Duration is handled by App.tsx which has the stopwatch
-            planName: prev.plan.name 
+            planName: prev.plan.name,
+            steps: prev.plan.steps
         });
         return null;
       }

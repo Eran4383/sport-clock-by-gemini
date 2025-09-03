@@ -1,0 +1,62 @@
+import { GoogleGenAI, Type } from "@google/genai";
+
+const apiKey = process.env.API_KEY;
+
+export default async function handler(req: any, res: any) {
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', ['POST']);
+    return res.status(405).end(`Method ${req.method} Not Allowed`);
+  }
+
+  if (!apiKey) {
+    console.error("API_KEY is not configured on the server.");
+    return res.status(500).json({ 
+        message: "API key not configured on the server. Please set the API_KEY environment variable in your project settings.",
+        code: "API_KEY_MISSING"
+    });
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
+  const { exerciseName } = req.body;
+
+  if (!exerciseName || typeof exerciseName !== 'string') {
+    return res.status(400).json({ message: 'A valid exerciseName is required in the request body.' });
+  }
+
+  try {
+    const prompt = `Analyze the exercise "${exerciseName}". Respond in the same language as the exercise name. Your response MUST be a JSON object.
+
+Follow this structure:
+1.  "instructions": A brief, clear, step-by-step guide on how to perform the exercise. This is the main part.
+2.  "tips": An array of 2-4 specific, concise tips for correct form or common mistakes.
+3.  "generalInfo": A short paragraph about the exercise, muscles targeted, and benefits.
+4.  "language": The ISO 639-1 code for the language of your response (e.g., "he" for Hebrew).`;
+
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    instructions: { type: Type.STRING, description: "Clear, step-by-step instructions." },
+                    tips: { type: Type.ARRAY, items: { type: Type.STRING }, description: "A list of concise tips." },
+                    generalInfo: { type: Type.STRING, description: "General info about the exercise." },
+                    language: { type: Type.STRING, description: "ISO 639-1 language code of the response." },
+                },
+                required: ["instructions", "tips", "generalInfo", "language"],
+            },
+        },
+    });
+
+    // The response text is a JSON string, so we parse it before sending.
+    const exerciseInfo = JSON.parse(response.text);
+    return res.status(200).json(exerciseInfo);
+
+  } catch (error: any) {
+    console.error("Error calling Gemini API:", error);
+    const errorMessage = error.message || 'An error occurred while fetching data from the AI service.';
+    return res.status(500).json({ message: errorMessage });
+  }
+}

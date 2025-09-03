@@ -3,14 +3,14 @@ import { useWorkout } from '../contexts/WorkoutContext';
 import { WorkoutPlan, WorkoutStep } from '../types';
 import { useSettings } from '../contexts/SettingsContext';
 import { HoverNumberInput } from './HoverNumberInput';
-import { getExerciseInfo } from '../services/geminiService';
+import { getExerciseInfo, ExerciseInfo } from '../services/geminiService';
 import { WorkoutLog } from './WorkoutLog';
 
 const ExerciseInfoModal: React.FC<{
   exerciseName: string;
   onClose: () => void;
 }> = ({ exerciseName, onClose }) => {
-  const [info, setInfo] = useState<string>('');
+  const [info, setInfo] = useState<ExerciseInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -21,8 +21,12 @@ const ExerciseInfoModal: React.FC<{
       try {
         const result = await getExerciseInfo(exerciseName);
         setInfo(result);
+        // Check if the primary instruction is an error message
+        if (result.instructions.toLowerCase().includes("error") || result.instructions.toLowerCase().includes("failed")) {
+            setError(result.generalInfo);
+        }
       } catch (e) {
-        setError("Failed to fetch exercise information.");
+        setError("Failed to fetch or parse exercise information.");
         console.error(e);
       } finally {
         setIsLoading(false);
@@ -40,11 +44,29 @@ const ExerciseInfoModal: React.FC<{
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
-        <div>
+        <div 
+            className="max-h-[70vh] overflow-y-auto pr-2"
+            dir={info?.language === 'he' ? 'rtl' : 'ltr'}
+        >
           {isLoading && <p className="text-gray-300">Loading...</p>}
           {error && <p className="text-red-400">{error}</p>}
-          {!isLoading && !error && (
-            <p className="text-gray-300 whitespace-pre-wrap">{info}</p>
+          {!isLoading && info && !error && (
+            <div className="space-y-4">
+                <p className="text-lg font-bold text-gray-100 whitespace-pre-wrap">{info.instructions}</p>
+                
+                {info.tips && info.tips.length > 0 && (
+                    <div>
+                        <h4 className="font-semibold text-gray-300">{info?.language === 'he' ? 'דגשים:' : 'Tips:'}</h4>
+                        <ul className="list-disc list-inside mt-2 text-gray-300 space-y-1">
+                            {info.tips.map((tip, index) => <li key={index}>{tip}</li>)}
+                        </ul>
+                    </div>
+                )}
+
+                {info.generalInfo && (
+                    <p className="mt-4 text-gray-400 whitespace-pre-wrap">{info.generalInfo}</p>
+                )}
+            </div>
           )}
         </div>
       </div>
@@ -333,7 +355,7 @@ const PlanListItem: React.FC<{
                 disabled={!!activeWorkout}
             >
                 {plan.isLocked ? (
-                    <svg xmlns="http://www.w.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>
                 ) : (
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a5 5 0 00-5 5v2a2 2 0 00-2 2v5a2 2 0 002 2h10a2 2 0 002-2v-5a2 2 0 00-2-2V7a5 5 0 00-5-5zm0 9a3 3 0 100-6 3 3 0 000 6z" /></svg>
                 )}
