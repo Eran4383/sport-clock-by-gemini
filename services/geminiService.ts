@@ -1,8 +1,10 @@
+
 export interface ExerciseInfo {
     instructions: string;
     tips: string[];
     generalInfo: string;
     language: 'en' | 'he' | string;
+    youtubeVideoId?: string;
 }
 
 const CACHE_KEY = 'geminiExerciseCache_v1';

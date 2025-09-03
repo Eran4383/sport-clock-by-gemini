@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useWorkout } from '../contexts/WorkoutContext';
 import { WorkoutPlan, WorkoutStep } from '../types';
@@ -49,7 +50,9 @@ const ExerciseInfoModal: React.FC<{
   }, [info?.instructions]);
 
   const youtubeSearchQuery = useMemo(() => encodeURIComponent(`${getBaseExerciseName(exerciseName)} exercise tutorial`), [exerciseName]);
-  const embedUrl = `https://www.youtube.com/embed?listType=search&list=${youtubeSearchQuery}`;
+  const embedUrl = info?.youtubeVideoId 
+    ? `https://www.youtube.com/embed/${info.youtubeVideoId}`
+    : `https://www.youtube.com/results?search_query=${youtubeSearchQuery}`;
 
   const TabButton: React.FC<{
     label: string;
@@ -93,8 +96,8 @@ const ExerciseInfoModal: React.FC<{
             <p className="text-red-400">{error}</p>
           ) : info ? (
             <>
-              {/* Tabs */}
-              <div className="relative z-10 flex border-b border-gray-700 mb-4">
+              {/* Tabs - Increased z-index to fix click issue */}
+              <div className="relative z-20 flex border-b border-gray-700 mb-4">
                 <TabButton label={isHebrew ? "הדרכה" : "How-To"} isActive={activeTab === 'howto'} onClick={() => setActiveTab('howto')} />
                 <TabButton label={isHebrew ? "פרטים" : "Details"} isActive={activeTab === 'details'} onClick={() => setActiveTab('details')} />
               </div>
@@ -103,20 +106,34 @@ const ExerciseInfoModal: React.FC<{
               <div className="flex-grow overflow-y-auto pr-2">
                 {activeTab === 'howto' && (
                   <div className="space-y-4">
-                    {/* YouTube Embed */}
+                    {/* YouTube Embed or Search Link */}
                     <div className="aspect-video bg-gray-900 rounded-lg overflow-hidden">
-                       <iframe
-                            className="w-full h-full"
-                            src={embedUrl}
-                            title={`YouTube video player for ${exerciseName}`}
-                            frameBorder="0"
-                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                            allowFullScreen
-                        ></iframe>
+                       {info.youtubeVideoId ? (
+                            <iframe
+                                className="w-full h-full"
+                                src={embedUrl}
+                                title={`YouTube video player for ${exerciseName}`}
+                                frameBorder="0"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                allowFullScreen
+                            ></iframe>
+                       ) : (
+                           <div className="w-full h-full flex flex-col items-center justify-center p-4 text-center">
+                                <p className="text-gray-400 mb-4">No specific video tutorial found.</p>
+                                <a
+                                    href={embedUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="px-4 py-2 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition-colors"
+                                >
+                                    Search on YouTube
+                                </a>
+                           </div>
+                       )}
                     </div>
                     {/* Instructions List */}
                     <h4 className="font-semibold text-lg text-white mt-4">{isHebrew ? "הוראות" : "Instructions"}</h4>
-                    <ol className="list-decimal list-inside space-y-2 text-gray-200">
+                    <ol className="list-decimal list-outside pl-5 space-y-2 text-gray-200">
                         {parsedInstructions.map((item, index) => <li key={index}>{item}</li>)}
                     </ol>
                   </div>

@@ -38,6 +38,7 @@ const AppContent: React.FC = () => {
   const stopwatch = useStopwatch();
   const wasWorkoutActive = useRef(false);
   const [workoutCompleted, setWorkoutCompleted] = useState(false);
+  const [completedWorkoutDuration, setCompletedWorkoutDuration] = useState<number | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isWorkoutOpen, setIsWorkoutOpen] = useState(false);
   const [preWorkoutTimeLeft, setPreWorkoutTimeLeft] = useState<number | null>(null);
@@ -289,6 +290,7 @@ const AppContent: React.FC = () => {
       if (!wasWorkoutActive.current) {
         // On workout start
         setWorkoutCompleted(false);
+        setCompletedWorkoutDuration(null);
         stopwatch.stop();
         countdown.stop();
         stopwatch.reset();
@@ -313,7 +315,7 @@ const AppContent: React.FC = () => {
     } else {
       if (wasWorkoutActive.current) {
         // On workout end
-        stopwatch.stop();
+        setCompletedWorkoutDuration(stopwatch.time);
         countdown.stop();
         contextStopWorkout({
             completed: true,
@@ -322,6 +324,7 @@ const AppContent: React.FC = () => {
             steps: activeWorkout?.plan.steps
         });
         setWorkoutCompleted(true);
+        // Do NOT stop the main stopwatch, let it continue.
       }
       wasWorkoutActive.current = false;
     }
@@ -331,6 +334,7 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     if (workoutCompleted && (stopwatch.isRunning || countdown.isRunning)) {
         setWorkoutCompleted(false);
+        setCompletedWorkoutDuration(null);
     }
   }, [workoutCompleted, stopwatch.isRunning, countdown.isRunning]);
 
@@ -385,18 +389,27 @@ const AppContent: React.FC = () => {
 
 
   const startStopwatchAndReset = () => {
-    if (workoutCompleted) setWorkoutCompleted(false);
+    if (workoutCompleted) {
+        setWorkoutCompleted(false);
+        setCompletedWorkoutDuration(null);
+    }
     stopwatch.start();
   };
 
   const resetStopwatchAndReset = () => {
-    if (workoutCompleted) setWorkoutCompleted(false);
+    if (workoutCompleted) {
+        setWorkoutCompleted(false);
+        setCompletedWorkoutDuration(null);
+    }
     stopwatch.reset();
     countdown.resetCycleCount(); // Reset cycles with main timer
   };
   
   const resetCountdownAndReset = () => {
-    if (workoutCompleted) setWorkoutCompleted(false);
+    if (workoutCompleted) {
+        setWorkoutCompleted(false);
+        setCompletedWorkoutDuration(null);
+    }
     isWorkoutActive ? restartCurrentStep() : countdown.reset();
   };
 
@@ -465,7 +478,7 @@ const AppContent: React.FC = () => {
                     </p>
                 </div>
             )}
-            {settings.showTimer && <TimerDisplay time={stopwatch.time} />}
+            {settings.showTimer && <TimerDisplay time={stopwatch.time} completedWorkoutDuration={completedWorkoutDuration} />}
             <Controls 
               isRunning={stopwatch.isRunning}
               start={startStopwatchAndReset}
