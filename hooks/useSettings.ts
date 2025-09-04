@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback } from 'react';
 
 export interface Settings {
@@ -25,6 +26,7 @@ export interface Settings {
   backgroundColor: string;
   halfwayColor: string;
   showRestTitleOnDefaultCountdown: boolean;
+  preWorkoutCountdownDuration: number;
 }
 
 const defaultSettings: Settings = {
@@ -52,6 +54,7 @@ const defaultSettings: Settings = {
   backgroundColor: '#000000',
   halfwayColor: '#FF0000',
   showRestTitleOnDefaultCountdown: true,
+  preWorkoutCountdownDuration: 10,
 };
 
 const getInitialSettings = (): Settings => {

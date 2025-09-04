@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useSettings } from '../contexts/SettingsContext';
 import { playNotificationSound } from '../utils/sound';
@@ -57,9 +58,12 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const durationInputRef = useRef<HTMLInputElement>(null);
   const restInputRef = useRef<HTMLInputElement>(null);
+  const preWorkoutInputRef = useRef<HTMLInputElement>(null);
   
   const [localCountdownDurationStr, setLocalCountdownDurationStr] = useState(settings.countdownDuration.toString());
   const [localRestDurationStr, setLocalRestDurationStr] = useState(settings.countdownRestDuration.toString());
+  const [localPreWorkoutCountdownStr, setLocalPreWorkoutCountdownStr] = useState(settings.preWorkoutCountdownDuration.toString());
+
 
   useEffect(() => {
     if (document.activeElement !== durationInputRef.current) {
@@ -72,6 +76,12 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
       setLocalRestDurationStr(settings.countdownRestDuration.toString());
     }
   }, [settings.countdownRestDuration]);
+
+  useEffect(() => {
+    if (document.activeElement !== preWorkoutInputRef.current) {
+      setLocalPreWorkoutCountdownStr(settings.preWorkoutCountdownDuration.toString());
+    }
+  }, [settings.preWorkoutCountdownDuration]);
 
   // Auto-close logic
   useEffect(() => {
@@ -114,16 +124,22 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
 
     const durationEl = durationInputRef.current;
     const restEl = restInputRef.current;
+    const preWorkoutEl = preWorkoutInputRef.current;
+
 
     // We need to create these wrapper functions because addEventListener and removeEventListener need the exact same function reference.
     const durationWheelHandler = (e: WheelEvent) => handleWheel(e, setLocalCountdownDurationStr, 1);
     const restWheelHandler = (e: WheelEvent) => handleWheel(e, setLocalRestDurationStr, 0);
+    const preWorkoutWheelHandler = (e: WheelEvent) => handleWheel(e, setLocalPreWorkoutCountdownStr, 1);
     
     if (durationEl) {
       durationEl.addEventListener('wheel', durationWheelHandler, { passive: false });
     }
     if (restEl) {
       restEl.addEventListener('wheel', restWheelHandler, { passive: false });
+    }
+    if (preWorkoutEl) {
+        preWorkoutEl.addEventListener('wheel', preWorkoutWheelHandler, { passive: false });
     }
 
     return () => {
@@ -132,6 +148,9 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
       }
       if (restEl) {
         restEl.removeEventListener('wheel', restWheelHandler);
+      }
+      if (preWorkoutEl) {
+        preWorkoutEl.removeEventListener('wheel', preWorkoutWheelHandler);
       }
     };
   }, []);
@@ -156,11 +175,20 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
      setLocalRestDurationStr(finalValue.toString());
      updateSettings({ countdownRestDuration: finalValue });
   };
+  
+  const handlePreWorkoutBlur = () => {
+     const num = parseInt(localPreWorkoutCountdownStr, 10);
+     const finalValue = !isNaN(num) && num >= 1 ? num : 1;
+     setLocalPreWorkoutCountdownStr(finalValue.toString());
+     updateSettings({ preWorkoutCountdownDuration: finalValue });
+  };
+
 
   const handleClose = () => {
     // Save any pending changes before closing
     handleDurationBlur();
     handleRestBlur();
+    handlePreWorkoutBlur();
     setIsOpen(false);
   };
 
@@ -258,6 +286,25 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
             
             <div className="space-y-8">
               
+              <div>
+                <h3 className="text-lg font-semibold text-gray-300 mb-3">General</h3>
+                <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
+                  <div className="flex items-center justify-between">
+                     <label htmlFor="preWorkoutDuration" className="text-white">Pre-Workout Time (s)</label>
+                     <input
+                        ref={preWorkoutInputRef}
+                        type="number"
+                        id="preWorkoutDuration"
+                        min="1"
+                        className="w-20 bg-gray-600 text-white text-center rounded-md p-1 focus:ring-2 focus:outline-none ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        value={localPreWorkoutCountdownStr}
+                        onChange={(e) => setLocalPreWorkoutCountdownStr(e.target.value)}
+                        onBlur={handlePreWorkoutBlur}
+                     />
+                  </div>
+                </div>
+              </div>
+
               <div>
                 <h3 className="text-lg font-semibold text-gray-300 mb-3">Countdown</h3>
                 <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">

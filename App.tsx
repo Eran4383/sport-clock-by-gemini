@@ -38,7 +38,6 @@ const AppContent: React.FC = () => {
   const stopwatch = useStopwatch();
   const wasWorkoutActive = useRef(false);
   const [workoutCompleted, setWorkoutCompleted] = useState(false);
-  const [completedWorkoutDuration, setCompletedWorkoutDuration] = useState<number | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isWorkoutOpen, setIsWorkoutOpen] = useState(false);
   const [preWorkoutTimeLeft, setPreWorkoutTimeLeft] = useState<number | null>(null);
@@ -66,26 +65,29 @@ const AppContent: React.FC = () => {
   
   // Handle the pre-workout countdown
   useEffect(() => {
-    // FIX: Using `const` for the timer and returning the cleanup function from within the `if` block
-    // solves both the type error (`NodeJS.Timeout` is not a browser type) and a potential runtime
-    // error from trying to clear an uninitialized timer.
+    let timer: ReturnType<typeof setInterval> | undefined;
     if (isPreparingWorkout) {
-        setPreWorkoutTimeLeft(10);
-        const timer = setInterval(() => {
-            setPreWorkoutTimeLeft(prev => {
-                if (prev === null || prev <= 1) {
-                    clearInterval(timer);
+        let countdown = settings.preWorkoutCountdownDuration;
+        setPreWorkoutTimeLeft(countdown);
+
+        timer = setInterval(() => {
+            countdown -= 1;
+            setPreWorkoutTimeLeft(countdown);
+            
+            if (countdown <= 0) {
+                clearInterval(timer);
+                // After displaying 0, wait a full second before starting the workout.
+                setTimeout(() => {
                     commitStartWorkout();
-                    return null;
-                }
-                return prev - 1;
-            });
+                }, 1000);
+            }
         }, 1000);
-        return () => clearInterval(timer);
+
+        return () => { if (timer) clearInterval(timer); };
     } else {
         setPreWorkoutTimeLeft(null); // Ensure countdown stops if workout is aborted
     }
-  }, [isPreparingWorkout, commitStartWorkout]);
+  }, [isPreparingWorkout, commitStartWorkout, settings.preWorkoutCountdownDuration]);
 
 
   const toggleFullScreen = useCallback(() => {
@@ -290,7 +292,6 @@ const AppContent: React.FC = () => {
       if (!wasWorkoutActive.current) {
         // On workout start
         setWorkoutCompleted(false);
-        setCompletedWorkoutDuration(null);
         stopwatch.stop();
         countdown.stop();
         stopwatch.reset();
@@ -315,7 +316,7 @@ const AppContent: React.FC = () => {
     } else {
       if (wasWorkoutActive.current) {
         // On workout end
-        setCompletedWorkoutDuration(stopwatch.time);
+        stopwatch.stop();
         countdown.stop();
         contextStopWorkout({
             completed: true,
@@ -324,7 +325,6 @@ const AppContent: React.FC = () => {
             steps: activeWorkout?.plan.steps
         });
         setWorkoutCompleted(true);
-        // Do NOT stop the main stopwatch, let it continue.
       }
       wasWorkoutActive.current = false;
     }
@@ -334,7 +334,6 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     if (workoutCompleted && (stopwatch.isRunning || countdown.isRunning)) {
         setWorkoutCompleted(false);
-        setCompletedWorkoutDuration(null);
     }
   }, [workoutCompleted, stopwatch.isRunning, countdown.isRunning]);
 
@@ -389,27 +388,18 @@ const AppContent: React.FC = () => {
 
 
   const startStopwatchAndReset = () => {
-    if (workoutCompleted) {
-        setWorkoutCompleted(false);
-        setCompletedWorkoutDuration(null);
-    }
+    if (workoutCompleted) setWorkoutCompleted(false);
     stopwatch.start();
   };
 
   const resetStopwatchAndReset = () => {
-    if (workoutCompleted) {
-        setWorkoutCompleted(false);
-        setCompletedWorkoutDuration(null);
-    }
+    if (workoutCompleted) setWorkoutCompleted(false);
     stopwatch.reset();
     countdown.resetCycleCount(); // Reset cycles with main timer
   };
   
   const resetCountdownAndReset = () => {
-    if (workoutCompleted) {
-        setWorkoutCompleted(false);
-        setCompletedWorkoutDuration(null);
-    }
+    if (workoutCompleted) setWorkoutCompleted(false);
     isWorkoutActive ? restartCurrentStep() : countdown.reset();
   };
 
@@ -471,14 +461,15 @@ const AppContent: React.FC = () => {
 
       {(settings.showTimer || settings.showCycleCounter) && (
         <footer className="w-full max-w-3xl mx-auto flex flex-col items-center gap-1">
-            {isWorkoutActive && settings.showNextExercise && nextUpcomingStep && (
-                <div className="text-center mb-2 text-gray-400">
-                    <p className="text-xl">
-                        Next Up: <span className="font-bold text-gray-300">{nextUpcomingStep.name}</span>
-                    </p>
-                </div>
-            )}
-            {settings.showTimer && <TimerDisplay time={stopwatch.time} completedWorkoutDuration={completedWorkoutDuration} />}
+            {/* Reserve space for "Next Up" to prevent layout shift on the last step */}
+            <div className="text-center mb-2 h-7 flex items-center justify-center">
+              {isWorkoutActive && settings.showNextExercise && nextUpcomingStep && (
+                  <p className="text-xl text-gray-400">
+                      Next Up: <span className="font-bold text-gray-300">{nextUpcomingStep.name}</span>
+                  </p>
+              )}
+            </div>
+            {settings.showTimer && <TimerDisplay time={stopwatch.time} />}
             <Controls 
               isRunning={stopwatch.isRunning}
               start={startStopwatchAndReset}

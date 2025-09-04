@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 
 const apiKey = process.env.API_KEY;
@@ -28,11 +27,10 @@ export default async function handler(req: any, res: any) {
     const prompt = `Analyze the exercise "${exerciseName}". Respond in the same language as the exercise name. Your response MUST be a JSON object.
 
 Follow this structure:
-1.  "instructions": A brief, clear, step-by-step guide on how to perform the exercise. Each step MUST be on a new line, separated by a "\\n" character.
+1.  "instructions": A brief, clear, step-by-step guide on how to perform the exercise. This is the main part.
 2.  "tips": An array of 2-4 specific, concise tips for correct form or common mistakes.
 3.  "generalInfo": A short paragraph about the exercise, muscles targeted, and benefits.
-4.  "language": The ISO 639-1 code for the language of your response (e.g., "he" for Hebrew).
-5.  "youtubeVideoId": (Optional) A single, relevant YouTube video ID for a tutorial. Just the ID, not the full URL.`;
+4.  "language": The ISO 639-1 code for the language of your response (e.g., "he" for Hebrew).`;
 
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
@@ -42,11 +40,10 @@ Follow this structure:
             responseSchema: {
                 type: Type.OBJECT,
                 properties: {
-                    instructions: { type: Type.STRING, description: "Clear, step-by-step instructions. Each step must be separated by a '\\n' newline character." },
+                    instructions: { type: Type.STRING, description: "Clear, step-by-step instructions." },
                     tips: { type: Type.ARRAY, items: { type: Type.STRING }, description: "A list of concise tips." },
                     generalInfo: { type: Type.STRING, description: "General info about the exercise." },
                     language: { type: Type.STRING, description: "ISO 639-1 language code of the response." },
-                    youtubeVideoId: { type: Type.STRING, description: "A relevant YouTube video ID for an exercise tutorial." },
                 },
                 required: ["instructions", "tips", "generalInfo", "language"],
             },
