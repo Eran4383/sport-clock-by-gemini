@@ -237,7 +237,13 @@ const AppContent: React.FC = () => {
             updateSettings({ stealthModeEnabled: !settings.stealthModeEnabled });
             break;
         case 'escape':
-            if (isWorkoutActive || isPreparingWorkout) {
+            if (workoutCompleted) {
+                setWorkoutCompleted(false);
+            } else if (isPreparingWorkout) {
+                // Skip the countdown and start the workout immediately.
+                // A second press will be handled by the isWorkoutActive case below.
+                commitStartWorkout();
+            } else if (isWorkoutActive) {
                 if(window.confirm('Are you sure you want to stop the current workout?')) {
                     stopWorkoutAborted();
                 }
@@ -338,7 +344,7 @@ const AppContent: React.FC = () => {
   }, [workoutCompleted, stopwatch.isRunning, countdown.isRunning]);
 
   if (preWorkoutTimeLeft !== null) {
-    return <PreWorkoutCountdown timeLeft={preWorkoutTimeLeft} />;
+    return <PreWorkoutCountdown timeLeft={preWorkoutTimeLeft} onDoubleClick={toggleFullScreen} />;
   }
 
   if (settings.stealthModeEnabled) {

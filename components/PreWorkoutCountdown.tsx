@@ -1,12 +1,17 @@
+
 import React from 'react';
 
 interface PreWorkoutCountdownProps {
   timeLeft: number;
+  onDoubleClick: () => void;
 }
 
-export const PreWorkoutCountdown: React.FC<PreWorkoutCountdownProps> = ({ timeLeft }) => {
+export const PreWorkoutCountdown: React.FC<PreWorkoutCountdownProps> = ({ timeLeft, onDoubleClick }) => {
   return (
-    <div className="fixed inset-0 bg-white text-black flex flex-col items-center justify-center z-[200]">
+    <div 
+      className="fixed inset-0 bg-white text-black flex flex-col items-center justify-center z-[200]"
+      onDoubleClick={onDoubleClick}
+    >
       <h1 className="text-4xl md:text-6xl font-bold mb-8">
         מתחילים בעוד
       </h1>
