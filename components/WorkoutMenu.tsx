@@ -1,9 +1,4 @@
-
-
-
-
-
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useWorkout } from '../contexts/WorkoutContext';
 import { WorkoutPlan, WorkoutStep } from '../types';
 import { useSettings } from '../contexts/SettingsContext';
@@ -19,6 +14,10 @@ const ExerciseInfoModal: React.FC<{
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'howto' | 'details'>('howto');
+  
+  const handleSetHowToTab = useCallback(() => setActiveTab('howto'), []);
+  const handleSetDetailsTab = useCallback(() => setActiveTab('details'), []);
+
 
   useEffect(() => {
     const fetchInfo = async () => {
@@ -61,11 +60,8 @@ const ExerciseInfoModal: React.FC<{
     isActive: boolean;
     onClick: () => void;
   }> = ({ label, isActive, onClick }) => (
-    <div
-      role="button"
-      tabIndex={0}
-      onMouseDown={onClick}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClick(); }}
+    <button
+      onClick={onClick}
       className={`px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors focus:outline-none cursor-pointer ${
         isActive
           ? 'bg-gray-700 text-white'
@@ -73,7 +69,7 @@ const ExerciseInfoModal: React.FC<{
       }`}
     >
       {label}
-    </div>
+    </button>
   );
 
   return (
@@ -103,8 +99,8 @@ const ExerciseInfoModal: React.FC<{
             <>
               {/* Tabs */}
               <div className="relative z-10 flex border-b border-gray-700 mb-4">
-                <TabButton label={isHebrew ? "הדרכה" : "How-To"} isActive={activeTab === 'howto'} onClick={() => setActiveTab('howto')} />
-                <TabButton label={isHebrew ? "פרטים" : "Details"} isActive={activeTab === 'details'} onClick={() => setActiveTab('details')} />
+                <TabButton label={isHebrew ? "הדרכה" : "How-To"} isActive={activeTab === 'howto'} onClick={handleSetHowToTab} />
+                <TabButton label={isHebrew ? "פרטים" : "Details"} isActive={activeTab === 'details'} onClick={handleSetDetailsTab} />
               </div>
 
               {/* Tab Content */}
