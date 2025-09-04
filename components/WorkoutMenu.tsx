@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useWorkout } from '../contexts/WorkoutContext';
 import { WorkoutPlan, WorkoutStep } from '../types';
@@ -101,7 +102,7 @@ const ExerciseInfoModal: React.FC<{
               </div>
 
               {/* Tab Content */}
-              <div className="flex-grow overflow-y-auto pr-2">
+              <div className="flex-grow overflow-y-auto pr-2 min-h-0">
                 {activeTab === 'howto' && (
                   <div className="space-y-4">
                     {/* YouTube Embed */}
@@ -885,7 +886,19 @@ const EditableStepItem: React.FC<{
     const stepBgClass = step.type === 'rest' ? 'bg-gray-700/80' : 'bg-gray-700/50';
 
     return (
-        <div className={`${stepBgClass} rounded-lg`} style={{ borderLeft: `3px solid ${color || 'transparent'}` }}>
+        <div className={`${stepBgClass} rounded-lg relative`} style={{ borderLeft: `3px solid ${color || 'transparent'}` }}>
+            {!isExpanded && (
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        removeStep(index);
+                    }}
+                    className="absolute top-1 right-1 p-1 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-full z-10"
+                    title="Remove step"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+            )}
             <div className="p-3 flex items-center gap-2 cursor-pointer" onClick={onToggleExpand}>
                 <span className="text-gray-400 font-bold">#{index + 1}</span>
                 <div className="flex-grow">
@@ -960,6 +973,7 @@ const EditableSetGroup: React.FC<{
   startIndex: number;
   updateStep: (index: number, newStep: Partial<WorkoutStep>) => void;
   removeStep: (index: number) => void;
+  removeSetGroup: () => void;
   isExpanded: boolean;
   onToggleExpand: () => void;
   color?: string;
@@ -967,7 +981,7 @@ const EditableSetGroup: React.FC<{
   updateSettings: ReturnType<typeof useSettings>['updateSettings'];
   expandedSteps: Record<string, boolean>;
   onToggleStepExpand: (stepId: string) => void;
-}> = ({ steps, startIndex, updateStep, removeStep, isExpanded, onToggleExpand, color, settings, updateSettings, expandedSteps, onToggleStepExpand }) => {
+}> = ({ steps, startIndex, updateStep, removeStep, removeSetGroup, isExpanded, onToggleExpand, color, settings, updateSettings, expandedSteps, onToggleStepExpand }) => {
     
     if (steps.length === 0) return null;
 
@@ -975,7 +989,19 @@ const EditableSetGroup: React.FC<{
     const numSets = steps.filter(s => s.type === 'exercise').length;
     
     return (
-        <div className="bg-gray-900/40 rounded-lg" style={{ borderLeft: `3px solid ${color || 'transparent'}` }}>
+        <div className="bg-gray-900/40 rounded-lg relative" style={{ borderLeft: `3px solid ${color || 'transparent'}` }}>
+             {!isExpanded && (
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        removeSetGroup();
+                    }}
+                    className="absolute top-1 right-1 p-1 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-full z-10"
+                    title={`Delete all ${numSets} sets of ${baseName}`}
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+            )}
             <div className="p-3 flex items-center gap-2 cursor-pointer" onClick={onToggleExpand}>
                 <div className="flex-grow">
                     <p className="font-semibold text-white truncate" title={`${baseName} (Set)`}>{baseName}</p>
@@ -1144,10 +1170,77 @@ const PlanEditor: React.FC<{
       setEditedPlan(p => p ? { ...p, steps: [...p.steps, ...stepsToAdd] } : null);
     };
 
+    const renumberAllSets = (steps: WorkoutStep[]): WorkoutStep[] => {
+        const setCounts = new Map<string, number>();
+        steps.forEach(step => {
+            if (step.type === 'exercise') {
+                const baseName = getBaseExerciseName(step.name);
+                if (baseName !== step.name) {
+                    setCounts.set(baseName, (setCounts.get(baseName) || 0) + 1);
+                }
+            }
+        });
+
+        const setCounters = new Map<string, number>();
+        return steps.map((step, idx) => {
+            if (step.type === 'exercise') {
+                const baseName = getBaseExerciseName(step.name);
+                const total = setCounts.get(baseName);
+                if (total) {
+                    const currentCount = (setCounters.get(baseName) || 0) + 1;
+                    setCounters.set(baseName, currentCount);
+                    return { ...step, name: `${baseName} (Set ${currentCount}/${total})` };
+                }
+            }
+            
+            const restMatch = step.name.match(/^(Rest|מנוחה)\s*\((Set|סט)\s*\d+\/\d+\)/i);
+            if (step.type === 'rest' && restMatch) {
+                if (idx > 0) {
+                    const prevStep = steps[idx - 1];
+                    if (prevStep.type === 'exercise') {
+                        const baseName = getBaseExerciseName(prevStep.name);
+                        const total = setCounts.get(baseName);
+                        const currentCount = setCounters.get(baseName);
+                        if (total && currentCount) {
+                             return { ...step, name: `Rest (סט ${currentCount}/${total})` };
+                        }
+                    }
+                }
+            }
+            return step;
+        });
+    };
+
     const removeStep = (index: number) => {
         if (!editedPlan) return;
-        setEditedPlan(p => p ? { ...p, steps: p.steps.filter((_, i) => i !== index)} : null);
+
+        const stepToRemove = editedPlan.steps[index];
+        let numToRemove = 1;
+
+        const isExerciseInSet = stepToRemove.type === 'exercise' && /\((Set|סט)\s*\d+\/\d+\)/i.test(stepToRemove.name);
+
+        if (isExerciseInSet && index + 1 < editedPlan.steps.length) {
+            const nextStep = editedPlan.steps[index + 1];
+            if (nextStep.type === 'rest') {
+                numToRemove = 2;
+            }
+        }
+        
+        const newSteps = editedPlan.steps.filter((_, i) => i < index || i >= (index + numToRemove));
+        const finalSteps = renumberAllSets(newSteps);
+        
+        setEditedPlan(p => p ? { ...p, steps: finalSteps } : null);
     };
+
+    const removeSetGroup = (startIndex: number, count: number) => {
+        if (!editedPlan) return;
+
+        const newSteps = editedPlan.steps.filter((_, i) => i < startIndex || i >= (startIndex + count));
+        const finalSteps = renumberAllSets(newSteps);
+        
+        setEditedPlan(p => p ? { ...p, steps: finalSteps } : null);
+    };
+
 
     const addStepsFromBuilder = (steps: WorkoutStep[]) => {
         if (!editedPlan || steps.length === 0) return;
@@ -1232,6 +1325,7 @@ const PlanEditor: React.FC<{
                                    startIndex={startIndex}
                                    updateStep={updateStep}
                                    removeStep={removeStep}
+                                   removeSetGroup={() => removeSetGroup(startIndex, item.length)}
                                    isExpanded={!!expandedGroups[groupId]}
                                    onToggleExpand={() => toggleGroupExpansion(groupId)}
                                    color={color}
