@@ -1,4 +1,5 @@
 export interface ExerciseInfo {
+    videoUrl: string | null;
     instructions: string;
     tips: string[];
     generalInfo: string;
@@ -32,6 +33,7 @@ const saveToCache = (key: string, data: ExerciseInfo) => {
 
 
 const getApiKeyErrorResponse = (): ExerciseInfo => ({
+    videoUrl: null,
     instructions: "API Key Not Configured on Server",
     tips: [
         "1. Go to your project settings on your hosting provider (e.g., Vercel).",
@@ -45,6 +47,7 @@ const getApiKeyErrorResponse = (): ExerciseInfo => ({
 });
 
 const getGenericErrorResponse = (message: string): ExerciseInfo => ({
+    videoUrl: null,
     instructions: message,
     tips: [],
     generalInfo: "An unexpected error occurred. Please check the developer console for more details and try again later.",

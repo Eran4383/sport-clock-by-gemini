@@ -52,8 +52,34 @@ const ExerciseInfoModal: React.FC<{
       .map(line => line.trim().replace(/^\d+\.\s*/, '')); // remove "1. "
   }, [info?.instructions]);
 
-  const youtubeSearchQuery = useMemo(() => encodeURIComponent(`${getBaseExerciseName(exerciseName)} exercise tutorial`), [exerciseName]);
-  const embedUrl = `https://www.youtube.com/embed?listType=search&list=${youtubeSearchQuery}`;
+  const embedUrl = useMemo(() => {
+    if (!info?.videoUrl) {
+      return null;
+    }
+
+    try {
+      const url = new URL(info.videoUrl);
+      
+      if (url.hostname.includes('youtube.com')) {
+        const videoId = url.searchParams.get('v');
+        if (videoId) {
+          return `https://www.youtube.com/embed/${videoId}`;
+        }
+      }
+      
+      if (url.hostname.includes('youtu.be')) {
+        const videoId = url.pathname.slice(1);
+        if (videoId) {
+          return `https://www.youtube.com/embed/${videoId}`;
+        }
+      }
+      
+      // For other platforms, assume it's already an embeddable URL, as requested from the AI.
+      return info.videoUrl;
+    } catch (e) {
+      return null; // Invalid URL
+    }
+  }, [info?.videoUrl]);
 
   const TabButton: React.FC<{
     label: string;
@@ -107,16 +133,23 @@ const ExerciseInfoModal: React.FC<{
               <div className="flex-grow overflow-y-auto pr-2 min-h-0">
                 {activeTab === 'howto' && (
                   <div className="space-y-4">
-                    {/* YouTube Embed */}
-                    <div className="aspect-video bg-gray-900 rounded-lg overflow-hidden">
-                       <iframe
-                            className="w-full h-full"
-                            src={embedUrl}
-                            title={`YouTube video player for ${exerciseName}`}
-                            frameBorder="0"
-                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                            allowFullScreen
-                        ></iframe>
+                    {/* Video Embed */}
+                    <div className="aspect-video bg-gray-900 rounded-lg overflow-hidden flex items-center justify-center">
+                        {embedUrl ? (
+                            <iframe
+                                className="w-full h-full"
+                                src={embedUrl}
+                                title={`Video tutorial for ${exerciseName}`}
+                                frameBorder="0"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                allowFullScreen
+                            ></iframe>
+                        ) : (
+                            <div className="text-gray-400 text-center">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.55a1 1 0 01.55.89V14.11a1 1 0 01-1.55.89L15 14M5 18a2 2 0 01-2-2V8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5z" /></svg>
+                                <p>{isHebrew ? "סרטון אינו זמין כרגע" : "Video not available at this time"}</p>
+                            </div>
+                        )}
                     </div>
                     {/* Instructions List */}
                     <h4 className="font-semibold text-lg text-white mt-4">{isHebrew ? "הוראות" : "Instructions"}</h4>

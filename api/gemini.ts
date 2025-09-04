@@ -24,13 +24,14 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const prompt = `Analyze the exercise "${exerciseName}". Respond in the same language as the exercise name. Your response MUST be a JSON object.
+    const prompt = `Analyze the exercise "${exerciseName}". Find a relevant tutorial video. Respond in the same language as the exercise name. Your response MUST be a JSON object.
 
 Follow this structure:
-1.  "instructions": A brief, clear, step-by-step guide on how to perform the exercise. This is the main part.
-2.  "tips": An array of 2-4 specific, concise tips for correct form or common mistakes.
-3.  "generalInfo": A short paragraph about the exercise, muscles targeted, and benefits.
-4.  "language": The ISO 639-1 code for the language of your response (e.g., "he" for Hebrew).`;
+1.  "videoUrl": A string containing a high-quality, embeddable tutorial video URL for this exercise. Search public video platforms. If no suitable, embeddable video is found, return an empty string "".
+2.  "instructions": A brief, clear, step-by-step guide on how to perform the exercise. This is the main part.
+3.  "tips": An array of 2-4 specific, concise tips for correct form or common mistakes.
+4.  "generalInfo": A short paragraph about the exercise, muscles targeted, and benefits.
+5.  "language": The ISO 639-1 code for the language of your response (e.g., "he" for Hebrew).`;
 
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
@@ -40,12 +41,13 @@ Follow this structure:
             responseSchema: {
                 type: Type.OBJECT,
                 properties: {
+                    videoUrl: { type: Type.STRING, description: "An embeddable URL for a tutorial video, or an empty string." },
                     instructions: { type: Type.STRING, description: "Clear, step-by-step instructions." },
                     tips: { type: Type.ARRAY, items: { type: Type.STRING }, description: "A list of concise tips." },
                     generalInfo: { type: Type.STRING, description: "General info about the exercise." },
                     language: { type: Type.STRING, description: "ISO 639-1 language code of the response." },
                 },
-                required: ["instructions", "tips", "generalInfo", "language"],
+                required: ["videoUrl", "instructions", "tips", "generalInfo", "language"],
             },
         },
     });
