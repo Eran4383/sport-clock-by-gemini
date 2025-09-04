@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useWorkout } from '../contexts/WorkoutContext';
 import { WorkoutPlan, WorkoutStep } from '../types';
@@ -58,16 +59,19 @@ const ExerciseInfoModal: React.FC<{
     isActive: boolean;
     onClick: () => void;
   }> = ({ label, isActive, onClick }) => (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
-      className={`px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors focus:outline-none ${
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClick(); }}
+      className={`px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors focus:outline-none cursor-pointer ${
         isActive
           ? 'bg-gray-700 text-white'
           : 'text-gray-400 hover:bg-gray-700/50 hover:text-gray-200'
       }`}
     >
       {label}
-    </button>
+    </div>
   );
 
   return (
@@ -149,6 +153,96 @@ const ExerciseInfoModal: React.FC<{
       </div>
     </div>
   );
+};
+
+const ShareModal: React.FC<{
+  plan: WorkoutPlan;
+  onClose: () => void;
+}> = ({ plan, onClose }) => {
+    const [copyButtonText, setCopyButtonText] = useState('Copy Link');
+    
+    const shareLink = useMemo(() => {
+        try {
+            const planJson = JSON.stringify(plan);
+            const encoder = new TextEncoder();
+            const data = encoder.encode(planJson);
+            const binaryString = Array.from(data, byte => String.fromCharCode(byte)).join('');
+            const base64Data = btoa(binaryString);
+            
+            const url = new URL(window.location.href);
+            url.hash = `import=${base64Data}`;
+            url.search = '';
+            return url.toString();
+        } catch (error) {
+            console.error("Failed to create share link:", error);
+            return '';
+        }
+    }, [plan]);
+
+    if (!shareLink) {
+        return (
+            <div className="fixed inset-0 bg-black/70 z-[101] flex items-center justify-center p-4" onClick={onClose}>
+                <div className="bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-sm text-center" onClick={e => e.stopPropagation()}>
+                    <h3 className="text-xl font-bold text-white">Error</h3>
+                    <p className="text-gray-300 mt-2">Could not generate a shareable link.</p>
+                    <button onClick={onClose} className="mt-4 px-4 py-2 rounded-md text-white bg-gray-600 hover:bg-gray-500 font-semibold">
+                        Close
+                    </button>
+                </div>
+            </div>
+        );
+    }
+    
+    const encodedLink = encodeURIComponent(shareLink);
+    const shareText = `Check out this workout plan: ${plan.name}`;
+    const encodedText = encodeURIComponent(shareText);
+
+    const shareOptions = [
+        { name: 'WhatsApp', url: `https://api.whatsapp.com/send?text=${encodedText}%20${encodedLink}`, 
+          icon: <svg viewBox="0 0 24 24" fill="currentColor" className="h-8 w-8"><path d="M16.75 13.96c.25.13.43.2.5.33.07.13.07.55 0 .63-.07.07-.33.25-.43.25-.1 0-1.13-.5-1.63-.88-.5-.35-1.25-.94-1.25-1.5 0-.5.5-.63.6-.75.1-.1.25-.1.38-.1s.25.05.37.28c.13.2.14.3.17.48.03.2.03.3-.04.4zm3.9-6.32c-1.35-1.35-3.15-2.08-5.02-2.08-3.9 0-7.08 3.18-7.08 7.08 0 1.4.43 2.7.88 3.88l-1.03 3.8 3.88-1.03c1.1.43 2.38.65 3.58.65h.03c3.9 0 7.08-3.18 7.08-7.08 0-1.88-.73-3.68-2.1-5.04zm-5.03 11.42h-.02c-1.08 0-2.13-.28-3.05-.8l-.2-.13-2.28 1.18 1.2-2.23-.13-.23c-.58-1-.88-2.15-.88-3.35 0-3.08 2.5-5.58 5.58-5.58 1.5 0 2.9.58 3.95 1.63 1.05 1.05 1.63 2.45 1.63 3.95 0 3.08-2.5 5.58-5.58 5.58z"></path></svg> },
+        { name: 'Telegram', url: `https://t.me/share/url?url=${encodedLink}&text=${encodedText}`, 
+          icon: <svg viewBox="0 0 24 24" fill="currentColor" className="h-8 w-8"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.1l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.58c-.2 1.03-.73 1.28-1.5 .82L12.2 16.2l-1.99 1.9c-.2.2-.36.36-.7.36.43-.03.62-.2.87-.44z"></path></svg> },
+    ];
+    
+    const copyLink = () => {
+        navigator.clipboard.writeText(shareLink).then(() => {
+            setCopyButtonText('Copied!');
+            setTimeout(() => setCopyButtonText('Copy Link'), 2000);
+        });
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/70 z-[101] flex items-center justify-center p-4" onClick={onClose}>
+            <div className="bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-start">
+                    <h3 className="text-xl font-bold text-white mb-4 break-all pr-4">Share "{plan.name}"</h3>
+                     <button onClick={onClose} className="p-1 -mt-2 -mr-2 rounded-full hover:bg-gray-700">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                </div>
+                <div className="grid grid-cols-2 gap-4 text-center">
+                    {shareOptions.map(opt => (
+                        <a 
+                            key={opt.name}
+                            href={opt.url} 
+                            target="_blank" 
+                            rel="noopener noreferrer" 
+                            className="flex flex-col items-center justify-center gap-2 p-4 bg-gray-700/50 rounded-lg hover:bg-gray-700 transition-colors"
+                        >
+                            {opt.icon}
+                            <span className="font-semibold">{opt.name}</span>
+                        </a>
+                    ))}
+                </div>
+                <div className="mt-6 flex items-center gap-2">
+                    <input type="text" readOnly value={shareLink} className="w-full bg-gray-900 text-gray-400 p-2 rounded-md text-sm truncate" />
+                    <button onClick={copyLink} title="Copy Link" className="px-4 py-2 rounded-md text-white bg-blue-600 hover:bg-blue-700 font-semibold w-32 transition-colors">
+                        {copyButtonText}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
 };
 
 
@@ -245,6 +339,7 @@ const PlanListItem: React.FC<{
   onSelectPlan: (plan: WorkoutPlan) => void;
   onInitiateDelete: (planId: string) => void;
   onInspectExercise: (exerciseName: string) => void;
+  onShare: (plan: WorkoutPlan) => void;
   isSelected: boolean;
   onToggleSelection: (planId: string) => void;
   isDraggable: boolean;
@@ -256,7 +351,7 @@ const PlanListItem: React.FC<{
   isDragTarget: boolean;
   isNewlyImported: boolean;
   index: number;
-}> = ({ plan, onSelectPlan, onInitiateDelete, onInspectExercise, isSelected, onToggleSelection, isDraggable, onDragStart, onDragOver, onDrop, onDragEnd, onDragLeave, isDragTarget, isNewlyImported, index }) => {
+}> = ({ plan, onSelectPlan, onInitiateDelete, onInspectExercise, onShare, isSelected, onToggleSelection, isDraggable, onDragStart, onDragOver, onDrop, onDragEnd, onDragLeave, isDragTarget, isNewlyImported, index }) => {
   const { 
       activeWorkout,
       currentStep,
@@ -351,31 +446,6 @@ const PlanListItem: React.FC<{
     }
   };
   
-  const handleShare = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    try {
-        const planJson = JSON.stringify(plan);
-        // Use TextEncoder to correctly handle UTF-8 characters for btoa
-        const encoder = new TextEncoder();
-        const data = encoder.encode(planJson);
-        const binaryString = Array.from(data, byte => String.fromCharCode(byte)).join('');
-        const base64Data = btoa(binaryString);
-        
-        const url = new URL(window.location.href);
-        url.hash = `import=${base64Data}`;
-        url.search = '';
-        
-        const shareableLink = url.toString();
-        
-        navigator.clipboard.writeText(shareableLink).then(() => {
-            showConfirmation("Link Copied!");
-        });
-    } catch (error) {
-        console.error("Failed to create share link:", error);
-        alert("Could not create a share link.");
-    }
-  };
-
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
     onInitiateDelete(plan.id);
@@ -479,7 +549,10 @@ const PlanListItem: React.FC<{
                 </svg>
             </button>
             <button
-              onClick={handleShare}
+              onClick={(e) => {
+                  e.stopPropagation();
+                  onShare(plan);
+              }}
               className="p-2 text-gray-300 hover:text-white hover:bg-gray-600/50 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
               aria-label="Share plan via link"
               title="Share Plan"
@@ -615,9 +688,9 @@ const PlanList: React.FC<{
   const [dragTargetIndex, setDragTargetIndex] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isImportTextVisible, setIsImportTextVisible] = useState(false);
+  const [sharingPlan, setSharingPlan] = useState<WorkoutPlan | null>(null);
 
   const handleToggleSelection = (planId: string) => {
-    // FIX: Changed `id` to `planId` to correctly add a new plan to the selection. `id` was undefined in this context.
     setSelectedPlanIds(prev =>
       prev.includes(planId) ? prev.filter(id => id !== planId) : [...prev, planId]
     );
@@ -630,6 +703,38 @@ const PlanList: React.FC<{
   
   const handleImportClick = () => {
       fileInputRef.current?.click();
+  };
+
+  const handleShare = async (plan: WorkoutPlan) => {
+    try {
+        const planJson = JSON.stringify(plan);
+        const encoder = new TextEncoder();
+        const data = encoder.encode(planJson);
+        const binaryString = Array.from(data, byte => String.fromCharCode(byte)).join('');
+        const base64Data = btoa(binaryString);
+        
+        const url = new URL(window.location.href);
+        url.hash = `import=${base64Data}`;
+        url.search = '';
+        const shareableLink = url.toString();
+
+        const shareData = {
+            title: `Workout Plan: ${plan.name}`,
+            text: `Check out the "${plan.name}" workout plan!`,
+            url: shareableLink,
+        };
+
+        if (navigator.share) {
+            await navigator.share(shareData);
+        } else {
+            setSharingPlan(plan);
+        }
+    } catch (error) {
+        if ((error as DOMException).name !== 'AbortError') {
+            console.error("Share failed, falling back to modal:", error);
+            setSharingPlan(plan);
+        }
+    }
   };
   
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -709,6 +814,7 @@ const PlanList: React.FC<{
 
   return (
     <div>
+      {sharingPlan && <ShareModal plan={sharingPlan} onClose={() => setSharingPlan(null)} />}
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold text-white">Workout Plans</h2>
         <div className="flex items-center gap-2">
@@ -787,6 +893,7 @@ const PlanList: React.FC<{
                 onSelectPlan={onSelectPlan}
                 onInitiateDelete={onInitiateDelete}
                 onInspectExercise={onInspectExercise}
+                onShare={handleShare}
                 isSelected={selectedPlanIds.includes(plan.id)}
                 onToggleSelection={handleToggleSelection}
                 isDraggable={!activeWorkout}
