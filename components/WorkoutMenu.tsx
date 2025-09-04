@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useWorkout } from '../contexts/WorkoutContext';
 import { WorkoutPlan, WorkoutStep } from '../types';
@@ -116,9 +117,9 @@ const ExerciseInfoModal: React.FC<{
                     </div>
                     {/* Instructions List */}
                     <h4 className="font-semibold text-lg text-white mt-4">{isHebrew ? "הוראות" : "Instructions"}</h4>
-                    <ol className="list-decimal list-inside space-y-2 text-gray-200">
+                    <ul className="list-disc list-inside space-y-2 text-gray-200">
                         {parsedInstructions.map((item, index) => <li key={index}>{item}</li>)}
-                    </ol>
+                    </ul>
                   </div>
                 )}
                 

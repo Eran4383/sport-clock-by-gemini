@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useSettings } from '../contexts/SettingsContext';
 import { playNotificationSound } from '../utils/sound';
@@ -285,10 +286,16 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
             </div>
             
             <div className="space-y-8">
-              
+
               <div>
-                <h3 className="text-lg font-semibold text-gray-300 mb-3">General</h3>
+                <h3 className="text-lg font-semibold text-gray-300 mb-3">Countdown</h3>
                 <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
+                  <Toggle id="showCountdownToggle" label="Show Countdown" checked={settings.showCountdown} onChange={(e) => updateSettings({ showCountdown: e.target.checked })} />
+                  <Toggle id="showCountdownControlsToggle" label="Show Controls" checked={settings.showCountdownControls} onChange={(e) => updateSettings({ showCountdownControls: e.target.checked })} />
+                  <Toggle id="showRestTitleToggle" label="Show 'Rest' Title" checked={settings.showRestTitleOnDefaultCountdown} onChange={(e) => updateSettings({ showRestTitleOnDefaultCountdown: e.target.checked })} />
+                  
+                  <hr className="border-gray-600" />
+                  
                   <div className="flex items-center justify-between">
                      <label htmlFor="preWorkoutDuration" className="text-white">Pre-Workout Time (s)</label>
                      <input
@@ -302,15 +309,6 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
                         onBlur={handlePreWorkoutBlur}
                      />
                   </div>
-                </div>
-              </div>
-
-              <div>
-                <h3 className="text-lg font-semibold text-gray-300 mb-3">Countdown</h3>
-                <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
-                  <Toggle id="showCountdownToggle" label="Show Countdown" checked={settings.showCountdown} onChange={(e) => updateSettings({ showCountdown: e.target.checked })} />
-                  <Toggle id="showCountdownControlsToggle" label="Show Controls" checked={settings.showCountdownControls} onChange={(e) => updateSettings({ showCountdownControls: e.target.checked })} />
-                  <Toggle id="showRestTitleToggle" label="Show 'Rest' Title" checked={settings.showRestTitleOnDefaultCountdown} onChange={(e) => updateSettings({ showRestTitleOnDefaultCountdown: e.target.checked })} />
 
                   <div className="flex items-center justify-between">
                      <label htmlFor="countdownDuration" className="text-white">Duration (s)</label>

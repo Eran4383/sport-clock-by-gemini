@@ -239,6 +239,7 @@ const AppContent: React.FC = () => {
         case 'escape':
             if (workoutCompleted) {
                 setWorkoutCompleted(false);
+                handleUniversalStartStop();
             } else if (isPreparingWorkout) {
                 // Skip the countdown and start the workout immediately.
                 // A second press will be handled by the isWorkoutActive case below.
