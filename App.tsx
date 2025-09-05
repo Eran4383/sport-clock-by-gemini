@@ -349,7 +349,7 @@ const AppContent: React.FC = () => {
   }
 
   if (settings.stealthModeEnabled) {
-    return <div className="fixed inset-0 bg-black z-[100]"></div>;
+    return <div className="fixed inset-0 bg-black z-[200] animate-fadeIn" style={{ animationDuration: '0.3s' }}></div>;
   }
 
   const dynamicStyles = {

@@ -17,7 +17,7 @@ export const PreWorkoutCountdown: React.FC<PreWorkoutCountdownProps> = ({ timeLe
       </h1>
       <div 
         key={timeLeft}
-        className="text-9xl md:text-[20rem] font-bold text-green-500 animate-ping once"
+        className="text-9xl md:text-[20rem] font-bold text-green-500 animate-pop"
         style={{ animationDuration: '1s' }}
       >
         {timeLeft}

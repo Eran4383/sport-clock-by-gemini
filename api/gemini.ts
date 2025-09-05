@@ -41,14 +41,22 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const prompt = `For the exercise "${exerciseName}", provide a detailed analysis. Your entire response MUST be a single JSON object. The response content should be in the same language as the exercise name provided.
+    const prompt = `
+For the exercise "${exerciseName}", your task is to provide a detailed analysis.
 
-The JSON object must contain these exact keys:
-1.  "videoId": A string. Provide the 11-character YouTube video ID for a high-quality, instructional video demonstrating the exercise. Example: "dQw4w9WgXcQ". DO NOT provide a full URL. If no relevant video is found, this value MUST be null.
-2.  "instructions": A string containing a clear, step-by-step guide on how to perform the exercise correctly.
-3.  "tips": An array of strings. Each string should be a concise, helpful tip for maintaining proper form or avoiding common mistakes. Provide 2-4 tips.
-4.  "generalInfo": A string containing a short paragraph that describes the exercise, its benefits, and the primary muscles targeted.
-5.  "language": A string with the ISO 639-1 code for the language of your response (e.g., "en" for English, "he" for Hebrew).`;
+CRITICAL INSTRUCTIONS:
+1.  First, translate the exercise name "${exerciseName}" to its common English equivalent. For example, "שכיבות סמיכה" should become "Push-ups".
+2.  Using the ENGLISH name, search YouTube for a high-quality, instructional video.
+3.  STRONGLY PREFER videos from reputable fitness channels. Good examples are 'wikiHow', 'Men's Health', 'FitnessBlender', 'Athlean-X', or official bodybuilding/calisthenics channels.
+4.  Your entire response MUST be a single, valid JSON object and nothing else.
+5.  All TEXTUAL content in your JSON response (like instructions, tips, etc.) MUST be in the SAME language as the original exercise name provided. Only the YouTube search is in English.
+
+JSON object structure:
+- "videoId": A string. This MUST be the 11-character YouTube video ID. Example: "dQw4w9WgXcQ". DO NOT provide a full URL. If no relevant, high-quality video is found, this value MUST be null.
+- "instructions": A string containing a clear, step-by-step guide on how to perform the exercise correctly.
+- "tips": An array of strings. Each string should be a concise, helpful tip for maintaining proper form or avoiding common mistakes. Provide 2-4 tips.
+- "generalInfo": A string containing a short paragraph that describes the exercise, its benefits, and the primary muscles targeted.
+- "language": A string with the ISO 639-1 code for the language of your response (e.g., "en" for English, "he" for Hebrew).`;
 
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
