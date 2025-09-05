@@ -14,7 +14,9 @@ const ExerciseInfoModal: React.FC<{
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'howto' | 'details'>('howto');
-  
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const modalRef = useRef<HTMLDivElement>(null);
+
   const handleSetHowToTab = useCallback(() => setActiveTab('howto'), []);
   const handleSetDetailsTab = useCallback(() => setActiveTab('details'), []);
 
@@ -26,7 +28,6 @@ const ExerciseInfoModal: React.FC<{
       try {
         const result = await getExerciseInfo(exerciseName);
         setInfo(result);
-        // Check if the primary instruction is an error message
         if (result.instructions.toLowerCase().includes("error") || result.instructions.toLowerCase().includes("failed") || result.instructions.includes("api key")) {
             setError(result.generalInfo);
         }
@@ -39,17 +40,60 @@ const ExerciseInfoModal: React.FC<{
     };
     fetchInfo();
   }, [exerciseName]);
+  
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const startX = e.clientX - position.x;
+    const startY = e.clientY - position.y;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+        setPosition({
+            x: moveEvent.clientX - startX,
+            y: moveEvent.clientY - startY,
+        });
+    };
+
+    const handleMouseUp = () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+  
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    // e.preventDefault() might be too aggressive, let's see. It can prevent scrolling.
+    const touch = e.touches[0];
+    const startX = touch.clientX - position.x;
+    const startY = touch.clientY - position.y;
+
+    const handleTouchMove = (moveEvent: TouchEvent) => {
+        const moveTouch = moveEvent.touches[0];
+        setPosition({
+            x: moveTouch.clientX - startX,
+            y: moveTouch.clientY - startY,
+        });
+    };
+
+    const handleTouchEnd = () => {
+        document.removeEventListener('touchmove', handleTouchMove as any);
+        document.removeEventListener('touchend', handleTouchEnd as any);
+    };
+
+    document.addEventListener('touchmove', handleTouchMove as any, { passive: false });
+    document.addEventListener('touchend', handleTouchEnd as any);
+  };
+
 
   const isHebrew = useMemo(() => info?.language === 'he', [info]);
   
-  // Helper to parse instruction text into a list
   const parsedInstructions = useMemo(() => {
     if (!info?.instructions) return [];
-    // Split by newline, then filter out empty lines, then trim leading numbers/bullets
     return info.instructions
       .split('\n')
       .filter(line => line.trim() !== '')
-      .map(line => line.trim().replace(/^\d+\.\s*/, '')); // remove "1. "
+      .map(line => line.trim().replace(/^\d+\.\s*/, ''));
   }, [info?.instructions]);
 
   const embedUrl = useMemo(() => {
@@ -74,10 +118,9 @@ const ExerciseInfoModal: React.FC<{
         }
       }
       
-      // For other platforms, assume it's already an embeddable URL, as requested from the AI.
       return info.videoUrl;
     } catch (e) {
-      return null; // Invalid URL
+      return null;
     }
   }, [info?.videoUrl]);
 
@@ -99,16 +142,22 @@ const ExerciseInfoModal: React.FC<{
   );
 
   return (
-    <div className="fixed inset-0 bg-black/70 z-[100] flex items-center justify-center p-4" onClick={onClose} aria-modal="true" role="dialog">
+    <div className="fixed inset-0 bg-black/70 z-[100]" onClick={onClose} aria-modal="true" role="dialog">
       <div 
-        className="bg-gray-800 rounded-lg shadow-xl w-full max-w-lg flex flex-col max-h-[90vh]"
+        ref={modalRef}
+        className="bg-gray-800 rounded-lg shadow-xl w-full max-w-lg flex flex-col max-h-[90vh] absolute top-1/2 left-1/2"
+        style={{ transform: `translate(-50%, -50%) translate(${position.x}px, ${position.y}px)` }}
         onClick={e => e.stopPropagation()}
         dir={isHebrew ? 'rtl' : 'ltr'}
       >
         {/* Header */}
-        <div className="relative flex justify-center items-center p-4 border-b border-gray-700">
+        <div 
+            className="relative flex justify-center items-center p-4 border-b border-gray-700 cursor-move"
+            onMouseDown={handleMouseDown}
+            onTouchStart={handleTouchStart}
+        >
           <h3 className="text-xl font-bold text-white break-all text-center mx-10">{exerciseName}</h3>
-          <button onClick={onClose} className="absolute p-1 rounded-full hover:bg-gray-700 top-3 right-3">
+          <button onClick={onClose} className="absolute p-1 rounded-full hover:bg-gray-700 top-3 right-3 cursor-pointer">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>

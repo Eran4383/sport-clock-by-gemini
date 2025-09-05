@@ -24,14 +24,14 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const prompt = `Analyze the exercise "${exerciseName}". Find a relevant tutorial video. Respond in the same language as the exercise name. Your response MUST be a JSON object.
+    const prompt = `For the exercise "${exerciseName}", provide a detailed analysis. Your entire response MUST be a single JSON object. The response content should be in the same language as the exercise name provided.
 
-Follow this structure:
-1.  "videoUrl": A string containing a high-quality, embeddable tutorial video URL for this exercise. Search public video platforms. If no suitable, embeddable video is found, return an empty string "".
-2.  "instructions": A brief, clear, step-by-step guide on how to perform the exercise. This is the main part.
-3.  "tips": An array of 2-4 specific, concise tips for correct form or common mistakes.
-4.  "generalInfo": A short paragraph about the exercise, muscles targeted, and benefits.
-5.  "language": The ISO 639-1 code for the language of your response (e.g., "he" for Hebrew).`;
+The JSON object must contain these exact keys:
+1.  "videoUrl": A string. Search YouTube for a relevant, high-quality tutorial video. The value must be a standard watch link (e.g., "https://www.youtube.com/watch?v=VIDEO_ID" or "https://youtu.be/VIDEO_ID"). If no suitable YouTube video can be found, this value MUST be an empty string ("").
+2.  "instructions": A string containing a clear, step-by-step guide on how to perform the exercise correctly.
+3.  "tips": An array of strings. Each string should be a concise, helpful tip for maintaining proper form or avoiding common mistakes. Provide 2-4 tips.
+4.  "generalInfo": A string containing a short paragraph that describes the exercise, its benefits, and the primary muscles targeted.
+5.  "language": A string with the ISO 639-1 code for the language of your response (e.g., "en" for English, "he" for Hebrew).`;
 
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
@@ -41,7 +41,7 @@ Follow this structure:
             responseSchema: {
                 type: Type.OBJECT,
                 properties: {
-                    videoUrl: { type: Type.STRING, description: "An embeddable URL for a tutorial video, or an empty string." },
+                    videoUrl: { type: Type.STRING, description: "A standard YouTube watch link URL, or an empty string." },
                     instructions: { type: Type.STRING, description: "Clear, step-by-step instructions." },
                     tips: { type: Type.ARRAY, items: { type: Type.STRING }, description: "A list of concise tips." },
                     generalInfo: { type: Type.STRING, description: "General info about the exercise." },
