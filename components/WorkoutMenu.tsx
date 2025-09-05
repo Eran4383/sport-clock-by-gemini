@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useWorkout } from '../contexts/WorkoutContext';
 import { WorkoutPlan, WorkoutStep } from '../types';
 import { useSettings } from '../contexts/SettingsContext';
@@ -16,9 +16,6 @@ const ExerciseInfoModal: React.FC<{
   const [activeTab, setActiveTab] = useState<'howto' | 'details'>('howto');
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const modalRef = useRef<HTMLDivElement>(null);
-
-  const handleSetHowToTab = useCallback(() => setActiveTab('howto'), []);
-  const handleSetDetailsTab = useCallback(() => setActiveTab('details'), []);
 
 
   useEffect(() => {
@@ -97,29 +94,39 @@ const ExerciseInfoModal: React.FC<{
   }, [info?.instructions]);
 
   const embedUrl = useMemo(() => {
-    if (!info?.videoUrl) {
+    if (!info?.videoUrl || typeof info.videoUrl !== 'string' || info.videoUrl.trim() === '') {
       return null;
     }
 
     try {
-      const url = new URL(info.videoUrl);
-      
+      // Pre-emptively fix URLs that might lack a protocol
+      const fullUrl = info.videoUrl.startsWith('http') ? info.videoUrl : `https://${info.videoUrl}`;
+      const url = new URL(fullUrl);
+      let videoId: string | null = null;
+
       if (url.hostname.includes('youtube.com')) {
-        const videoId = url.searchParams.get('v');
-        if (videoId) {
-          return `https://www.youtube.com/embed/${videoId}`;
+        if (url.pathname === '/watch') {
+          videoId = url.searchParams.get('v');
+        } else if (url.pathname.startsWith('/embed/')) {
+          videoId = url.pathname.substring('/embed/'.length);
+        } else if (url.pathname.startsWith('/shorts/')) {
+          videoId = url.pathname.substring('/shorts/'.length);
         }
+      } else if (url.hostname.includes('youtu.be')) {
+        videoId = url.pathname.slice(1);
       }
-      
-      if (url.hostname.includes('youtu.be')) {
-        const videoId = url.pathname.slice(1);
-        if (videoId) {
-          return `https://www.youtube.com/embed/${videoId}`;
-        }
+
+      if (videoId) {
+        // Further clean the video ID from potential query params in youtu.be links
+        const finalVideoId = videoId.split('?')[0];
+        return `https://www.youtube.com/embed/${finalVideoId}`;
       }
-      
-      return info.videoUrl;
+
+      console.warn("Could not extract YouTube video ID from URL:", info.videoUrl);
+      return null;
+
     } catch (e) {
+      console.error("Invalid video URL provided:", info.videoUrl, e);
       return null;
     }
   }, [info?.videoUrl]);
@@ -174,8 +181,8 @@ const ExerciseInfoModal: React.FC<{
             <>
               {/* Tabs */}
               <div className="relative z-10 flex border-b border-gray-700 mb-4">
-                <TabButton label={isHebrew ? "הדרכה" : "How-To"} isActive={activeTab === 'howto'} onClick={handleSetHowToTab} />
-                <TabButton label={isHebrew ? "פרטים" : "Details"} isActive={activeTab === 'details'} onClick={handleSetDetailsTab} />
+                <TabButton label={isHebrew ? "הדרכה" : "How-To"} isActive={activeTab === 'howto'} onClick={() => setActiveTab('howto')} />
+                <TabButton label={isHebrew ? "פרטים" : "Details"} isActive={activeTab === 'details'} onClick={() => setActiveTab('details')} />
               </div>
 
               {/* Tab Content */}
