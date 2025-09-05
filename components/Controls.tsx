@@ -18,9 +18,9 @@ interface ControlsProps {
   };
 }
 
-const Button: React.FC<{ onClick: () => void; className?: string; children: React.ReactNode; ariaLabel: string, disabled?: boolean }> = ({ onClick, className = '', children, ariaLabel, disabled = false }) => (
+const Button: React.FC<{ onMouseDown: () => void; className?: string; children: React.ReactNode; ariaLabel: string, disabled?: boolean }> = ({ onMouseDown, className = '', children, ariaLabel, disabled = false }) => (
   <button
-    onClick={onClick}
+    onMouseDown={onMouseDown}
     aria-label={ariaLabel}
     disabled={disabled}
     className={`w-28 px-6 py-2 rounded-md text-lg font-semibold transition-colors duration-200 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
@@ -74,7 +74,7 @@ export const Controls: React.FC<ControlsProps> = ({
       return (
         <>
           <Button 
-            onClick={reset} 
+            onMouseDown={reset} 
             ariaLabel={'Reset Timer'}
             className={buttonColor}
             disabled={isRunning}
@@ -83,7 +83,7 @@ export const Controls: React.FC<ControlsProps> = ({
           </Button>
           <CycleDisplay />
           <Button 
-            onClick={isRunning ? stop : start} 
+            onMouseDown={isRunning ? stop : start} 
             ariaLabel={isRunning ? 'Pause Timer' : 'Start Timer'}
             className={buttonColor}
           >
@@ -102,7 +102,7 @@ export const Controls: React.FC<ControlsProps> = ({
       style={{ transform: 'scale(var(--stopwatch-controls-scale))' }}
     >
       {isWorkoutActive && (
-          <Button onClick={previousStep} ariaLabel="Previous Step" className={buttonColor}>
+          <Button onMouseDown={previousStep} ariaLabel="Previous Step" className={buttonColor}>
             Previous
           </Button>
       )}
@@ -110,7 +110,7 @@ export const Controls: React.FC<ControlsProps> = ({
       <StopwatchControls />
 
       {isWorkoutActive && (
-          <Button onClick={nextStep} ariaLabel="Skip Step" className={buttonColor}>
+          <Button onMouseDown={nextStep} ariaLabel="Skip Step" className={buttonColor}>
             Skip
           </Button>
       )}

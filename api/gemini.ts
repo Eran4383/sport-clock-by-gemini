@@ -27,7 +27,7 @@ export default async function handler(req: any, res: any) {
     const prompt = `For the exercise "${exerciseName}", provide a detailed analysis. Your entire response MUST be a single JSON object. The response content should be in the same language as the exercise name provided.
 
 The JSON object must contain these exact keys:
-1.  "videoUrl": A string. Search YouTube for a relevant, high-quality tutorial video. The value must be a standard watch link (e.g., "https://www.youtube.com/watch?v=VIDEO_ID" or "https://youtu.be/VIDEO_ID"). If no suitable YouTube video can be found, this value MUST be an empty string ("").
+1.  "videoId": A string. Search YouTube for the most relevant, high-quality tutorial video. The value MUST be ONLY the 11-character YouTube video ID (e.g., "dQw4w9WgXcQ"). If no suitable video can be found, this value MUST be an empty string ("").
 2.  "instructions": A string containing a clear, step-by-step guide on how to perform the exercise correctly.
 3.  "tips": An array of strings. Each string should be a concise, helpful tip for maintaining proper form or avoiding common mistakes. Provide 2-4 tips.
 4.  "generalInfo": A string containing a short paragraph that describes the exercise, its benefits, and the primary muscles targeted.
@@ -41,13 +41,13 @@ The JSON object must contain these exact keys:
             responseSchema: {
                 type: Type.OBJECT,
                 properties: {
-                    videoUrl: { type: Type.STRING, description: "A standard YouTube watch link URL, or an empty string." },
+                    videoId: { type: Type.STRING, description: "An 11-character YouTube video ID, or an empty string." },
                     instructions: { type: Type.STRING, description: "Clear, step-by-step instructions." },
                     tips: { type: Type.ARRAY, items: { type: Type.STRING }, description: "A list of concise tips." },
                     generalInfo: { type: Type.STRING, description: "General info about the exercise." },
                     language: { type: Type.STRING, description: "ISO 639-1 language code of the response." },
                 },
-                required: ["videoUrl", "instructions", "tips", "generalInfo", "language"],
+                required: ["videoId", "instructions", "tips", "generalInfo", "language"],
             },
         },
     });

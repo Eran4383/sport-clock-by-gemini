@@ -7,9 +7,9 @@ interface CountdownControlsProps {
   reset: () => void;
 }
 
-const ControlButton: React.FC<{ onClick: () => void; className?: string; children: React.ReactNode; ariaLabel: string, disabled?: boolean }> = ({ onClick, className = '', children, ariaLabel, disabled = false }) => (
+const ControlButton: React.FC<{ onMouseDown: () => void; className?: string; children: React.ReactNode; ariaLabel: string, disabled?: boolean }> = ({ onMouseDown, className = '', children, ariaLabel, disabled = false }) => (
   <button
-    onClick={onClick}
+    onMouseDown={onMouseDown}
     aria-label={ariaLabel}
     disabled={disabled}
     className={`w-28 px-6 py-2 rounded-md text-lg font-semibold transition-colors duration-200 focus:outline-none ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${className}`}
@@ -27,7 +27,7 @@ export const CountdownControls: React.FC<CountdownControlsProps> = ({ isRunning,
       style={{ transform: 'scale(var(--countdown-controls-scale))' }}
     >
       <ControlButton 
-        onClick={reset} 
+        onMouseDown={reset} 
         ariaLabel={'Reset Countdown'}
         className={buttonColor}
         disabled={isRunning}
@@ -35,7 +35,7 @@ export const CountdownControls: React.FC<CountdownControlsProps> = ({ isRunning,
         Reset
       </ControlButton>
       <ControlButton 
-        onClick={isRunning ? stop : start} 
+        onMouseDown={isRunning ? stop : start} 
         ariaLabel={isRunning ? 'Stop Countdown' : 'Start Countdown'}
         className={buttonColor}
       >
