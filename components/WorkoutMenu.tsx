@@ -94,39 +94,24 @@ const ExerciseInfoModal: React.FC<{
   }, [info?.instructions]);
 
   const embedUrl = useMemo(() => {
-    if (!info?.videoUrl || typeof info.videoUrl !== 'string' || info.videoUrl.trim() === '') {
+    const urlString = info?.videoUrl;
+    if (!urlString || typeof urlString !== 'string' || urlString.trim() === '') {
       return null;
     }
 
     try {
-      // Pre-emptively fix URLs that might lack a protocol
-      const fullUrl = info.videoUrl.startsWith('http') ? info.videoUrl : `https://${info.videoUrl}`;
-      const url = new URL(fullUrl);
-      let videoId: string | null = null;
+      // Robust regex to find YouTube video ID from various URL formats
+      const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|shorts\/|watch\?v=|&v=)([^#&?]*).*/;
+      const match = urlString.match(regExp);
 
-      if (url.hostname.includes('youtube.com')) {
-        if (url.pathname === '/watch') {
-          videoId = url.searchParams.get('v');
-        } else if (url.pathname.startsWith('/embed/')) {
-          videoId = url.pathname.substring('/embed/'.length);
-        } else if (url.pathname.startsWith('/shorts/')) {
-          videoId = url.pathname.substring('/shorts/'.length);
-        }
-      } else if (url.hostname.includes('youtu.be')) {
-        videoId = url.pathname.slice(1);
+      if (match && match[2].length === 11) {
+        return `https://www.youtube.com/embed/${match[2]}`;
       }
-
-      if (videoId) {
-        // Further clean the video ID from potential query params in youtu.be links
-        const finalVideoId = videoId.split('?')[0];
-        return `https://www.youtube.com/embed/${finalVideoId}`;
-      }
-
-      console.warn("Could not extract YouTube video ID from URL:", info.videoUrl);
+      
+      console.warn("Could not extract valid YouTube video ID from URL:", urlString);
       return null;
-
     } catch (e) {
-      console.error("Invalid video URL provided:", info.videoUrl, e);
+      console.error("Error parsing video URL:", urlString, e);
       return null;
     }
   }, [info?.videoUrl]);
@@ -147,6 +132,10 @@ const ExerciseInfoModal: React.FC<{
       {label}
     </button>
   );
+  
+  const handleSelectHowToTab = () => setActiveTab('howto');
+  const handleSelectDetailsTab = () => setActiveTab('details');
+
 
   return (
     <div className="fixed inset-0 bg-black/70 z-[100]" onClick={onClose} aria-modal="true" role="dialog">
@@ -181,8 +170,8 @@ const ExerciseInfoModal: React.FC<{
             <>
               {/* Tabs */}
               <div className="relative z-10 flex border-b border-gray-700 mb-4">
-                <TabButton label={isHebrew ? "הדרכה" : "How-To"} isActive={activeTab === 'howto'} onClick={() => setActiveTab('howto')} />
-                <TabButton label={isHebrew ? "פרטים" : "Details"} isActive={activeTab === 'details'} onClick={() => setActiveTab('details')} />
+                <TabButton label={isHebrew ? "הדרכה" : "How-To"} isActive={activeTab === 'howto'} onClick={handleSelectHowToTab} />
+                <TabButton label={isHebrew ? "פרטים" : "Details"} isActive={activeTab === 'details'} onClick={handleSelectDetailsTab} />
               </div>
 
               {/* Tab Content */}
