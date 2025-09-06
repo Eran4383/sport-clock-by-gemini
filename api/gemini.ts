@@ -1,23 +1,18 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-const apiKey = process.env.API_KEY;
+const geminiApiKey = process.env.API_KEY;
+const youtubeApiKey = process.env.YOUTUBE_API_KEY;
 
-// Helper function to extract YouTube video ID from various URL formats
-function extractYouTubeId(url: string | null): string | null {
-  if (!url || typeof url !== 'string') return null;
+// Simple in-memory cache for YouTube search results to avoid redundant API calls
+const youtubeCache = new Map<string, any>();
 
-  // It might be the ID already
-  if (url.length === 11 && /^[a-zA-Z0-9_-]+$/.test(url)) {
-    return url;
-  }
-  
-  // Regular expression to find the video ID from various YouTube URL formats.
-  const regex = /(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
-  const match = url.match(regex);
-  
-  return match ? match[1] : null;
+interface YouTubeVideo {
+  id: { videoId: string };
+  snippet: {
+    title: string;
+    description: string;
+  };
 }
-
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
@@ -25,15 +20,16 @@ export default async function handler(req: any, res: any) {
     return res.status(405).end(`Method ${req.method} Not Allowed`);
   }
 
-  if (!apiKey) {
-    console.error("API_KEY is not configured on the server.");
+  if (!geminiApiKey || !youtubeApiKey) {
+    const missingKeys = [!geminiApiKey && "API_KEY", !youtubeApiKey && "YOUTUBE_API_KEY"].filter(Boolean).join(" and ");
+    console.error(`${missingKeys} is not configured on the server.`);
     return res.status(500).json({ 
-        message: "API key not configured on the server. Please set the API_KEY environment variable in your project settings.",
+        message: `The following API keys are not configured: ${missingKeys}. Please set them in your project's environment variables.`,
         code: "API_KEY_MISSING"
     });
   }
 
-  const ai = new GoogleGenAI({ apiKey });
+  const ai = new GoogleGenAI({ apiKey: geminiApiKey });
   const { exerciseName } = req.body;
 
   if (!exerciseName || typeof exerciseName !== 'string') {
@@ -41,67 +37,107 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const prompt = `
-For the exercise "${exerciseName}", your task is to provide a detailed analysis.
+    // ===== STAGE 1: Get the best search query from Gemini =====
+    const searchQueryPrompt = `
+      Translate the exercise name "${exerciseName}" into the best possible English search query for finding a short, instructional video on YouTube.
+      CRITICAL: The translation must be in the context of sports, anatomy, and physiotherapy to ensure professional and accurate terminology. 
+      For example, "פיתול" should become "torso rotation tutorial" or a similar specific term, not just "twist". 
+      The output should be ONLY the search query string and nothing else.
+    `;
+    
+    const queryGenerationResponse = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: searchQueryPrompt,
+    });
+    const searchQuery = queryGenerationResponse.text.trim();
 
-CRITICAL INSTRUCTIONS:
-1.  First, translate the exercise name "${exerciseName}" to its common English equivalent. For example, "שכיבות סמיכה" should become "Push-ups".
-2.  Using the ENGLISH name, search YouTube for a high-quality, instructional video.
-3.  STRONGLY PREFER videos from reputable fitness channels. Good examples are 'wikiHow', 'Men's Health', 'FitnessBlender', 'Athlean-X', or official bodybuilding/calisthenics channels.
-4.  Your entire response MUST be a single, valid JSON object and nothing else.
-5.  All TEXTUAL content in your JSON response (like instructions, tips, etc.) MUST be in the SAME language as the original exercise name provided. Only the YouTube search is in English.
+    if (!searchQuery) {
+        throw new Error("Gemini failed to generate a search query.");
+    }
 
-JSON object structure:
-- "videoId": A string. This MUST be the 11-character YouTube video ID. Example: "dQw4w9WgXcQ". DO NOT provide a full URL. If no relevant, high-quality video is found, this value MUST be null.
-- "instructions": A string containing a clear, step-by-step guide on how to perform the exercise correctly.
-- "tips": An array of strings. Each string should be a concise, helpful tip for maintaining proper form or avoiding common mistakes. Provide 2-4 tips.
-- "generalInfo": A string containing a short paragraph that describes the exercise, its benefits, and the primary muscles targeted.
-- "language": A string with the ISO 639-1 code for the language of your response (e.g., "en" for English, "he" for Hebrew).`;
+    // ===== STAGE 2: Search YouTube using the generated query =====
+    let videoResults;
+    if (youtubeCache.has(searchQuery)) {
+        videoResults = youtubeCache.get(searchQuery);
+    } else {
+        const youtubeApiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(searchQuery)}&type=video&videoDuration=short&maxResults=5&key=${youtubeApiKey}`;
+        const youtubeResponse = await fetch(youtubeApiUrl);
+        if (!youtubeResponse.ok) {
+            const errorData = await youtubeResponse.json();
+            console.error("YouTube API Error:", errorData);
+            throw new Error(`YouTube API request failed with status: ${youtubeResponse.status}`);
+        }
+        const youtubeData = await youtubeResponse.json();
+        videoResults = youtubeData.items.map((item: YouTubeVideo) => ({
+            id: item.id.videoId,
+            title: item.snippet.title,
+            description: item.snippet.description
+        }));
+        youtubeCache.set(searchQuery, videoResults); // Cache the result
+    }
 
-    const response = await ai.models.generateContent({
+    if (!videoResults || videoResults.length === 0) {
+      // If no videos found, return a structured "not found" response
+      return res.status(200).json({
+          primaryVideoId: null,
+          alternativeVideoIds: [],
+          instructions: "No suitable instructional video was found for this exercise.",
+          tips: ["Try searching for a different variation of the exercise.", "Check your spelling."],
+          generalInfo: `We could not locate a high-quality, short instructional video for "${exerciseName}" at this time.`,
+          language: 'en'
+      });
+    }
+
+    // ===== STAGE 3: Let Gemini choose the best video and generate content =====
+    const videoSelectionPrompt = `
+      You are an expert fitness coach. For the exercise "${exerciseName}", I have found these potential YouTube videos:
+      ${JSON.stringify(videoResults, null, 2)}
+
+      Your tasks are:
+      1.  **Select the single BEST video** from this list. The best video is a short (ideally under 120 seconds), direct, high-quality instructional tutorial focusing on proper form. Avoid long workouts, vlogs, or videos that are not primarily instructional.
+      2.  **Based on the content of your selected video**, generate the following information IN THE SAME LANGUAGE as the original exercise name ("${exerciseName}"):
+          - "instructions": A clear, step-by-step guide.
+          - "tips": 2-4 concise tips for proper form.
+          - "generalInfo": A short paragraph about the exercise, its benefits, and primary muscles targeted.
+      3.  Provide a list of up to 3 other good video IDs from the provided list as alternatives for the user. Do not include your primary selection in this list.
+      4.  Return everything as a single, valid JSON object with the specified structure.
+
+      If NONE of the provided videos are suitable instructional tutorials, all video ID fields MUST be null.
+    `;
+    
+    const finalResponse = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
-        contents: prompt,
+        contents: videoSelectionPrompt,
         config: {
             responseMimeType: "application/json",
             responseSchema: {
                 type: Type.OBJECT,
                 properties: {
-                    videoId: { type: Type.STRING, description: "An 11-character YouTube video ID, or null.", nullable: true },
-                    instructions: { type: Type.STRING, description: "Clear, step-by-step instructions." },
-                    tips: { type: Type.ARRAY, items: { type: Type.STRING }, description: "A list of concise tips." },
-                    generalInfo: { type: Type.STRING, description: "General info about the exercise." },
-                    language: { type: Type.STRING, description: "ISO 639-1 language code of the response." },
+                    primaryVideoId: { type: Type.STRING, description: "The ID of the best video chosen.", nullable: true },
+                    alternativeVideoIds: { type: Type.ARRAY, items: { type: Type.STRING }, description: "A list of other good video IDs." },
+                    instructions: { type: Type.STRING },
+                    tips: { type: Type.ARRAY, items: { type: Type.STRING } },
+                    generalInfo: { type: Type.STRING },
+                    language: { type: Type.STRING, description: "ISO 639-1 language code." },
                 },
-                required: ["videoId", "instructions", "tips", "generalInfo", "language"],
+                required: ["primaryVideoId", "alternativeVideoIds", "instructions", "tips", "generalInfo", "language"],
             },
         },
     });
 
-    const responseText = response.text;
-    
+    const responseText = finalResponse.text;
+    // Gemini sometimes wraps the JSON in ```json ... ```, so we need to clean it.
     const cleanedJsonString = responseText.replace(/^```json\s*/, '').replace(/\s*```$/, '').trim();
-
     if (!cleanedJsonString) {
-        throw new Error("Received an empty response from the AI service.");
+        throw new Error("Received an empty final response from the AI service.");
     }
     
-    let data;
-    try {
-        data = JSON.parse(cleanedJsonString);
-    } catch (parseError) {
-        console.error("Failed to parse JSON response from Gemini:", cleanedJsonString);
-        throw new Error("Received invalid JSON from the AI service.");
-    }
-
-    // Sanitize the videoId field to ensure it's either a valid 11-character ID or null.
-    // This handles cases where Gemini might return a full URL or an invalid string.
-    data.videoId = extractYouTubeId(data.videoId);
-
+    const data = JSON.parse(cleanedJsonString);
     return res.status(200).json(data);
 
   } catch (error: any) {
-    console.error("Error calling Gemini API:", error);
-    const errorMessage = error.message || 'An error occurred while fetching data from the AI service.';
+    console.error("Error in API handler:", error);
+    const errorMessage = error.message || 'An error occurred while processing your request.';
     return res.status(500).json({ message: errorMessage });
   }
 }

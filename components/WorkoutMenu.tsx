@@ -17,6 +17,7 @@ const ExerciseInfoModal: React.FC<{
   const [activeTab, setActiveTab] = useState<'howto' | 'details'>('howto');
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const modalRef = useRef<HTMLDivElement>(null);
+  const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
 
 
   useEffect(() => {
@@ -26,6 +27,7 @@ const ExerciseInfoModal: React.FC<{
       try {
         const result = await getExerciseInfo(exerciseName);
         setInfo(result);
+        setActiveVideoId(result.primaryVideoId);
         if (result.instructions.toLowerCase().includes("error") || result.instructions.toLowerCase().includes("failed") || result.instructions.includes("api key")) {
             setError(result.generalInfo);
         }
@@ -83,6 +85,28 @@ const ExerciseInfoModal: React.FC<{
     document.addEventListener('touchend', handleTouchEnd as any);
   };
 
+  const allVideoIds = useMemo(() => {
+    if (!info) return [];
+    const ids = [info.primaryVideoId, ...info.alternativeVideoIds].filter((id): id is string => !!id);
+    return [...new Set(ids)]; // Remove duplicates
+  }, [info]);
+
+  const activeVideoIndex = useMemo(() => {
+    if (!activeVideoId) return -1;
+    return allVideoIds.indexOf(activeVideoId);
+  }, [allVideoIds, activeVideoId]);
+  
+  const handleNextVideo = () => {
+    if (allVideoIds.length === 0) return;
+    const nextIndex = (activeVideoIndex + 1) % allVideoIds.length;
+    setActiveVideoId(allVideoIds[nextIndex]);
+  };
+  
+  const handlePrevVideo = () => {
+    if (allVideoIds.length === 0) return;
+    const prevIndex = (activeVideoIndex - 1 + allVideoIds.length) % allVideoIds.length;
+    setActiveVideoId(allVideoIds[prevIndex]);
+  };
 
   const isHebrew = useMemo(() => info?.language === 'he', [info]);
   
@@ -95,15 +119,11 @@ const ExerciseInfoModal: React.FC<{
   }, [info?.instructions]);
 
   const embedUrl = useMemo(() => {
-    const videoId = info?.videoId;
-    if (videoId && typeof videoId === 'string' && videoId.trim().length === 11) {
-      return `https://www.youtube.com/embed/${videoId}`;
-    }
-    if (videoId) { // It exists but is invalid
-      console.warn("Received invalid YouTube video ID:", videoId);
+    if (activeVideoId && typeof activeVideoId === 'string' && activeVideoId.trim().length === 11) {
+      return `https://www.youtube.com/embed/${activeVideoId}`;
     }
     return null;
-  }, [info?.videoId]);
+  }, [activeVideoId]);
 
   const TabButton: React.FC<{
     label: string;
@@ -185,6 +205,19 @@ const ExerciseInfoModal: React.FC<{
                             </div>
                         )}
                     </div>
+
+                    {/* Video Navigation */}
+                    {allVideoIds.length > 1 && (
+                       <div className="flex justify-center items-center gap-4 mt-2">
+                           <button onClick={handlePrevVideo} className="p-2 rounded-full hover:bg-gray-700" title={isHebrew ? "הסרטון הקודם" : "Previous video"}>
+                               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                           </button>
+                           <button onClick={handleNextVideo} className="p-2 rounded-full hover:bg-gray-700" title={isHebrew ? "הסרטון הבא" : "Next video"}>
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                           </button>
+                       </div>
+                    )}
+                    
                     {/* Instructions List */}
                     <h4 className="font-semibold text-lg text-white mt-4">{isHebrew ? "הוראות" : "Instructions"}</h4>
                     <ul className="list-disc list-inside space-y-2 text-gray-200">

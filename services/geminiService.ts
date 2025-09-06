@@ -1,12 +1,13 @@
 export interface ExerciseInfo {
-    videoId: string | null;
+    primaryVideoId: string | null;
+    alternativeVideoIds: string[];
     instructions: string;
     tips: string[];
     generalInfo: string;
     language: 'en' | 'he' | string;
 }
 
-const CACHE_KEY = 'geminiExerciseCache_v1';
+const CACHE_KEY = 'geminiExerciseCache_v2';
 
 // Helper to get the cache object from localStorage
 const getCache = (): Record<string, ExerciseInfo> => {
@@ -33,13 +34,14 @@ const saveToCache = (key: string, data: ExerciseInfo) => {
 
 
 const getApiKeyErrorResponse = (): ExerciseInfo => ({
-    videoId: null,
+    primaryVideoId: null,
+    alternativeVideoIds: [],
     instructions: "API Key Not Configured on Server",
     tips: [
         "1. Go to your project settings on your hosting provider (e.g., Vercel).",
         "2. Find the 'Environment Variables' section.",
-        "3. Ensure there is a variable named API_KEY with your Gemini API key as the value.",
-        "4. Make sure the variable is enabled for the Production environment.",
+        "3. Ensure there are variables named API_KEY (for Gemini) and YOUTUBE_API_KEY.",
+        "4. Make sure the variables are enabled for the Production environment.",
         "5. Redeploy your application to apply the changes."
     ],
     generalInfo: "The AI features of this app require a server-side API key. If you've just added it, a redeploy is necessary.",
@@ -47,7 +49,8 @@ const getApiKeyErrorResponse = (): ExerciseInfo => ({
 });
 
 const getGenericErrorResponse = (message: string): ExerciseInfo => ({
-    videoId: null,
+    primaryVideoId: null,
+    alternativeVideoIds: [],
     instructions: message,
     tips: [],
     generalInfo: "An unexpected error occurred. Please check the developer console for more details and try again later.",
