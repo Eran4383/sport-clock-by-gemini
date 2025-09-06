@@ -28,7 +28,7 @@ const ExerciseInfoModal: React.FC<{
         const result = await getExerciseInfo(exerciseName);
         setInfo(result);
         setActiveVideoId(result.primaryVideoId);
-        if (result.instructions.toLowerCase().includes("error") || result.instructions.toLowerCase().includes("failed") || result.instructions.includes("api key")) {
+        if (result.instructions.toLowerCase().includes("error") || result.instructions.toLowerCase().includes("failed") || result.instructions.includes("api key") || result.instructions.includes("מפתח api")) {
             setError(result.generalInfo);
         }
       } catch (e) {
@@ -117,6 +117,11 @@ const ExerciseInfoModal: React.FC<{
       .filter(line => line.trim() !== '')
       .map(line => line.trim().replace(/^\d+\.\s*/, ''));
   }, [info?.instructions]);
+
+  const parsedTips = useMemo(() => {
+    if (!info?.tips) return [];
+    return info.tips.map(tip => tip.trim().replace(/^\d+\.\s*/, ''));
+  }, [info?.tips]);
 
   const embedUrl = useMemo(() => {
     if (activeVideoId && typeof activeVideoId === 'string' && activeVideoId.trim().length === 11) {
@@ -220,9 +225,9 @@ const ExerciseInfoModal: React.FC<{
                     
                     {/* Instructions List */}
                     <h4 className="font-semibold text-lg text-white mt-4">{isHebrew ? "הוראות" : "Instructions"}</h4>
-                    <ul className="list-disc list-inside space-y-2 text-gray-200">
+                    <ol className="list-decimal list-inside space-y-2 text-gray-200">
                         {parsedInstructions.map((item, index) => <li key={index}>{item}</li>)}
-                    </ul>
+                    </ol>
                   </div>
                 )}
                 
@@ -232,7 +237,7 @@ const ExerciseInfoModal: React.FC<{
                       <div>
                         <h4 className="font-semibold text-lg text-white mb-2">{isHebrew ? "דגשים" : "Tips"}</h4>
                         <ul className="list-disc list-inside space-y-1 text-gray-300">
-                          {info.tips.map((tip, index) => <li key={index}>{tip}</li>)}
+                          {parsedTips.map((tip, index) => <li key={index}>{tip}</li>)}
                         </ul>
                       </div>
                     )}

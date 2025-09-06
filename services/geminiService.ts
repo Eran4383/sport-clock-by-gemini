@@ -1,3 +1,4 @@
+
 export interface ExerciseInfo {
     primaryVideoId: string | null;
     alternativeVideoIds: string[];
@@ -36,16 +37,16 @@ const saveToCache = (key: string, data: ExerciseInfo) => {
 const getApiKeyErrorResponse = (): ExerciseInfo => ({
     primaryVideoId: null,
     alternativeVideoIds: [],
-    instructions: "API Key Not Configured on Server",
+    instructions: "מפתח API אינו מוגדר בשרת",
     tips: [
-        "1. Go to your project settings on your hosting provider (e.g., Vercel).",
-        "2. Find the 'Environment Variables' section.",
-        "3. Ensure there are variables named API_KEY (for Gemini) and YOUTUBE_API_KEY.",
-        "4. Make sure the variables are enabled for the Production environment.",
-        "5. Redeploy your application to apply the changes."
+        "יש לעבור להגדרות הפרויקט בספק האירוח (למשל, Vercel).",
+        "יש למצוא את החלק של 'משתני סביבה' (Environment Variables).",
+        "יש לוודא שקיימים משתנים בשם API_KEY (עבור Gemini) ו-YOUTUBE_API_KEY.",
+        "יש לוודא שהמשתנים מופעלים עבור סביבת הייצור (Production).",
+        "יש לפרוס מחדש את היישום כדי להחיל את השינויים."
     ],
-    generalInfo: "The AI features of this app require a server-side API key. If you've just added it, a redeploy is necessary.",
-    language: 'en',
+    generalInfo: "תכונות הבינה המלאכותית של אפליקציה זו דורשות מפתח API בצד השרת. אם הוספת אותו זה עתה, יש צורך בפריסה מחדש.",
+    language: 'he',
 });
 
 const getGenericErrorResponse = (message: string): ExerciseInfo => ({
@@ -53,8 +54,8 @@ const getGenericErrorResponse = (message: string): ExerciseInfo => ({
     alternativeVideoIds: [],
     instructions: message,
     tips: [],
-    generalInfo: "An unexpected error occurred. Please check the developer console for more details and try again later.",
-    language: 'en',
+    generalInfo: "אירעה שגיאה בלתי צפויה. אנא בדוק את קונסולת המפתחים לפרטים נוספים ונסה שוב מאוחר יותר.",
+    language: 'he',
 });
 
 export async function getExerciseInfo(exerciseName: string): Promise<ExerciseInfo> {
