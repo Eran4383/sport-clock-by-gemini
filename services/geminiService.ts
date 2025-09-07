@@ -1,7 +1,7 @@
 export interface ExerciseInfo {
     primaryVideoId: string | null;
     alternativeVideoIds: string[];
-    instructions: string[];
+    instructions: string;
     tips: string[];
     generalInfo: string;
     language: 'en' | 'he' | string;
@@ -36,7 +36,7 @@ const saveToCache = (key: string, data: ExerciseInfo) => {
 const getApiKeyErrorResponse = (): ExerciseInfo => ({
     primaryVideoId: null,
     alternativeVideoIds: [],
-    instructions: ["מפתח Gemini API אינו מוגדר בשרת."],
+    instructions: "מפתח Gemini API אינו מוגדר בשרת.",
     tips: [
         "יש לעבור להגדרות הפרויקט בספק האירוח (למשל, Vercel).",
         "יש למצוא את החלק של 'משתני סביבה' (Environment Variables).",
@@ -51,7 +51,7 @@ const getApiKeyErrorResponse = (): ExerciseInfo => ({
 const getGenericErrorResponse = (message: string): ExerciseInfo => ({
     primaryVideoId: null,
     alternativeVideoIds: [],
-    instructions: [`שגיאה: ${message}`],
+    instructions: `שגיאה: ${message}`,
     tips: [],
     generalInfo: "אירעה שגיאה בלתי צפויה. אנא בדוק את קונסולת המפתחים לפרטים נוספים ונסה שוב מאוחר יותר.",
     language: 'he',

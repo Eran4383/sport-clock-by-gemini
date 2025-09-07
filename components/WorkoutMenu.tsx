@@ -28,8 +28,8 @@ const ExerciseInfoModal: React.FC<{
         const result = await getExerciseInfo(exerciseName);
         setInfo(result);
         setActiveVideoId(result.primaryVideoId);
-        if (result.instructions.some(inst => inst.toLowerCase().includes("error") || inst.toLowerCase().includes("failed") || inst.includes("api key") || inst.includes("מפתח api"))) {
-            setError(result.instructions.join('\n'));
+        if (result.instructions.toLowerCase().includes("error") || result.instructions.toLowerCase().includes("failed") || result.instructions.includes("api key") || result.instructions.includes("מפתח api")) {
+            setError(result.instructions);
         }
       } catch (e) {
         const errorMessage = e instanceof Error ? e.message : "Failed to fetch or parse exercise information.";
@@ -114,6 +114,7 @@ const ExerciseInfoModal: React.FC<{
   const parsedInstructions = useMemo(() => {
     if (!info?.instructions) return [];
     return info.instructions
+      .split('\n')
       .map(line => line.trim().replace(/^\d+\.\s*/, ''))
       .filter(line => line.length > 0);
   }, [info?.instructions]);
@@ -226,12 +227,10 @@ const ExerciseInfoModal: React.FC<{
                     <h4 className="font-semibold text-lg text-white mt-4">{isHebrew ? "הוראות" : "Instructions"}</h4>
                      {error ? (
                         <p className="text-yellow-400 bg-yellow-900/30 p-3 rounded-md">{error}</p>
-                     ) : parsedInstructions.length > 1 ? (
+                     ) : parsedInstructions.length > 0 ? (
                         <ol className="list-decimal list-inside space-y-2 text-gray-200">
                             {parsedInstructions.map((item, index) => <li key={index}>{item}</li>)}
                         </ol>
-                     ) : parsedInstructions.length === 1 ? (
-                        <p className="text-gray-200">{parsedInstructions[0]}</p>
                      ) : (
                         <p className="text-gray-400">לא נמצאו הוראות.</p>
                      )}
@@ -304,11 +303,11 @@ const ShareModal: React.FC<{
     }
     
     const encodedLink = encodeURIComponent(shareLink);
-    const shareText = `היי! יצרתי תוכנית אימון בשם "${plan.name}" באפליקציית שעון הספורט וחשבתי שתאהב/י אותה. לחץ/י על הקישור כדי לייבא אותה ישירות:`;
+    const shareText = `Check out this workout plan: ${plan.name}`;
     const encodedText = encodeURIComponent(shareText);
 
     const shareOptions = [
-        { name: 'WhatsApp', url: `https://api.whatsapp.com/send?text=${encodedText}%0A%0A${encodedLink}`, 
+        { name: 'WhatsApp', url: `https://api.whatsapp.com/send?text=${encodedText}%20${encodedLink}`, 
           icon: <svg viewBox="0 0 24 24" fill="currentColor" className="h-8 w-8"><path d="M16.75 13.96c.25.13.43.2.5.33.07.13.07.55 0 .63-.07.07-.33.25-.43.25-.1 0-1.13-.5-1.63-.88-.5-.35-1.25-.94-1.25-1.5 0-.5.5-.63.6-.75.1-.1.25-.1.38-.1s.25.05.37.28c.13.2.14.3.17.48.03.2.03.3-.04.4zm3.9-6.32c-1.35-1.35-3.15-2.08-5.02-2.08-3.9 0-7.08 3.18-7.08 7.08 0 1.4.43 2.7.88 3.88l-1.03 3.8 3.88-1.03c1.1.43 2.38.65 3.58.65h.03c3.9 0 7.08-3.18 7.08-7.08 0-1.88-.73-3.68-2.1-5.04zm-5.03 11.42h-.02c-1.08 0-2.13-.28-3.05-.8l-.2-.13-2.28 1.18 1.2-2.23-.13-.23c-.58-1-.88-2.15-.88-3.35 0-3.08 2.5-5.58 5.58-5.58 1.5 0 2.9.58 3.95 1.63 1.05 1.05 1.63 2.45 1.63 3.95 0 3.08-2.5 5.58-5.58 5.58z"></path></svg> },
         { name: 'Telegram', url: `https://t.me/share/url?url=${encodedLink}&text=${encodedText}`, 
           icon: <svg viewBox="0 0 24 24" fill="currentColor" className="h-8 w-8"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.1l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.58c-.2 1.03-.73 1.28-1.5 .82L12.2 16.2l-1.99 1.9c-.2.2-.36.36-.7.36.43-.03.62-.2.87-.44z"></path></svg> },
@@ -884,7 +883,7 @@ const PlanList: React.FC<{
                 title="Import Plan from File(s)"
                 disabled={!!activeWorkout}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 002 2z" /></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clipRule="evenodd" /></svg>
             </button>
             <input
                 type="file"
