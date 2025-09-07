@@ -71,17 +71,11 @@ export async function getExerciseInfo(exerciseName: string): Promise<ExerciseInf
     
     // 2. If not in cache, fetch from the server
     try {
-        const devApiKey = sessionStorage.getItem('dev-api-key');
-        const headers: Record<string, string> = {
-            'Content-Type': 'application/json',
-        };
-        if (devApiKey) {
-            headers['x-dev-api-key'] = devApiKey;
-        }
-
         const res = await fetch('/api/gemini', {
             method: 'POST',
-            headers: headers,
+            headers: {
+                'Content-Type': 'application/json',
+            },
             body: JSON.stringify({ exerciseName }),
         });
 

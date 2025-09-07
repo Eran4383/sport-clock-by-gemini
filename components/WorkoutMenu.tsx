@@ -735,9 +735,6 @@ const PlanList: React.FC<{
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isImportTextVisible, setIsImportTextVisible] = useState(false);
   const [sharingPlan, setSharingPlan] = useState<WorkoutPlan | null>(null);
-  const [showDevKeyModal, setShowDevKeyModal] = useState(false);
-  const [devApiKey, setDevApiKey] = useState('');
-  const isDevEnv = !process.env.API_KEY;
 
   const handleToggleSelection = (planId: string) => {
     setSelectedPlanIds(prev =>
@@ -861,22 +858,12 @@ const PlanList: React.FC<{
     setDragTargetIndex(null);
   };
 
-  const handleSaveDevKey = () => {
-      sessionStorage.setItem('dev-api-key', devApiKey);
-      setShowDevKeyModal(false);
-  };
-
   return (
     <div>
       {sharingPlan && <ShareModal plan={sharingPlan} onClose={() => setSharingPlan(null)} />}
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold text-white flex items-center gap-3">
           Workout Plans
-          {isDevEnv && (
-             <button onClick={() => setShowDevKeyModal(true)} title="Enter Dev API Key" className="p-1 text-yellow-400 hover:text-yellow-300">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M18 8a6 6 0 01-7.743 5.743L10 14l-1 1-1 1H6v2H2v-4l4.257-4.257A6 6 0 1118 8zm-6-4a1 1 0 100 2 1 1 0 000-2z" clipRule="evenodd" /></svg>
-             </button>
-          )}
         </h2>
         <div className="flex items-center gap-2">
             <button
@@ -900,7 +887,7 @@ const PlanList: React.FC<{
                 title="Import Plan from File(s)"
                 disabled={!!activeWorkout}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" /></svg>
+               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor"><path d="M4 12v-6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2zm11-4a1 1 0 10-2 0v1.586l-1.293-1.293a1 1 0 00-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L13 9.586V8z" /></svg>
             </button>
             <input
                 type="file"
@@ -933,20 +920,6 @@ const PlanList: React.FC<{
 
       {isImportTextVisible && <ImportTextModal onImport={(text) => handleJsonImport(text, 'text')} onCancel={() => setIsImportTextVisible(false)} />}
       
-      {showDevKeyModal && (
-          <div className="fixed inset-0 bg-black/70 z-[101] flex items-center justify-center p-4" onClick={() => setShowDevKeyModal(false)}>
-              <div className="bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
-                  <h3 className="text-xl font-bold text-white mb-2">Developer API Key</h3>
-                  <p className="text-gray-300 text-sm mb-4">This key will be stored in <code className="bg-gray-900 px-1 rounded">sessionStorage</code> and will be cleared when you close the tab.</p>
-                  <input type="password" value={devApiKey} onChange={(e) => setDevApiKey(e.target.value)} className="w-full bg-gray-900 text-gray-300 p-2 rounded-md" placeholder="Enter API Key..."/>
-                   <div className="mt-6 flex justify-end gap-4">
-                        <button onClick={() => setShowDevKeyModal(false)} className="px-4 py-2 rounded-md text-white bg-gray-600 hover:bg-gray-500 font-semibold">Cancel</button>
-                        <button onClick={handleSaveDevKey} className="px-4 py-2 rounded-md text-white bg-blue-600 hover:bg-blue-700 font-semibold">Save</button>
-                   </div>
-              </div>
-          </div>
-      )}
-
       {selectedPlanIds.length > 0 && !activeWorkout && (
           <button
             onClick={handleStartSelected}
