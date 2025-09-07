@@ -20,11 +20,11 @@ export default async function handler(req: any, res: any) {
     return res.status(405).end(`Method ${req.method} Not Allowed`);
   }
 
-  if (!geminiApiKey || !youtubeApiKey) {
-    const missingKeys = [!geminiApiKey && "API_KEY", !youtubeApiKey && "YOUTUBE_API_KEY"].filter(Boolean).join(" and ");
-    console.error(`${missingKeys} is not configured on the server.`);
+  // The Gemini API key is mandatory for all operations.
+  if (!geminiApiKey) {
+    console.error(`API_KEY (for Gemini) is not configured on the server.`);
     return res.status(500).json({ 
-        message: `The following API keys are not configured: ${missingKeys}. Please set them in your project's environment variables.`,
+        message: `The Gemini API key (API_KEY) is not configured. Please set it in your project's environment variables.`,
         code: "API_KEY_MISSING"
     });
   }
@@ -37,7 +37,60 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    // ===== STAGE 1: Get the best search query from Gemini =====
+    // ===== FALLBACK PATH (No YouTube API Key) =====
+    // If YouTube key is missing, fall back to text-only generation from Gemini's internal knowledge.
+    if (!youtubeApiKey) {
+        console.warn("YOUTUBE_API_KEY is missing. Falling back to text-only generation from Gemini's knowledge base.");
+        
+        const textOnlyPrompt = `
+          You are an expert fitness coach. For the exercise "${exerciseName}", generate the following information IN THE SAME LANGUAGE as the original exercise name ("${exerciseName}"):
+          - "instructions": A clear, step-by-step guide on how to perform the exercise correctly.
+          - "tips": 2-4 concise tips for proper form and common mistakes to avoid.
+          - "generalInfo": A short paragraph about the exercise, its benefits, and primary muscles targeted. At the end of this paragraph, add the following sentence in the target language: "Video tutorials require additional configuration."
+          - "language": The ISO 639-1 code for the language used (e.g., 'he' for Hebrew, 'en' for English).
+
+          Return everything as a single, valid JSON object.
+        `;
+
+        const textOnlyResponse = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: textOnlyPrompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        instructions: { type: Type.STRING },
+                        tips: { type: Type.ARRAY, items: { type: Type.STRING } },
+                        generalInfo: { type: Type.STRING },
+                        language: { type: Type.STRING },
+                    },
+                    required: ["instructions", "tips", "generalInfo", "language"],
+                },
+            },
+        });
+        
+        const responseText = textOnlyResponse.text;
+        const cleanedJsonString = responseText.replace(/^```json\s*/, '').replace(/\s*```$/, '').trim();
+        if (!cleanedJsonString) {
+            throw new Error("Received an empty response from the AI service for text-only generation.");
+        }
+    
+        const data = JSON.parse(cleanedJsonString);
+        
+        // Add the video fields manually to conform to the ExerciseInfo interface
+        const finalData = {
+            ...data,
+            primaryVideoId: null,
+            alternativeVideoIds: [],
+        };
+        
+        return res.status(200).json(finalData);
+    }
+
+    // ===== FULL PATH (with YouTube API Key) =====
+
+    // STAGE 1: Get the best search query from Gemini
     const searchQueryPrompt = `
       Translate the exercise name "${exerciseName}" into the best possible English search query for finding a short, instructional video on YouTube.
       CRITICAL: The translation must be in the context of sports, anatomy, and physiotherapy to ensure professional and accurate terminology. 
@@ -55,7 +108,7 @@ export default async function handler(req: any, res: any) {
         throw new Error("Gemini failed to generate a search query.");
     }
 
-    // ===== STAGE 2: Search YouTube using the generated query =====
+    // STAGE 2: Search YouTube using the generated query
     let videoResults;
     if (youtubeCache.has(searchQuery)) {
         videoResults = youtubeCache.get(searchQuery);
@@ -77,7 +130,6 @@ export default async function handler(req: any, res: any) {
     }
 
     if (!videoResults || videoResults.length === 0) {
-      // If no videos found, return a structured "not found" response
       return res.status(200).json({
           primaryVideoId: null,
           alternativeVideoIds: [],
@@ -88,7 +140,7 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // ===== STAGE 3: Let Gemini choose the best video and generate content =====
+    // STAGE 3: Let Gemini choose the best video and generate content
     const videoSelectionPrompt = `
       You are an expert fitness coach. For the exercise "${exerciseName}", I have found these potential YouTube videos:
       ${JSON.stringify(videoResults, null, 2)}
@@ -126,7 +178,6 @@ export default async function handler(req: any, res: any) {
     });
 
     const responseText = finalResponse.text;
-    // Gemini sometimes wraps the JSON in ```json ... ```, so we need to clean it.
     const cleanedJsonString = responseText.replace(/^```json\s*/, '').replace(/\s*```$/, '').trim();
     if (!cleanedJsonString) {
         throw new Error("Received an empty final response from the AI service.");

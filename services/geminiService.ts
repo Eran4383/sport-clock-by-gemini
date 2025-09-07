@@ -1,4 +1,3 @@
-
 export interface ExerciseInfo {
     primaryVideoId: string | null;
     alternativeVideoIds: string[];
@@ -37,22 +36,22 @@ const saveToCache = (key: string, data: ExerciseInfo) => {
 const getApiKeyErrorResponse = (): ExerciseInfo => ({
     primaryVideoId: null,
     alternativeVideoIds: [],
-    instructions: "מפתח API אינו מוגדר בשרת",
+    instructions: "מפתח Gemini API אינו מוגדר בשרת.",
     tips: [
         "יש לעבור להגדרות הפרויקט בספק האירוח (למשל, Vercel).",
         "יש למצוא את החלק של 'משתני סביבה' (Environment Variables).",
-        "יש לוודא שקיימים משתנים בשם API_KEY (עבור Gemini) ו-YOUTUBE_API_KEY.",
-        "יש לוודא שהמשתנים מופעלים עבור סביבת הייצור (Production).",
+        "יש לוודא שקיים משתנה בשם API_KEY.",
+        "יש לוודא שהמשתנה מופעל עבור סביבת הייצור (Production).",
         "יש לפרוס מחדש את היישום כדי להחיל את השינויים."
     ],
-    generalInfo: "תכונות הבינה המלאכותית של אפליקציה זו דורשות מפתח API בצד השרת. אם הוספת אותו זה עתה, יש צורך בפריסה מחדש.",
+    generalInfo: "תכונות הבינה המלאכותית של אפליקציה זו דורשות מפתח Gemini API בצד השרת. ללא מפתח זה, לא ניתן לאחזר מידע על תרגילים.",
     language: 'he',
 });
 
 const getGenericErrorResponse = (message: string): ExerciseInfo => ({
     primaryVideoId: null,
     alternativeVideoIds: [],
-    instructions: message,
+    instructions: `שגיאה: ${message}`,
     tips: [],
     generalInfo: "אירעה שגיאה בלתי צפויה. אנא בדוק את קונסולת המפתחים לפרטים נוספים ונסה שוב מאוחר יותר.",
     language: 'he',
@@ -95,10 +94,10 @@ export async function getExerciseInfo(exerciseName: string): Promise<ExerciseInf
     } catch (error) {
         console.error("Error fetching exercise info from server:", error);
         if (error instanceof TypeError) { // Network error
-             return getGenericErrorResponse("Could not connect to the server. Please check your internet connection.");
+             return getGenericErrorResponse("לא ניתן להתחבר לשרת. אנא בדוק את חיבור האינטרנט שלך.");
         }
-        const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
-        return getGenericErrorResponse(`Error: ${errorMessage}`);
+        const errorMessage = error instanceof Error ? error.message : "אירעה שגיאה לא ידועה.";
+        return getGenericErrorResponse(errorMessage);
     }
 }
 

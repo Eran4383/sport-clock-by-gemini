@@ -29,10 +29,11 @@ const ExerciseInfoModal: React.FC<{
         setInfo(result);
         setActiveVideoId(result.primaryVideoId);
         if (result.instructions.toLowerCase().includes("error") || result.instructions.toLowerCase().includes("failed") || result.instructions.includes("api key") || result.instructions.includes("מפתח api")) {
-            setError(result.generalInfo);
+            setError(result.instructions);
         }
       } catch (e) {
-        setError("Failed to fetch or parse exercise information.");
+        const errorMessage = e instanceof Error ? e.message : "Failed to fetch or parse exercise information.";
+        setError(errorMessage);
         console.error(e);
       } finally {
         setIsLoading(false);
@@ -114,13 +115,14 @@ const ExerciseInfoModal: React.FC<{
     if (!info?.instructions) return [];
     return info.instructions
       .split('\n')
-      .filter(line => line.trim() !== '')
-      .map(line => line.trim().replace(/^\d+\.\s*/, ''));
+      .map(line => line.trim().replace(/^\d+\.\s*/, ''))
+      .filter(line => line.length > 0);
   }, [info?.instructions]);
 
   const parsedTips = useMemo(() => {
     if (!info?.tips) return [];
-    return info.tips.map(tip => tip.trim().replace(/^\d+\.\s*/, ''));
+    // This regex strips any leading number and dot (e.g., "1. ") to prevent "• 1. Tip" when rendered in a <ul>.
+    return info.tips.map(tip => tip.trim().replace(/^\d+\.?\s*/, ''));
   }, [info?.tips]);
 
   const embedUrl = useMemo(() => {
@@ -176,11 +178,9 @@ const ExerciseInfoModal: React.FC<{
         <div className="p-4 flex-grow overflow-hidden flex flex-col">
           {isLoading ? (
             <div className="flex-grow flex items-center justify-center">
-              <p className="text-gray-300 animate-pulse">Loading Exercise Info...</p>
+              <p className="text-gray-300 animate-pulse">טוען מידע על התרגיל...</p>
             </div>
-          ) : error ? (
-            <p className="text-red-400">{error}</p>
-          ) : info ? (
+          ) : (
             <>
               {/* Tabs */}
               <div className="relative z-10 flex border-b border-gray-700 mb-4">
@@ -204,7 +204,7 @@ const ExerciseInfoModal: React.FC<{
                                 allowFullScreen
                             ></iframe>
                         ) : (
-                            <div className="text-gray-400 text-center">
+                            <div className="text-gray-400 text-center p-4">
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.55a1 1 0 01.55.89V14.11a1 1 0 01-1.55.89L15 14M5 18a2 2 0 01-2-2V8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5z" /></svg>
                                 <p>{isHebrew ? "סרטון אינו זמין כרגע" : "Video not available at this time"}</p>
                             </div>
@@ -225,15 +225,21 @@ const ExerciseInfoModal: React.FC<{
                     
                     {/* Instructions List */}
                     <h4 className="font-semibold text-lg text-white mt-4">{isHebrew ? "הוראות" : "Instructions"}</h4>
-                    <ol className="list-decimal list-inside space-y-2 text-gray-200">
-                        {parsedInstructions.map((item, index) => <li key={index}>{item}</li>)}
-                    </ol>
+                     {error ? (
+                        <p className="text-yellow-400 bg-yellow-900/30 p-3 rounded-md">{error}</p>
+                     ) : parsedInstructions.length > 0 ? (
+                        <ol className="list-decimal list-inside space-y-2 text-gray-200">
+                            {parsedInstructions.map((item, index) => <li key={index}>{item}</li>)}
+                        </ol>
+                     ) : (
+                        <p className="text-gray-400">לא נמצאו הוראות.</p>
+                     )}
                   </div>
                 )}
                 
                 {activeTab === 'details' && (
                   <div className="space-y-6">
-                    {info.tips && info.tips.length > 0 && (
+                    {info && info.tips && info.tips.length > 0 && (
                       <div>
                         <h4 className="font-semibold text-lg text-white mb-2">{isHebrew ? "דגשים" : "Tips"}</h4>
                         <ul className="list-disc list-inside space-y-1 text-gray-300">
@@ -241,7 +247,7 @@ const ExerciseInfoModal: React.FC<{
                         </ul>
                       </div>
                     )}
-                    {info.generalInfo && (
+                    {info && info.generalInfo && (
                       <div>
                         <h4 className="font-semibold text-lg text-white mb-2">{isHebrew ? "מידע כללי" : "General Info"}</h4>
                         <p className="text-gray-300 whitespace-pre-wrap">{info.generalInfo}</p>
@@ -251,7 +257,7 @@ const ExerciseInfoModal: React.FC<{
                 )}
               </div>
             </>
-          ) : null}
+          )}
         </div>
       </div>
     </div>
