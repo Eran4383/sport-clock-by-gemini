@@ -1,3 +1,4 @@
+
 export interface ExerciseInfo {
     primaryVideoId: string | null;
     alternativeVideoIds: string[];
@@ -7,7 +8,7 @@ export interface ExerciseInfo {
     language: 'en' | 'he' | string;
 }
 
-const CACHE_KEY = 'geminiExerciseCache_v2';
+const CACHE_KEY = 'geminiExerciseCache_v3';
 
 // Helper to get the cache object from localStorage
 const getCache = (): Record<string, ExerciseInfo> => {
@@ -16,6 +17,8 @@ const getCache = (): Record<string, ExerciseInfo> => {
         return cachedData ? JSON.parse(cachedData) : {};
     } catch (error) {
         console.error("Failed to read from cache", error);
+        // If cache is corrupted, clear it and return an empty object
+        localStorage.removeItem(CACHE_KEY);
         return {};
     }
 };
@@ -68,11 +71,17 @@ export async function getExerciseInfo(exerciseName: string): Promise<ExerciseInf
     
     // 2. If not in cache, fetch from the server
     try {
+        const devApiKey = sessionStorage.getItem('dev-api-key');
+        const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+        };
+        if (devApiKey) {
+            headers['x-dev-api-key'] = devApiKey;
+        }
+
         const res = await fetch('/api/gemini', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
+            headers: headers,
             body: JSON.stringify({ exerciseName }),
         });
 

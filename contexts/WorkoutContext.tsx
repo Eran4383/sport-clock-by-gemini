@@ -10,6 +10,11 @@ interface ActiveWorkout {
   stepRestartKey?: number;
 }
 
+interface ImportNotificationData {
+    message: string;
+    planName: string;
+}
+
 interface WorkoutContextType {
   plans: WorkoutPlan[];
   activeWorkout: ActiveWorkout | null;
@@ -20,6 +25,8 @@ interface WorkoutContextType {
   recentlyImportedPlanId: string | null;
   workoutHistory: WorkoutLogEntry[];
   isPreparingWorkout: boolean;
+  importNotification: ImportNotificationData | null;
+  clearImportNotification: () => void;
   savePlan: (plan: WorkoutPlan) => void;
   importPlan: (plan: WorkoutPlan, source?: string) => void;
   deletePlan: (planId: string) => void;
@@ -72,7 +79,10 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [recentlyImportedPlanId, setRecentlyImportedPlanId] = useState<string | null>(null);
   const [workoutHistory, setWorkoutHistory] = useState<WorkoutLogEntry[]>(getInitialHistory);
   const [plansToStart, setPlansToStart] = useState<string[]>([]);
+  const [importNotification, setImportNotification] = useState<ImportNotificationData | null>(null);
   const isPreparingWorkout = plansToStart.length > 0;
+
+  const clearImportNotification = useCallback(() => setImportNotification(null), []);
 
   useEffect(() => {
     try {
@@ -135,9 +145,15 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     setPlans(prevPlans => {
       // Avoid adding duplicates if imported multiple times quickly
       if (prevPlans.some(p => p.name === newPlan.name)) {
+        // Optional: show a notification that plan already exists
         return prevPlans;
       }
       return [...prevPlans, newPlan];
+    });
+
+    setImportNotification({
+        message: 'תוכנית אימונים יובאה בהצלחה!',
+        planName: newPlan.name,
     });
 
     // Prefetch data for the imported plan
@@ -173,7 +189,6 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
                 // Basic validation
                 if (plan && typeof plan.name === 'string' && Array.isArray(plan.steps)) {
                     importPlan(plan, 'url');
-                    alert(`Workout plan "${plan.name}" imported successfully!`);
                 } else {
                     throw new Error("Invalid plan structure in URL.");
                 }
@@ -361,6 +376,8 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     recentlyImportedPlanId,
     workoutHistory,
     isPreparingWorkout,
+    importNotification,
+    clearImportNotification,
     savePlan,
     importPlan,
     deletePlan,

@@ -20,8 +20,12 @@ export default async function handler(req: any, res: any) {
     return res.status(405).end(`Method ${req.method} Not Allowed`);
   }
 
+  // Determine the API key to use. Prioritize a temporary developer key if provided.
+  const devApiKey = req.headers['x-dev-api-key'];
+  const activeGeminiApiKey = devApiKey || geminiApiKey;
+
   // The Gemini API key is mandatory for all operations.
-  if (!geminiApiKey) {
+  if (!activeGeminiApiKey) {
     console.error(`API_KEY (for Gemini) is not configured on the server.`);
     return res.status(500).json({ 
         message: `The Gemini API key (API_KEY) is not configured. Please set it in your project's environment variables.`,
@@ -29,7 +33,7 @@ export default async function handler(req: any, res: any) {
     });
   }
 
-  const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+  const ai = new GoogleGenAI({ apiKey: activeGeminiApiKey });
   const { exerciseName } = req.body;
 
   if (!exerciseName || typeof exerciseName !== 'string') {

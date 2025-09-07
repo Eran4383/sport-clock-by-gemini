@@ -1,4 +1,5 @@
 
+
 import React, { useMemo, useEffect, useRef, useState, useCallback } from 'react';
 import { CountdownDisplay } from './components/CountdownDisplay';
 import { CountdownControls } from './components/CountdownControls';
@@ -13,6 +14,7 @@ import { useCountdown } from './hooks/useCountdown';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
 import { WorkoutProvider, useWorkout } from './contexts/WorkoutContext';
 import { playNotificationSound } from './utils/sound';
+import { ImportNotification } from './components/ImportNotification';
 
 const AppContent: React.FC = () => {
   const { settings, updateSettings } = useSettings();
@@ -33,6 +35,8 @@ const AppContent: React.FC = () => {
     isPreparingWorkout,
     commitStartWorkout,
     clearPreparingWorkout,
+    importNotification,
+    clearImportNotification,
   } = useWorkout();
   
   const stopwatch = useStopwatch();
@@ -420,6 +424,13 @@ const AppContent: React.FC = () => {
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
     >
+      {importNotification && (
+          <ImportNotification 
+              message={importNotification.message} 
+              planName={importNotification.planName} 
+              onClose={clearImportNotification} 
+          />
+      )}
       <SettingsMenu isOpen={isSettingsOpen} setIsOpen={setIsSettingsOpen} />
       <WorkoutMenu isOpen={isWorkoutOpen} setIsOpen={setIsWorkoutOpen} />
       <main onDoubleClick={toggleFullScreen} className="flex-grow flex flex-col items-center justify-center w-full max-w-4xl mx-auto">
