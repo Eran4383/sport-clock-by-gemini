@@ -44,7 +44,7 @@ export default async function handler(req: any, res: any) {
         
         const textOnlyPrompt = `
           You are an expert fitness coach. For the exercise "${exerciseName}", generate the following information IN THE SAME LANGUAGE as the original exercise name ("${exerciseName}"):
-          - "instructions": A clear, step-by-step guide on how to perform the exercise correctly.
+          - "instructions": A clear, step-by-step guide on how to perform the exercise correctly, as an array of strings. Each string in the array should be a single step.
           - "tips": 2-4 concise tips for proper form and common mistakes to avoid.
           - "generalInfo": A short paragraph about the exercise, its benefits, and primary muscles targeted. At the end of this paragraph, add the following sentence in the target language: "Video tutorials require additional configuration."
           - "language": The ISO 639-1 code for the language used (e.g., 'he' for Hebrew, 'en' for English).
@@ -60,7 +60,7 @@ export default async function handler(req: any, res: any) {
                 responseSchema: {
                     type: Type.OBJECT,
                     properties: {
-                        instructions: { type: Type.STRING },
+                        instructions: { type: Type.ARRAY, items: { type: Type.STRING } },
                         tips: { type: Type.ARRAY, items: { type: Type.STRING } },
                         generalInfo: { type: Type.STRING },
                         language: { type: Type.STRING },
@@ -133,7 +133,7 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json({
           primaryVideoId: null,
           alternativeVideoIds: [],
-          instructions: "No suitable instructional video was found for this exercise.",
+          instructions: ["No suitable instructional video was found for this exercise."],
           tips: ["Try searching for a different variation of the exercise.", "Check your spelling."],
           generalInfo: `We could not locate a high-quality, short instructional video for "${exerciseName}" at this time.`,
           language: 'en'
@@ -148,7 +148,7 @@ export default async function handler(req: any, res: any) {
       Your tasks are:
       1.  **Select the single BEST video** from this list. The best video is a short (ideally under 120 seconds), direct, high-quality instructional tutorial focusing on proper form. Avoid long workouts, vlogs, or videos that are not primarily instructional.
       2.  **Based on the content of your selected video**, generate the following information IN THE SAME LANGUAGE as the original exercise name ("${exerciseName}"):
-          - "instructions": A clear, step-by-step guide.
+          - "instructions": A clear, step-by-step guide as an array of strings, with each string being a single step.
           - "tips": 2-4 concise tips for proper form.
           - "generalInfo": A short paragraph about the exercise, its benefits, and primary muscles targeted.
       3.  Provide a list of up to 3 other good video IDs from the provided list as alternatives for the user. Do not include your primary selection in this list.
@@ -167,7 +167,7 @@ export default async function handler(req: any, res: any) {
                 properties: {
                     primaryVideoId: { type: Type.STRING, description: "The ID of the best video chosen.", nullable: true },
                     alternativeVideoIds: { type: Type.ARRAY, items: { type: Type.STRING }, description: "A list of other good video IDs." },
-                    instructions: { type: Type.STRING },
+                    instructions: { type: Type.ARRAY, items: { type: Type.STRING } },
                     tips: { type: Type.ARRAY, items: { type: Type.STRING } },
                     generalInfo: { type: Type.STRING },
                     language: { type: Type.STRING, description: "ISO 639-1 language code." },

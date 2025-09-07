@@ -173,7 +173,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
                 // Basic validation
                 if (plan && typeof plan.name === 'string' && Array.isArray(plan.steps)) {
                     importPlan(plan, 'url');
-                    alert(`Workout plan "${plan.name}" imported successfully!`);
+                    alert(`תוכנית האימון "${plan.name}" יובאה בהצלחה והתווספה לרשימה שלך!`);
                 } else {
                     throw new Error("Invalid plan structure in URL.");
                 }
