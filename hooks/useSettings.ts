@@ -27,6 +27,7 @@ export interface Settings {
   halfwayColor: string;
   showRestTitleOnDefaultCountdown: boolean;
   preWorkoutCountdownDuration: number;
+  settingsCategoryOrder: string[];
 }
 
 const defaultSettings: Settings = {
@@ -55,6 +56,7 @@ const defaultSettings: Settings = {
   halfwayColor: '#FF0000',
   showRestTitleOnDefaultCountdown: true,
   preWorkoutCountdownDuration: 10,
+  settingsCategoryOrder: ['sounds', 'countdown', 'stopwatch', 'workoutDisplay', 'displaySizes', 'displayColors'],
 };
 
 const getInitialSettings = (): Settings => {

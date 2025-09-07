@@ -1,6 +1,6 @@
 
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useSettings } from '../contexts/SettingsContext';
 import { playNotificationSound } from '../utils/sound';
 
@@ -56,6 +56,7 @@ const RangeSlider: React.FC<{
 
 export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean) => void; }> = ({ isOpen, setIsOpen }) => {
   const { settings, updateSettings } = useSettings();
+  const [isPinned, setIsPinned] = useState(false);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const durationInputRef = useRef<HTMLInputElement>(null);
   const restInputRef = useRef<HTMLInputElement>(null);
@@ -86,12 +87,10 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
 
   // Auto-close logic
   useEffect(() => {
-    // Clear timer if menu is closed manually
     if (!isOpen && closeTimerRef.current) {
       clearTimeout(closeTimerRef.current);
       closeTimerRef.current = null;
     }
-    // Cleanup on unmount
     return () => {
       if (closeTimerRef.current) {
         clearTimeout(closeTimerRef.current);
@@ -106,15 +105,12 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
       stateUpdater: React.Dispatch<React.SetStateAction<string>>,
       min: number
     ) => {
-      // Prevent parent from scrolling
       e.preventDefault();
-      
       const input = e.currentTarget as HTMLInputElement;
       if (document.activeElement === input) {
         input.blur();
       }
-      
-      const delta = e.deltaY > 0 ? -1 : 1; // Invert for natural scrolling
+      const delta = e.deltaY > 0 ? -1 : 1;
       stateUpdater(prev => {
           const currentVal = parseInt(prev, 10) || 0;
           const nextVal = currentVal + delta;
@@ -127,32 +123,18 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
     const restEl = restInputRef.current;
     const preWorkoutEl = preWorkoutInputRef.current;
 
-
-    // We need to create these wrapper functions because addEventListener and removeEventListener need the exact same function reference.
     const durationWheelHandler = (e: WheelEvent) => handleWheel(e, setLocalCountdownDurationStr, 1);
     const restWheelHandler = (e: WheelEvent) => handleWheel(e, setLocalRestDurationStr, 0);
     const preWorkoutWheelHandler = (e: WheelEvent) => handleWheel(e, setLocalPreWorkoutCountdownStr, 1);
     
-    if (durationEl) {
-      durationEl.addEventListener('wheel', durationWheelHandler, { passive: false });
-    }
-    if (restEl) {
-      restEl.addEventListener('wheel', restWheelHandler, { passive: false });
-    }
-    if (preWorkoutEl) {
-        preWorkoutEl.addEventListener('wheel', preWorkoutWheelHandler, { passive: false });
-    }
+    if (durationEl) durationEl.addEventListener('wheel', durationWheelHandler, { passive: false });
+    if (restEl) restEl.addEventListener('wheel', restWheelHandler, { passive: false });
+    if (preWorkoutEl) preWorkoutEl.addEventListener('wheel', preWorkoutWheelHandler, { passive: false });
 
     return () => {
-      if (durationEl) {
-        durationEl.removeEventListener('wheel', durationWheelHandler);
-      }
-      if (restEl) {
-        restEl.removeEventListener('wheel', restWheelHandler);
-      }
-      if (preWorkoutEl) {
-        preWorkoutEl.removeEventListener('wheel', preWorkoutWheelHandler);
-      }
+      if (durationEl) durationEl.removeEventListener('wheel', durationWheelHandler);
+      if (restEl) restEl.removeEventListener('wheel', restWheelHandler);
+      if (preWorkoutEl) preWorkoutEl.removeEventListener('wheel', preWorkoutWheelHandler);
     };
   }, []);
 
@@ -186,28 +168,27 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
 
 
   const handleClose = () => {
-    // Save any pending changes before closing
     handleDurationBlur();
     handleRestBlur();
     handlePreWorkoutBlur();
     setIsOpen(false);
+    setIsPinned(false);
   };
 
   const handleMouseLeave = () => {
-    if (isOpen) {
+    if (isOpen && !isPinned) {
       closeTimerRef.current = setTimeout(() => {
         handleClose();
-      }, 10000); // 10 seconds
+      }, 10000);
     }
   };
   
-    // Touch handlers for swipe-to-close gesture
   const touchStartX = useRef<number | null>(null);
   const touchEndX = useRef<number | null>(null);
   const minSwipeDistance = 50;
 
   const handleTouchStart = (e: React.TouchEvent) => {
-    touchEndX.current = null; // reset end coordinate
+    touchEndX.current = null;
     touchStartX.current = e.touches[0].clientX;
   };
 
@@ -218,15 +199,12 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
   const handleTouchEnd = () => {
     if (!touchStartX.current || !touchEndX.current) return;
     const distance = touchEndX.current - touchStartX.current;
-    // Swipe right to close
     if (distance > minSwipeDistance) {
         handleClose();
     }
-    // Reset
     touchStartX.current = null;
     touchEndX.current = null;
   };
-
 
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newVolume = parseFloat(e.target.value);
@@ -250,8 +228,243 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
     }
   };
 
+  // --- Drag and drop state and logic ---
+  const [draggedInfo, setDraggedInfo] = useState<{
+    index: number;
+    id: string;
+    mouseOffsetY: number;
+    elementHeight: number;
+    elementWidth: number;
+    elementX: number;
+  } | null>(null);
+  const [currentY, setCurrentY] = useState<number | null>(null);
+  const [overIndex, setOverIndex] = useState<number | null>(null);
+  const categoryRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+  const handleMouseDown = (e: React.MouseEvent<HTMLHeadingElement>, index: number, key: string) => {
+    if (e.button !== 0) return; // Only left-click
+    e.preventDefault();
+    
+    const target = e.currentTarget.parentElement?.parentElement;
+    if (!target) return;
+    
+    const rect = target.getBoundingClientRect();
+    
+    setDraggedInfo({
+      index,
+      id: key,
+      mouseOffsetY: e.clientY - rect.top,
+      elementHeight: rect.height,
+      elementWidth: rect.width,
+      elementX: rect.left,
+    });
+    setCurrentY(e.clientY);
+    setOverIndex(index);
+  };
+  
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!draggedInfo) return;
+      setCurrentY(e.clientY);
+      
+      let newOverIndex = draggedInfo.index;
+      let closestDistance = Infinity;
+
+      categoryRefs.current.forEach((ref, index) => {
+          if (ref) {
+              const rect = ref.getBoundingClientRect();
+              const midY = rect.top + rect.height / 2;
+              const distance = Math.abs(e.clientY - midY);
+
+              if (distance < closestDistance) {
+                  closestDistance = distance;
+                  newOverIndex = index;
+              }
+          }
+      });
+      
+      if (newOverIndex !== overIndex) {
+          setOverIndex(newOverIndex);
+      }
+    };
+  
+    const handleMouseUp = () => {
+      if (!draggedInfo || overIndex === null) {
+        setDraggedInfo(null);
+        return;
+      };
+      
+      if (draggedInfo.index !== overIndex) {
+        const newOrder = [...settings.settingsCategoryOrder];
+        const [draggedItem] = newOrder.splice(draggedInfo.index, 1);
+        newOrder.splice(overIndex, 0, draggedItem);
+        updateSettings({ settingsCategoryOrder: newOrder });
+      }
+  
+      setDraggedInfo(null);
+    };
+  
+    if (draggedInfo) {
+      document.body.style.cursor = 'grabbing';
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    }
+  
+    return () => {
+      document.body.style.cursor = '';
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [draggedInfo, overIndex, settings.settingsCategoryOrder, updateSettings]);
+
+
+  const categories: Record<string, { title: string, content: JSX.Element }> = {
+    sounds: {
+      title: "Sounds",
+      content: (
+          <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={toggleMute} 
+                aria-label={settings.isMuted ? 'Unmute' : 'Mute'}
+                className="text-white p-1 focus:outline-none rounded-full disabled:opacity-50"
+                disabled={!settings.allSoundsEnabled}
+              >
+                  {settings.isMuted || settings.volume === 0 ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15zM17 14l-4-4m0 4l4-4" /></svg>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /></svg>
+                  )}
+              </button>
+                <input
+                  type="range"
+                  id="volumeControl"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={settings.isMuted ? 0 : settings.volume}
+                  onChange={handleVolumeChange}
+                  onMouseUp={playVolumeFeedback}
+                  onKeyUp={playVolumeFeedback}
+                  className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer disabled:opacity-50"
+                  disabled={!settings.allSoundsEnabled}
+                />
+            </div>
+            <hr className="border-gray-600" />
+            <Toggle id="allSoundsEnabled" label="Enable All Sounds" checked={settings.allSoundsEnabled} onChange={(e) => updateSettings({ allSoundsEnabled: e.target.checked })} />
+            <Toggle id="playSoundAtHalfway" label="Play at halfway" checked={settings.playSoundAtHalfway} onChange={(e) => updateSettings({ playSoundAtHalfway: e.target.checked })} disabled={!settings.allSoundsEnabled} />
+            <Toggle id="playSoundAtEnd" label="Play at end" checked={settings.playSoundAtEnd} onChange={(e) => updateSettings({ playSoundAtEnd: e.target.checked })} disabled={!settings.allSoundsEnabled} />
+            <Toggle id="playSoundOnRestart" label="Play on restart" checked={settings.playSoundOnRestart} onChange={(e) => updateSettings({ playSoundOnRestart: e.target.checked })} disabled={!settings.allSoundsEnabled} />
+          </div>
+      )
+    },
+    countdown: {
+      title: "Countdown",
+      content: (
+        <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
+          <div className="flex items-center justify-between">
+              <label htmlFor="countdownDuration" className="text-white">Duration (s)</label>
+              <input ref={durationInputRef} type="number" id="countdownDuration" min="1" className="w-20 bg-gray-600 text-white text-center rounded-md p-1 focus:ring-2 focus:outline-none ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" value={localCountdownDurationStr} onChange={(e) => setLocalCountdownDurationStr(e.target.value)} onBlur={handleDurationBlur} />
+          </div>
+          <div className="flex items-center justify-between">
+            <label htmlFor="countdownRestDuration" className="text-white">Rest Duration (s)</label>
+            <input ref={restInputRef} type="number" id="countdownRestDuration" min="0" className="w-20 bg-gray-600 text-white text-center rounded-md p-1 focus:ring-2 focus:outline-none ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" value={localRestDurationStr} onChange={(e) => setLocalRestDurationStr(e.target.value)} onBlur={handleRestBlur} />
+          </div>
+          <div className="flex items-center justify-between">
+              <label htmlFor="preWorkoutDuration" className="text-white">Pre-Workout Time (s)</label>
+              <input ref={preWorkoutInputRef} type="number" id="preWorkoutDuration" min="1" className="w-20 bg-gray-600 text-white text-center rounded-md p-1 focus:ring-2 focus:outline-none ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" value={localPreWorkoutCountdownStr} onChange={(e) => setLocalPreWorkoutCountdownStr(e.target.value)} onBlur={handlePreWorkoutBlur} />
+          </div>
+          <hr className="border-gray-600" />
+          <Toggle id="showCountdownToggle" label="Show Countdown" checked={settings.showCountdown} onChange={(e) => updateSettings({ showCountdown: e.target.checked })} />
+          <Toggle id="showCountdownControlsToggle" label="Show Controls" checked={settings.showCountdownControls} onChange={(e) => updateSettings({ showCountdownControls: e.target.checked })} />
+          <Toggle id="showRestTitleToggle" label="Show 'Rest' Title" checked={settings.showRestTitleOnDefaultCountdown} onChange={(e) => updateSettings({ showRestTitleOnDefaultCountdown: e.target.checked })} />
+        </div>
+      )
+    },
+    stopwatch: {
+      title: "Stopwatch",
+      content: (
+        <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
+          <Toggle id="showTimerToggle" label="Show Stopwatch" checked={settings.showTimer} onChange={(e) => updateSettings({ showTimer: e.target.checked })} />
+          <Toggle id="showStopwatchControlsToggle" label="Show Controls" checked={settings.showStopwatchControls} onChange={(e) => updateSettings({ showStopwatchControls: e.target.checked })} />
+            <Toggle id="showCycleCounterToggle" label="Show Cycle Counter" checked={settings.showCycleCounter} onChange={(e) => updateSettings({ showCycleCounter: e.target.checked })} />
+        </div>
+      )
+    },
+    workoutDisplay: {
+      title: "Workout Display",
+      content: (
+        <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
+          <Toggle id="showNextExercise" label="Show Next Exercise" checked={settings.showNextExercise} onChange={(e) => updateSettings({ showNextExercise: e.target.checked })} />
+        </div>
+      )
+    },
+    displaySizes: {
+      title: "Display Sizes",
+      content: (
+        <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
+          <RangeSlider id="countdownSize" label="Countdown" value={settings.countdownSize} onChange={e => updateSettings({ countdownSize: parseInt(e.target.value, 10) })} />
+          <RangeSlider id="stopwatchSize" label="Stopwatch" value={settings.stopwatchSize} onChange={e => updateSettings({ stopwatchSize: parseInt(e.target.value, 10) })} />
+          <RangeSlider id="countdownControlsSize" label="Countdown Controls" value={settings.countdownControlsSize} onChange={e => updateSettings({ countdownControlsSize: parseInt(e.target.value, 10) })} />
+          <RangeSlider id="stopwatchControlsSize" label="Stopwatch Controls" value={settings.stopwatchControlsSize} onChange={e => updateSettings({ stopwatchControlsSize: parseInt(e.target.value, 10) })} />
+        </div>
+      )
+    },
+    displayColors: {
+      title: "Display Colors",
+      content: (
+        <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
+          <div className="flex items-center justify-between">
+            <label htmlFor="backgroundColor" className="text-white">Background</label>
+            <input type="color" id="backgroundColor" value={settings.backgroundColor} onChange={(e) => updateSettings({ backgroundColor: e.target.value })} className="w-10 h-10 p-0 bg-transparent border-none rounded-md cursor-pointer" title="Set the main background color" />
+          </div>
+          <div className="flex items-center justify-between">
+            <label htmlFor="halfwayColor" className="text-white">Halfway Background</label>
+            <input type="color" id="halfwayColor" value={settings.halfwayColor} onChange={(e) => updateSettings({ halfwayColor: e.target.value })} className="w-10 h-10 p-0 bg-transparent border-none rounded-md cursor-pointer" title="Set background color for second half of countdown" />
+          </div>
+        </div>
+      )
+    }
+  };
+
+  const ghostElement = useMemo(() => {
+      if (!draggedInfo || currentY === null) return null;
+      const category = categories[draggedInfo.id];
+      if (!category) return null;
+      const top = currentY - draggedInfo.mouseOffsetY;
+      
+      return (
+          <div 
+            style={{
+              position: 'fixed',
+              pointerEvents: 'none',
+              zIndex: 100,
+              left: draggedInfo.elementX,
+              top: top,
+              width: draggedInfo.elementWidth,
+              boxShadow: '0 10px 20px rgba(0,0,0,0.2)',
+              transform: 'scale(1.02)',
+              background: 'rgb(31 41 55)', // solid gray-800
+              borderRadius: '0.5rem',
+            }}
+          >
+            <div>
+              <h3 className="text-lg font-semibold text-gray-300 mb-3 cursor-grabbing px-3 pt-3">
+                {category.title}
+              </h3>
+              {category.content}
+            </div>
+          </div>
+      )
+  }, [draggedInfo, currentY, categories]);
+
+
+  const currentOrder = settings.settingsCategoryOrder || Object.keys(categories);
+  categoryRefs.current = [];
+
   return (
     <>
+      {ghostElement}
       <div className="absolute top-4 right-4 menu-container group">
         <button 
           onClick={() => isOpen ? handleClose() : setIsOpen(true)} 
@@ -265,7 +478,7 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
       {isOpen && (
         <div 
           className="fixed inset-0 bg-black/60 z-40"
-          onClick={handleClose}
+          onClick={() => !isPinned && handleClose()}
         ></div>
       )}
 
@@ -276,168 +489,67 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        >
-          <div className="p-6 overflow-y-auto h-full">
-            <div className="flex justify-between items-center mb-8">
-              <h2 className="text-2xl font-bold text-white">Settings</h2>
+      >
+        <div className="p-6 overflow-y-auto h-full">
+          <div className="flex justify-between items-center mb-8">
+            <h2 className="text-2xl font-bold text-white">Settings</h2>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => setIsPinned(!isPinned)}
+                className={`p-2 rounded-full hover:bg-gray-500/30 ${isPinned ? 'text-blue-400' : 'text-gray-400'}`}
+                title={isPinned ? 'Unpin Menu' : 'Pin Menu'}
+              >
+                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 3a1 1 0 01.707.293l3 3a1 1 0 01-1.414 1.414L10 5.414 7.707 7.707a1 1 0 01-1.414-1.414l3-3A1 1 0 0110 3zm-3.707 9.293a1 1 0 011.414 0L10 14.586l2.293-2.293a1 1 0 011.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" transform="rotate(45 10 10)" /></svg>
+              </button>
               <button onClick={handleClose} aria-label="Close settings menu" className="p-2 rounded-full hover:bg-gray-500/30">
-                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
               </button>
             </div>
-            
-            <div className="space-y-8">
+          </div>
+          
+          <div className="space-y-8">
+            {currentOrder.map((key, index) => {
+              const category = categories[key];
+              if (!category) return null;
 
-              <div>
-                <h3 className="text-lg font-semibold text-gray-300 mb-3">Countdown</h3>
-                <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
-                  <Toggle id="showCountdownToggle" label="Show Countdown" checked={settings.showCountdown} onChange={(e) => updateSettings({ showCountdown: e.target.checked })} />
-                  <Toggle id="showCountdownControlsToggle" label="Show Controls" checked={settings.showCountdownControls} onChange={(e) => updateSettings({ showCountdownControls: e.target.checked })} />
-                  <Toggle id="showRestTitleToggle" label="Show 'Rest' Title" checked={settings.showRestTitleOnDefaultCountdown} onChange={(e) => updateSettings({ showRestTitleOnDefaultCountdown: e.target.checked })} />
-                  
-                  <hr className="border-gray-600" />
-                  
-                  <div className="flex items-center justify-between">
-                     <label htmlFor="preWorkoutDuration" className="text-white">Pre-Workout Time (s)</label>
-                     <input
-                        ref={preWorkoutInputRef}
-                        type="number"
-                        id="preWorkoutDuration"
-                        min="1"
-                        className="w-20 bg-gray-600 text-white text-center rounded-md p-1 focus:ring-2 focus:outline-none ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                        value={localPreWorkoutCountdownStr}
-                        onChange={(e) => setLocalPreWorkoutCountdownStr(e.target.value)}
-                        onBlur={handlePreWorkoutBlur}
-                     />
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                     <label htmlFor="countdownDuration" className="text-white">Duration (s)</label>
-                     <input
-                        ref={durationInputRef}
-                        type="number"
-                        id="countdownDuration"
-                        min="1"
-                        className="w-20 bg-gray-600 text-white text-center rounded-md p-1 focus:ring-2 focus:outline-none ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                        value={localCountdownDurationStr}
-                        onChange={(e) => setLocalCountdownDurationStr(e.target.value)}
-                        onBlur={handleDurationBlur}
-                     />
-                  </div>
-                   <div className="flex items-center justify-between">
-                     <label htmlFor="countdownRestDuration" className="text-white">Rest Duration (s)</label>
-                     <input
-                        ref={restInputRef}
-                        type="number"
-                        id="countdownRestDuration"
-                        min="0"
-                        className="w-20 bg-gray-600 text-white text-center rounded-md p-1 focus:ring-2 focus:outline-none ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                        value={localRestDurationStr}
-                        onChange={(e) => setLocalRestDurationStr(e.target.value)}
-                        onBlur={handleRestBlur}
-                     />
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <h3 className="text-lg font-semibold text-gray-300 mb-3">Stopwatch</h3>
-                <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
-                  <Toggle id="showTimerToggle" label="Show Stopwatch" checked={settings.showTimer} onChange={(e) => updateSettings({ showTimer: e.target.checked })} />
-                  <Toggle id="showStopwatchControlsToggle" label="Show Controls" checked={settings.showStopwatchControls} onChange={(e) => updateSettings({ showStopwatchControls: e.target.checked })} />
-                   <Toggle id="showCycleCounterToggle" label="Show Cycle Counter" checked={settings.showCycleCounter} onChange={(e) => updateSettings({ showCycleCounter: e.target.checked })} />
-                </div>
-              </div>
+              const isBeingDragged = draggedInfo?.index === index;
               
-              <div>
-                <h3 className="text-lg font-semibold text-gray-300 mb-3">Workout Display</h3>
-                <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
-                  <Toggle id="showNextExercise" label="Show Next Exercise" checked={settings.showNextExercise} onChange={(e) => updateSettings({ showNextExercise: e.target.checked })} />
-                </div>
-              </div>
-
-               <div>
-                <h3 className="text-lg font-semibold text-gray-300 mb-3">Sounds</h3>
-                <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
-                  <Toggle id="allSoundsEnabled" label="Enable All Sounds" checked={settings.allSoundsEnabled} onChange={(e) => updateSettings({ allSoundsEnabled: e.target.checked })} />
-                  <hr className="border-gray-600" />
-                  <Toggle id="playSoundAtHalfway" label="Play at halfway" checked={settings.playSoundAtHalfway} onChange={(e) => updateSettings({ playSoundAtHalfway: e.target.checked })} disabled={!settings.allSoundsEnabled} />
-                  <Toggle id="playSoundAtEnd" label="Play at end" checked={settings.playSoundAtEnd} onChange={(e) => updateSettings({ playSoundAtEnd: e.target.checked })} disabled={!settings.allSoundsEnabled} />
-                  <Toggle id="playSoundOnRestart" label="Play on restart" checked={settings.playSoundOnRestart} onChange={(e) => updateSettings({ playSoundOnRestart: e.target.checked })} disabled={!settings.allSoundsEnabled} />
-                  
-                  <div className={`pt-2 ${!settings.allSoundsEnabled ? 'opacity-50' : ''}`}>
-                    <label htmlFor="volumeControl" className="text-white mb-2 block">Volume</label>
-                    <div className="flex items-center gap-3">
-                      <button 
-                        onClick={toggleMute} 
-                        aria-label={settings.isMuted ? 'Unmute' : 'Mute'}
-                        className="text-white p-1 focus:outline-none rounded-full"
-                        disabled={!settings.allSoundsEnabled}
-                      >
-                         {settings.isMuted || settings.volume === 0 ? (
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15zM17 14l-4-4m0 4l4-4" /></svg>
-                          ) : (
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /></svg>
-                          )}
-                      </button>
-                       <input
-                          type="range"
-                          id="volumeControl"
-                          min="0"
-                          max="1"
-                          step="0.01"
-                          value={settings.isMuted ? 0 : settings.volume}
-                          onChange={handleVolumeChange}
-                          onMouseUp={playVolumeFeedback}
-                          onKeyUp={playVolumeFeedback}
-                          className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer"
-                          disabled={!settings.allSoundsEnabled}
-                       />
-                    </div>
-                  </div>
-                </div>
-              </div>
+              let transform = 'translateY(0px)';
+              if (draggedInfo && overIndex !== null && draggedInfo.index !== overIndex) {
+                  const draggedHeight = draggedInfo.elementHeight + 32; // 32 is space-y-8 (2rem)
+                  if (draggedInfo.index < overIndex) { // Dragging down
+                      if (index > draggedInfo.index && index <= overIndex) {
+                          transform = `translateY(-${draggedHeight}px)`;
+                      }
+                  } else { // Dragging up
+                      if (index < draggedInfo.index && index >= overIndex) {
+                          transform = `translateY(${draggedHeight}px)`;
+                      }
+                  }
+              }
               
-              <div>
-                <h3 className="text-lg font-semibold text-gray-300 mb-3">Display Sizes</h3>
-                <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
-                    <RangeSlider id="countdownSize" label="Countdown" value={settings.countdownSize} onChange={e => updateSettings({ countdownSize: parseInt(e.target.value, 10) })} />
-                    <RangeSlider id="stopwatchSize" label="Stopwatch" value={settings.stopwatchSize} onChange={e => updateSettings({ stopwatchSize: parseInt(e.target.value, 10) })} />
-                    <RangeSlider id="countdownControlsSize" label="Countdown Controls" value={settings.countdownControlsSize} onChange={e => updateSettings({ countdownControlsSize: parseInt(e.target.value, 10) })} />
-                    <RangeSlider id="stopwatchControlsSize" label="Stopwatch Controls" value={settings.stopwatchControlsSize} onChange={e => updateSettings({ stopwatchControlsSize: parseInt(e.target.value, 10) })} />
-                </div>
-              </div>
-
-              <div>
-                <h3 className="text-lg font-semibold text-gray-300 mb-3">Display Colors</h3>
-                <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
-                  <div className="flex items-center justify-between">
-                    <label htmlFor="backgroundColor" className="text-white">Background</label>
-                    <input
-                      type="color"
-                      id="backgroundColor"
-                      value={settings.backgroundColor}
-                      onChange={(e) => updateSettings({ backgroundColor: e.target.value })}
-                      className="w-10 h-10 p-0 bg-transparent border-none rounded-md cursor-pointer"
-                      title="Set the main background color"
-                    />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <label htmlFor="halfwayColor" className="text-white">Halfway Background</label>
-                    <input
-                      type="color"
-                      id="halfwayColor"
-                      value={settings.halfwayColor}
-                      onChange={(e) => updateSettings({ halfwayColor: e.target.value })}
-                      className="w-10 h-10 p-0 bg-transparent border-none rounded-md cursor-pointer"
-                      title="Set background color for second half of countdown"
-                    />
+              return (
+                <div
+                  key={key}
+                  ref={el => { if(el) categoryRefs.current[index] = el; }}
+                  className="transition-transform duration-300 ease-in-out"
+                  style={{ transform }}
+                >
+                  <div style={{ visibility: isBeingDragged ? 'hidden' : 'visible' }}>
+                    <h3
+                      className="text-lg font-semibold text-gray-300 mb-3 cursor-grab"
+                      onMouseDown={(e) => handleMouseDown(e, index, key)}
+                    >
+                      {category.title}
+                    </h3>
+                    {category.content}
                   </div>
                 </div>
-              </div>
-
-            </div>
+              );
+            })}
           </div>
         </div>
+      </div>
     </>
   );
 };
