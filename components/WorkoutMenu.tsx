@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useWorkout } from '../contexts/WorkoutContext';
 import { WorkoutPlan, WorkoutStep } from '../types';
@@ -132,9 +133,21 @@ const ExerciseInfoModal: React.FC<{
   
   const parsedInstructions = useMemo(() => {
     if (!info?.instructions) return [];
-    return info.instructions
-      .split('\n')
-      .map(line => line.trim().replace(/^\d+\.\s*/, ''))
+    
+    const instructionsText = info.instructions.trim();
+    let lines: string[];
+
+    // First, try splitting by newline characters, which is the preferred format.
+    if (instructionsText.includes('\n')) {
+        lines = instructionsText.split('\n');
+    } else {
+        // Fallback: If no newlines, split by a pattern like "1. ", "2. ", etc.
+        // The positive lookahead `(?=...)` splits *before* the number, keeping it for the next step.
+        lines = instructionsText.split(/(?=\d+\.\s*)/);
+    }
+    
+    return lines
+      .map(line => line.trim().replace(/^\d+\.\s*/, '')) // remove the "1. " part
       .filter(line => line.length > 0);
   }, [info?.instructions]);
 
