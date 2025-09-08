@@ -35,6 +35,23 @@ const saveToCache = (key: string, data: ExerciseInfo) => {
     }
 };
 
+/**
+ * Removes a single exercise from the client-side localStorage cache.
+ * @param exerciseName - The name of the exercise to clear.
+ */
+export const clearExerciseFromCache = (exerciseName: string) => {
+    const normalizedName = exerciseName.trim().toLowerCase();
+    try {
+        const cache = getCache();
+        if (cache[normalizedName]) {
+            delete cache[normalizedName];
+            localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+        }
+    } catch (error) {
+        console.error("Failed to clear exercise from cache", error);
+    }
+};
+
 
 const getApiKeyErrorResponse = (): ExerciseInfo => ({
     primaryVideoId: null,
@@ -47,7 +64,7 @@ const getApiKeyErrorResponse = (): ExerciseInfo => ({
         "יש לוודא שהמשתנה מופעל עבור סביבת הייצור (Production).",
         "יש לפרוס מחדש את היישום כדי להחיל את השינויים."
     ],
-    generalInfo: "תכונות הבינה המלאכותית של אפליקציה זו דורשות מפתח Gemini API בצד השרת. ללא מפתח זה, לא ניתן לאחזר מידע על תרגילים.",
+    generalInfo: "תכונות הבינה המלאכותיות של אפליקציה זו דורשות מפתח Gemini API בצד השרת. ללא מפתח זה, לא ניתן לאחזר מידע על תרגילים.",
     language: 'he',
 });
 

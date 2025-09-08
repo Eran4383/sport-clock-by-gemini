@@ -3,14 +3,15 @@ import { useWorkout } from '../contexts/WorkoutContext';
 import { WorkoutPlan, WorkoutStep } from '../types';
 import { useSettings } from '../contexts/SettingsContext';
 import { HoverNumberInput } from './HoverNumberInput';
-import { getExerciseInfo, ExerciseInfo } from '../services/geminiService';
+import { getExerciseInfo, ExerciseInfo, clearExerciseFromCache } from '../services/geminiService';
 import { WorkoutLog } from './WorkoutLog';
 import { getBaseExerciseName, generateCircuitSteps } from '../utils/workout';
 
 const ExerciseInfoModal: React.FC<{
   exerciseName: string;
   onClose: () => void;
-}> = ({ exerciseName, onClose }) => {
+  isVisible: boolean;
+}> = ({ exerciseName, onClose, isVisible }) => {
   const [info, setInfo] = useState<ExerciseInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -39,7 +40,9 @@ const ExerciseInfoModal: React.FC<{
         setIsLoading(false);
       }
     };
-    fetchInfo();
+    if (exerciseName) {
+        fetchInfo();
+    }
   }, [exerciseName]);
   
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -154,10 +157,15 @@ const ExerciseInfoModal: React.FC<{
 
 
   return (
-    <div className="fixed inset-0 bg-black/70 z-[100]" onClick={onClose} aria-modal="true" role="dialog">
+    <div 
+        className={`fixed inset-0 bg-black/70 z-[100] transition-opacity duration-300 ${isVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} 
+        onClick={onClose} 
+        aria-modal="true" 
+        role="dialog"
+    >
       <div 
         ref={modalRef}
-        className="bg-gray-800 rounded-lg shadow-xl w-full max-w-lg flex flex-col max-h-[90vh] absolute top-1/2 left-1/2"
+        className={`bg-gray-800 rounded-lg shadow-xl w-full max-w-lg flex flex-col max-h-[90vh] absolute top-1/2 left-1/2 transition-all duration-300 ${isVisible ? 'scale-100 opacity-100' : 'scale-95 opacity-0'}`}
         style={{ transform: `translate(-50%, -50%) translate(${position.x}px, ${position.y}px)` }}
         onClick={e => e.stopPropagation()}
         dir={isHebrew ? 'rtl' : 'ltr'}
@@ -178,7 +186,7 @@ const ExerciseInfoModal: React.FC<{
         <div className="p-4 flex-grow overflow-hidden flex flex-col">
           {isLoading ? (
             <div className="flex-grow flex items-center justify-center" dir="rtl">
-              <p className="text-gray-300 animate-pulse">אני מחפש לך אחד מדוייק, המתן רגע בבקשה...</p>
+              <p className="text-gray-300 animate-pulse">אני מחפש סרטון הדרכה מתאים...</p>
             </div>
           ) : (
             <>
@@ -196,7 +204,7 @@ const ExerciseInfoModal: React.FC<{
                     <div className="aspect-video bg-gray-900 rounded-lg overflow-hidden flex items-center justify-center">
                         {embedUrl ? (
                             <iframe
-                                key={embedUrl}
+                                key={activeVideoId}
                                 className="w-full h-full"
                                 src={embedUrl}
                                 title={`Video tutorial for ${exerciseName}`}
@@ -411,6 +419,10 @@ const PlanListItem: React.FC<{
   const [isExpanded, setIsExpanded] = useState(false);
   const exerciseColorMap = useExerciseColorMap(plan.steps);
   const [confirmationMessage, setConfirmationMessage] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ visible: boolean; x: number; y: number; exerciseName: string } | null>(null);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const touchMoveThreshold = 10; // pixels
+  const touchStartCoords = useRef({ x: 0, y: 0 });
 
   const showConfirmation = (message: string) => {
       setConfirmationMessage(message);
@@ -425,6 +437,64 @@ const PlanListItem: React.FC<{
       setIsExpanded(true);
     }
   }, [isActive]);
+  
+  // Context Menu Handlers
+  const handleContextMenu = (e: React.MouseEvent, exerciseName: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ visible: true, x: e.clientX, y: e.clientY, exerciseName });
+  };
+  
+  const handleTouchStart = (e: React.TouchEvent, exerciseName: string) => {
+    e.stopPropagation();
+    touchStartCoords.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    longPressTimer.current = setTimeout(() => {
+        setContextMenu({ visible: true, x: e.touches[0].clientX, y: e.touches[0].clientY, exerciseName });
+        longPressTimer.current = null;
+    }, 500); // 500ms for long press
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    const dx = Math.abs(e.touches[0].clientX - touchStartCoords.current.x);
+    const dy = Math.abs(e.touches[0].clientY - touchStartCoords.current.y);
+    if (dx > touchMoveThreshold || dy > touchMoveThreshold) {
+        if (longPressTimer.current) {
+            clearTimeout(longPressTimer.current);
+            longPressTimer.current = null;
+        }
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (longPressTimer.current) {
+        clearTimeout(longPressTimer.current);
+        longPressTimer.current = null;
+    }
+    if (contextMenu?.visible) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+  };
+  
+  useEffect(() => {
+    if (contextMenu?.visible) {
+        const close = () => setContextMenu(null);
+        window.addEventListener('click', close, { once: true });
+        window.addEventListener('contextmenu', close, { once: true });
+        return () => {
+            window.removeEventListener('click', close);
+            window.removeEventListener('contextmenu', close);
+        };
+    }
+  }, [contextMenu?.visible]);
+
+  const handleRefreshExercise = async () => {
+    if (!contextMenu) return;
+    clearExerciseFromCache(contextMenu.exerciseName);
+    onInspectExercise(contextMenu.exerciseName);
+    setContextMenu(null);
+  };
+
 
   const displayedSteps = useMemo(() => {
     if (plan.executionMode === 'circuit') {
@@ -519,166 +589,194 @@ const PlanListItem: React.FC<{
   const animationClass = isNewlyImported ? 'animate-glow' : '';
 
   return (
-    <div 
-        className={`bg-gray-700/50 rounded-lg transition-all duration-300 ${isDraggable ? 'cursor-grab' : ''} ${dragStyles} ${animationClass}`}
-        style={{ borderLeft: `5px solid ${plan.color || 'transparent'}` }}
-        draggable={isDraggable}
-        onDragStart={(e) => onDragStart(e, index)}
-        onDragOver={(e) => onDragOver(e, index)}
-        onDrop={(e) => onDrop(e, index)}
-        onDragEnd={onDragEnd}
-        onDragLeave={onDragLeave}
-    >
-      <div className="p-3 cursor-pointer" onClick={() => setIsExpanded(!isExpanded)}>
-        <div className="flex justify-between items-start gap-3">
-          <div className="flex-1 min-w-0 flex items-start gap-3">
-            {!activeWorkout && (
-                <input
-                    type="checkbox"
-                    checked={isSelected}
-                    onChange={(e) => {
-                        e.stopPropagation();
-                        onToggleSelection(plan.id);
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                    className="form-checkbox h-5 w-5 rounded bg-gray-600 border-gray-500 text-blue-500 focus:ring-blue-500 shrink-0 mt-1"
-                    aria-label={`Select plan ${plan.name}`}
-                />
-            )}
-            <div className="flex-1 min-w-0">
-                <h3 className="text-xl font-semibold text-white break-words" title={plan.name}>{plan.name}</h3>
-                <p className="text-sm text-gray-400">
-                  {plan.steps.length} steps, Total: {getTotalDuration(plan)}
-                </p>
+    <>
+      {contextMenu?.visible && (
+          <div
+              style={{ top: contextMenu.y, left: contextMenu.x, position: 'fixed', zIndex: 110 }}
+              className="bg-gray-900 border border-gray-700 rounded-md shadow-lg py-1 animate-fadeIn"
+              onClick={(e) => e.stopPropagation()} // Prevent this from closing the menu
+          >
+              <button
+                  onClick={handleRefreshExercise}
+                  className="block w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-blue-600 hover:text-white"
+              >
+                  רענן מידע על התרגיל
+              </button>
+          </div>
+      )}
+      <div 
+          className={`bg-gray-700/50 rounded-lg transition-all duration-300 ${isDraggable ? 'cursor-grab' : ''} ${dragStyles} ${animationClass}`}
+          style={{ borderLeft: `5px solid ${plan.color || 'transparent'}` }}
+          draggable={isDraggable}
+          onDragStart={(e) => onDragStart(e, index)}
+          onDragOver={(e) => onDragOver(e, index)}
+          onDrop={(e) => onDrop(e, index)}
+          onDragEnd={onDragEnd}
+          onDragLeave={onDragLeave}
+      >
+        <div className="p-3 cursor-pointer" onClick={() => setIsExpanded(!isExpanded)}>
+          <div className="flex justify-between items-start gap-3">
+            <div className="flex-1 min-w-0 flex items-start gap-3">
+              {!activeWorkout && (
+                  <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={(e) => {
+                          e.stopPropagation();
+                          onToggleSelection(plan.id);
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      className="form-checkbox h-5 w-5 rounded bg-gray-600 border-gray-500 text-blue-500 focus:ring-blue-500 shrink-0 mt-1"
+                      aria-label={`Select plan ${plan.name}`}
+                  />
+              )}
+              <div className="flex-1 min-w-0">
+                  <h3 className="text-xl font-semibold text-white break-words" title={plan.name}>{plan.name}</h3>
+                  <p className="text-sm text-gray-400">
+                    {plan.steps.length} steps, Total: {getTotalDuration(plan)}
+                  </p>
+              </div>
             </div>
           </div>
-        </div>
-        
-        <div className="flex gap-1 items-center mt-3 justify-end relative">
-             {confirmationMessage && <span className="absolute -top-8 right-0 bg-gray-900 text-white text-xs px-2 py-1 rounded">{confirmationMessage}</span>}
-             <button
-                onClick={handleToggleLock}
-                className={`p-2 hover:bg-gray-600/50 rounded-full disabled:opacity-50 disabled:cursor-not-allowed ${plan.isLocked ? 'text-yellow-400' : 'text-gray-300'}`}
-                aria-label={plan.isLocked ? "Un-lock plan" : "Lock plan"}
-                title={plan.isLocked ? "תוכנית נעולה (לחץ לפתיחה)" : "נעל תוכנית למניעת מחיקה"}
-                disabled={!!activeWorkout}
-            >
-                {plan.isLocked ? (
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>
-                ) : (
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a5 5 0 00-5 5v2a2 2 0 00-2 2v5a2 2 0 002 2h10a2 2 0 002-2v-5a2 2 0 00-2-2V7a5 5 0 00-5-5zm0 9a3 3 0 100-6 3 3 0 000 6z" /></svg>
-                )}
-            </button>
-            <button
-                onClick={handleToggleMode}
+          
+          <div className="flex gap-1 items-center mt-3 justify-end relative">
+               {confirmationMessage && <span className="absolute -top-8 right-0 bg-gray-900 text-white text-xs px-2 py-1 rounded">{confirmationMessage}</span>}
+               <button
+                  onClick={handleToggleLock}
+                  className={`p-2 hover:bg-gray-600/50 rounded-full disabled:opacity-50 disabled:cursor-not-allowed ${plan.isLocked ? 'text-yellow-400' : 'text-gray-300'}`}
+                  aria-label={plan.isLocked ? "Un-lock plan" : "Lock plan"}
+                  title={plan.isLocked ? "תוכנית נעולה (לחץ לפתיחה)" : "נעל תוכנית למניעת מחיקה"}
+                  disabled={!!activeWorkout}
+              >
+                  {plan.isLocked ? (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>
+                  ) : (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a5 5 0 00-5 5v2a2 2 0 00-2 2v5a2 2 0 002 2h10a2 2 0 002-2v-5a2 2 0 00-2-2V7a5 5 0 00-5-5zm0 9a3 3 0 100-6 3 3 0 000 6z" /></svg>
+                  )}
+              </button>
+              <button
+                  onClick={handleToggleMode}
+                  className="p-2 text-gray-300 hover:text-white hover:bg-gray-600/50 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
+                  aria-label={plan.executionMode === 'circuit' ? "Switch to Linear Mode" : "Switch to Circuit Mode"}
+                  title={plan.executionMode === 'circuit' ? "Circuit Mode" : "Linear Mode"}
+                  disabled={!!activeWorkout}
+              >
+                  {plan.executionMode === 'circuit' ? (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 110 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" /></svg>
+                  ) : (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM9 15a1 1 0 011-1h6a1 1 0 110 2h-6a1 1 0 01-1-1z" clipRule="evenodd" /></svg>
+                  )}
+              </button>
+              <button
+                  onClick={handleCopyJson}
+                  className="p-2 text-gray-300 hover:text-white hover:bg-gray-600/50 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
+                  aria-label="Copy plan as JSON"
+                  title="Copy Plan as JSON"
+                  disabled={!!activeWorkout}
+              >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 0 11-1.898-.632l4-12a1 1 0 011.265-.633zM5.707 6.293a1 1 0 010 1.414L3.414 10l2.293 2.293a1 1 0 11-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0zm8.586 0a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 11-1.414-1.414L16.586 10l-2.293-2.293a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+              </button>
+              <button
+                onClick={(e) => {
+                    e.stopPropagation();
+                    onShare(plan);
+                }}
                 className="p-2 text-gray-300 hover:text-white hover:bg-gray-600/50 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
-                aria-label={plan.executionMode === 'circuit' ? "Switch to Linear Mode" : "Switch to Circuit Mode"}
-                title={plan.executionMode === 'circuit' ? "Circuit Mode" : "Linear Mode"}
+                aria-label="Share plan via link"
+                title="Share Plan"
                 disabled={!!activeWorkout}
-            >
-                {plan.executionMode === 'circuit' ? (
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 110 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" /></svg>
-                ) : (
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM9 15a1 1 0 011-1h6a1 1 0 110 2h-6a1 1 0 01-1-1z" clipRule="evenodd" /></svg>
-                )}
-            </button>
-            <button
-                onClick={handleCopyJson}
+              >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M15 8a3 3 0 10-2.977-2.63l-4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 10.895-1.789l-4.94-2.47a3.027 3.027 0 000-.74l4.94-2.47C13.456 7.68 14.19 8 15 8z" /></svg>
+              </button>
+              <button
+                onClick={handleExport}
                 className="p-2 text-gray-300 hover:text-white hover:bg-gray-600/50 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
-                aria-label="Copy plan as JSON"
-                title="Copy Plan as JSON"
+                aria-label="Export plan to file"
+                title="Export Plan"
                 disabled={!!activeWorkout}
-            >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 0 11-1.898-.632l4-12a1 1 0 011.265-.633zM5.707 6.293a1 1 0 010 1.414L3.414 10l2.293 2.293a1 1 0 11-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0zm8.586 0a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 11-1.414-1.414L16.586 10l-2.293-2.293a1 1 0 010-1.414z" clipRule="evenodd" />
-                </svg>
-            </button>
-            <button
-              onClick={(e) => {
-                  e.stopPropagation();
-                  onShare(plan);
-              }}
-              className="p-2 text-gray-300 hover:text-white hover:bg-gray-600/50 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
-              aria-label="Share plan via link"
-              title="Share Plan"
-              disabled={!!activeWorkout}
-            >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M15 8a3 3 0 10-2.977-2.63l-4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 10.895-1.789l-4.94-2.47a3.027 3.027 0 000-.74l4.94-2.47C13.456 7.68 14.19 8 15 8z" /></svg>
-            </button>
-            <button
-              onClick={handleExport}
-              className="p-2 text-gray-300 hover:text-white hover:bg-gray-600/50 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
-              aria-label="Export plan to file"
-              title="Export Plan"
-              disabled={!!activeWorkout}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
-            </button>
-            <button
-              onClick={handleEdit}
-              className="p-2 text-gray-300 hover:text-white hover:bg-gray-600/50 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
-              aria-label="Edit plan"
-              title="Edit Plan"
-              disabled={!!activeWorkout || plan.isLocked}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" /><path fillRule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clipRule="evenodd" /></svg>
-            </button>
-            <button
-              onClick={handleDelete}
-              className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-500/10 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
-              aria-label="Delete plan"
-              title="Delete Plan"
-              disabled={!!activeWorkout || plan.isLocked}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" /></svg>
-            </button>
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+              </button>
+              <button
+                onClick={handleEdit}
+                className="p-2 text-gray-300 hover:text-white hover:bg-gray-600/50 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label="Edit plan"
+                title="Edit Plan"
+                disabled={!!activeWorkout || plan.isLocked}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" /><path fillRule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clipRule="evenodd" /></svg>
+              </button>
+              <button
+                onClick={handleDelete}
+                className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-500/10 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label="Delete plan"
+                title="Delete Plan"
+                disabled={!!activeWorkout || plan.isLocked}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" /></svg>
+              </button>
+          </div>
+          
+           {isActive ? (
+               <div className="mt-3 grid grid-cols-3 gap-2">
+                  <button onClick={handleStop} className="py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 transition-colors text-sm">Stop</button>
+                  <button onClick={handleTogglePause} className="py-2 bg-yellow-500 text-black font-bold rounded-lg hover:bg-yellow-600 transition-colors text-sm">{isCountdownPaused ? 'Resume' : 'Pause'}</button>
+                  <button onClick={handleRestart} className="py-2 bg-gray-500 text-white font-bold rounded-lg hover:bg-gray-600 transition-colors text-sm" title="Restart current step">Restart</button>
+               </div>
+           ) : (
+              <button 
+                  onClick={(e) => { e.stopPropagation(); startWorkout([plan.id]); }}
+                  className="w-full mt-3 py-2 bg-green-500 text-white font-bold rounded-lg hover:bg-green-600 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed"
+                  disabled={!!activeWorkout}
+              >
+                  Start Workout
+              </button>
+           )}
         </div>
-        
-         {isActive ? (
-             <div className="mt-3 grid grid-cols-3 gap-2">
-                <button onClick={handleStop} className="py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 transition-colors text-sm">Stop</button>
-                <button onClick={handleTogglePause} className="py-2 bg-yellow-500 text-black font-bold rounded-lg hover:bg-yellow-600 transition-colors text-sm">{isCountdownPaused ? 'Resume' : 'Pause'}</button>
-                <button onClick={handleRestart} className="py-2 bg-gray-500 text-white font-bold rounded-lg hover:bg-gray-600 transition-colors text-sm" title="Restart current step">Restart</button>
-             </div>
-         ) : (
-            <button 
-                onClick={(e) => { e.stopPropagation(); startWorkout([plan.id]); }}
-                className="w-full mt-3 py-2 bg-green-500 text-white font-bold rounded-lg hover:bg-green-600 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed"
-                disabled={!!activeWorkout}
-            >
-                Start Workout
-            </button>
-         )}
+        {isExpanded && (
+          <div className="border-t border-gray-600/50 px-3 pb-3 pt-2">
+              <h4 className="text-sm font-semibold text-gray-300 mb-2">Steps:</h4>
+              <ol className="text-gray-300 space-y-1">
+                  {displayedSteps.map((step, index) => {
+                      const isCurrent = isActive && step.id === currentStep?.id;
+                      const color = step.type === 'exercise' ? exerciseColorMap.get(getBaseExerciseName(step.name)) : 'transparent';
+                      
+                      return (
+                          <li 
+                            key={`${step.id}-${index}`} 
+                            className={`flex items-center gap-2 transition-all duration-200 rounded p-1 -m-1 ${isCurrent ? 'bg-blue-500/20 font-bold' : 'hover:bg-gray-600/50'}`}
+                            title={step.name}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (step.type === 'exercise') {
+                                  onInspectExercise(getBaseExerciseName(step.name));
+                              }
+                            }}
+                            onContextMenu={(e) => {
+                              if (step.type === 'exercise' && !isActive) {
+                                handleContextMenu(e, getBaseExerciseName(step.name));
+                              }
+                            }}
+                            onTouchStart={(e) => {
+                              if (step.type === 'exercise' && !isActive) {
+                                handleTouchStart(e, getBaseExerciseName(step.name));
+                              }
+                            }}
+                            onTouchMove={handleTouchMove}
+                            onTouchEnd={handleTouchEnd}
+                          >
+                              <span className="w-1.5 h-4 rounded" style={{ backgroundColor: color }}></span>
+                              <span className="truncate">{step.name} - <span className="text-gray-400 font-normal">{step.isRepBased ? `${step.reps} reps` : `${step.duration}s`}</span></span>
+                          </li>
+                      )
+                  })}
+              </ol>
+          </div>
+        )}
       </div>
-      {isExpanded && (
-        <div className="border-t border-gray-600/50 px-3 pb-3 pt-2">
-            <h4 className="text-sm font-semibold text-gray-300 mb-2">Steps:</h4>
-            <ol className="text-gray-300 space-y-1">
-                {displayedSteps.map((step, index) => {
-                    const isCurrent = isActive && step.id === currentStep?.id;
-                    const color = step.type === 'exercise' ? exerciseColorMap.get(getBaseExerciseName(step.name)) : 'transparent';
-                    
-                    return (
-                        <li 
-                          key={`${step.id}-${index}`} 
-                          className={`flex items-center gap-2 transition-all duration-200 rounded p-1 -m-1 ${isCurrent ? 'bg-blue-500/20 font-bold' : 'hover:bg-gray-600/50'}`}
-                          title={step.name}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (step.type === 'exercise') {
-                                onInspectExercise(getBaseExerciseName(step.name));
-                            }
-                          }}
-                        >
-                            <span className="w-1.5 h-4 rounded" style={{ backgroundColor: color }}></span>
-                            <span className="truncate">{step.name} - <span className="text-gray-400 font-normal">{step.isRepBased ? `${step.reps} reps` : `${step.duration}s`}</span></span>
-                        </li>
-                    )
-                })}
-            </ol>
-        </div>
-      )}
-    </div>
+    </>
   );
 };
 
@@ -1710,14 +1808,15 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
   const [editingPlan, setEditingPlan] = useState<WorkoutPlan | null>(null);
   const [view, setView] = useState<'list' | 'editor' | 'log'>('list');
   const [confirmDeletePlanId, setConfirmDeletePlanId] = useState<string | null>(null);
-  const [inspectingExercise, setInspectingExercise] = useState<string | null>(null);
+  const [displayedExercise, setDisplayedExercise] = useState<string | null>(null);
+  const [isModalVisible, setIsModalVisible] = useState(false);
   const { activeWorkout, plans, deletePlan } = useWorkout();
   const { settings, updateSettings } = useSettings();
   const modalMutedApp = useRef(false);
 
-  // Mute app sounds when the exercise modal is open and restore on close.
+  // Mute app sounds when the exercise modal is visible and restore on close.
   useEffect(() => {
-    if (inspectingExercise) {
+    if (isModalVisible) {
       // Modal is opening.
       if (!settings.isMuted) {
         modalMutedApp.current = true;
@@ -1730,7 +1829,7 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
         updateSettings({ isMuted: false });
       }
     }
-  }, [inspectingExercise, settings.isMuted, updateSettings]);
+  }, [isModalVisible, settings.isMuted, updateSettings]);
 
   const planToDelete = useMemo(() => {
     return plans.find(p => p.id === confirmDeletePlanId) || null;
@@ -1791,6 +1890,15 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
     }
   };
 
+  const handleInspectExercise = (exerciseName: string) => {
+    setDisplayedExercise(exerciseName);
+    setIsModalVisible(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalVisible(false);
+  };
+
   useEffect(() => {
       if(activeWorkout && !isPinned) {
           setIsOpen(false);
@@ -1825,10 +1933,11 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
           />
       )}
 
-      {inspectingExercise && (
+      {displayedExercise && (
         <ExerciseInfoModal 
-            exerciseName={inspectingExercise}
-            onClose={() => setInspectingExercise(null)}
+            exerciseName={displayedExercise}
+            onClose={handleCloseModal}
+            isVisible={isModalVisible}
         />
       )}
 
@@ -1845,7 +1954,7 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
                     onCreateNew={handleCreateNew} 
                     onInitiateDelete={setConfirmDeletePlanId}
                     onShowLog={() => setView('log')}
-                    onInspectExercise={setInspectingExercise}
+                    onInspectExercise={handleInspectExercise}
                     isPinned={isPinned}
                     onTogglePin={() => setIsPinned(!isPinned)}
                 />
