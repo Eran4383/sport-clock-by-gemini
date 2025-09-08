@@ -177,7 +177,7 @@ const ExerciseInfoModal: React.FC<{
         {/* Content */}
         <div className="p-4 flex-grow overflow-hidden flex flex-col">
           {isLoading ? (
-            <div className="flex-grow flex items-center justify-center">
+            <div className="flex-grow flex items-center justify-center" dir="rtl">
               <p className="text-gray-300 animate-pulse">אני מחפש לך אחד מדוייק, המתן רגע בבקשה...</p>
             </div>
           ) : (
@@ -196,6 +196,7 @@ const ExerciseInfoModal: React.FC<{
                     <div className="aspect-video bg-gray-900 rounded-lg overflow-hidden flex items-center justify-center">
                         {embedUrl ? (
                             <iframe
+                                key={embedUrl}
                                 className="w-full h-full"
                                 src={embedUrl}
                                 title={`Video tutorial for ${exerciseName}`}
@@ -1712,24 +1713,23 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
   const [inspectingExercise, setInspectingExercise] = useState<string | null>(null);
   const { activeWorkout, plans, deletePlan } = useWorkout();
   const { settings, updateSettings } = useSettings();
-  const wasMutedRef = useRef<boolean>(false);
+  const modalMutedApp = useRef(false);
 
-  // Mute app sounds when the exercise modal is open
+  // Mute app sounds when the exercise modal is open and restore on close.
   useEffect(() => {
     if (inspectingExercise) {
-        wasMutedRef.current = settings.isMuted;
-        if (!wasMutedRef.current) {
-            updateSettings({ isMuted: true });
-        }
+      // Modal is opening.
+      if (!settings.isMuted) {
+        modalMutedApp.current = true;
+        updateSettings({ isMuted: true });
+      }
+    } else {
+      // Modal is closing.
+      if (modalMutedApp.current) {
+        modalMutedApp.current = false;
+        updateSettings({ isMuted: false });
+      }
     }
-    // Cleanup function to restore mute state when modal closes
-    return () => {
-        if (inspectingExercise) {
-            if (!wasMutedRef.current) {
-                updateSettings({ isMuted: false });
-            }
-        }
-    };
   }, [inspectingExercise, settings.isMuted, updateSettings]);
 
   const planToDelete = useMemo(() => {
