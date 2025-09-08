@@ -1131,12 +1131,13 @@ const EditableSetGroup: React.FC<{
   removeSetGroup: () => void;
   isExpanded: boolean;
   onToggleExpand: () => void;
+  onAddSet: () => void;
   color?: string;
   settings: ReturnType<typeof useSettings>['settings'];
   updateSettings: ReturnType<typeof useSettings>['updateSettings'];
   expandedSteps: Record<string, boolean>;
   onToggleStepExpand: (stepId: string) => void;
-}> = ({ steps, startIndex, updateStep, removeStep, removeSetGroup, isExpanded, onToggleExpand, color, settings, updateSettings, expandedSteps, onToggleStepExpand }) => {
+}> = ({ steps, startIndex, updateStep, removeStep, removeSetGroup, isExpanded, onToggleExpand, onAddSet, color, settings, updateSettings, expandedSteps, onToggleStepExpand }) => {
     
     if (steps.length === 0) return null;
 
@@ -1184,6 +1185,12 @@ const EditableSetGroup: React.FC<{
                             updateSettings={updateSettings}
                         />
                     ))}
+                    <button
+                        onClick={onAddSet}
+                        className="w-full mt-2 py-2 text-sm bg-blue-500/80 text-white rounded-lg hover:bg-blue-500 transition-colors"
+                    >
+                        + Add Set
+                    </button>
                 </div>
             )}
         </div>
@@ -1426,6 +1433,51 @@ const PlanEditor: React.FC<{
         setEditedPlan(p => p ? { ...p, steps: newSteps } : null);
     };
 
+    const handleAddSet = (startIndex: number, groupItem: WorkoutStep[]) => {
+        if (!editedPlan) return;
+
+        // Find the last exercise in the set to use as a template
+        const lastExerciseStep = [...groupItem].reverse().find(s => s.type === 'exercise');
+        if (!lastExerciseStep) return;
+
+        // Find an existing rest step in the set to use as a template
+        const restStepTemplate = groupItem.find(s => s.type === 'rest');
+
+        const newStepsToAdd: WorkoutStep[] = [];
+
+        // 1. Add a rest step if the set has rests. This adds the rest before the new exercise, which is correct for inter-set rest.
+        if (restStepTemplate) {
+             const newRestStep: WorkoutStep = {
+                id: `${Date.now()}-rest-from-set`,
+                type: 'rest',
+                name: restStepTemplate.name, // Placeholder, will be renumbered
+                isRepBased: false,
+                duration: restStepTemplate.duration,
+                reps: 0,
+            };
+            newStepsToAdd.push(newRestStep);
+        }
+
+        // 2. Add the new exercise step.
+        const newExerciseStep: WorkoutStep = {
+            id: `${Date.now()}-ex-from-set`,
+            type: 'exercise',
+            name: lastExerciseStep.name, // Placeholder, will be renumbered
+            isRepBased: lastExerciseStep.isRepBased,
+            duration: lastExerciseStep.duration,
+            reps: lastExerciseStep.reps,
+        };
+        newStepsToAdd.push(newExerciseStep);
+
+        const currentSteps = [...editedPlan.steps];
+        // Insert the new steps right after the current set group in the main array
+        currentSteps.splice(startIndex + groupItem.length, 0, ...newStepsToAdd);
+        
+        const finalSteps = renumberAllSets(currentSteps);
+        
+        setEditedPlan(p => p ? { ...p, steps: finalSteps } : null);
+    };
+
     if (!editedPlan) {
         return null;
     }
@@ -1483,6 +1535,7 @@ const PlanEditor: React.FC<{
                                    removeSetGroup={() => removeSetGroup(startIndex, item.length)}
                                    isExpanded={!!expandedGroups[groupId]}
                                    onToggleExpand={() => toggleGroupExpansion(groupId)}
+                                   onAddSet={() => handleAddSet(startIndex, item)}
                                    color={color}
                                    settings={settings}
                                    updateSettings={updateSettings}
