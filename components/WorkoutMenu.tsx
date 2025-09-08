@@ -8,7 +8,7 @@ import { WorkoutLog } from './WorkoutLog';
 import { getBaseExerciseName, generateCircuitSteps } from '../utils/workout';
 
 const ExerciseInfoModal: React.FC<{
-  exerciseName: string;
+  exerciseName: string | null;
   onClose: () => void;
   isVisible: boolean;
   forceRefresh: boolean;
@@ -20,10 +20,12 @@ const ExerciseInfoModal: React.FC<{
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const modalRef = useRef<HTMLDivElement>(null);
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
+  const [showLoadingMessage, setShowLoadingMessage] = useState(false);
 
 
   useEffect(() => {
     const fetchInfo = async () => {
+      if (!exerciseName) return;
       setIsLoading(true);
       setError(null);
       try {
@@ -41,10 +43,23 @@ const ExerciseInfoModal: React.FC<{
         setIsLoading(false);
       }
     };
-    if (exerciseName && isVisible) {
+    if (isVisible && exerciseName) {
         fetchInfo();
     }
   }, [exerciseName, forceRefresh, isVisible]);
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    if (isLoading && isVisible) {
+        // Only show the long loading message if loading takes more than 500ms
+        timer = setTimeout(() => {
+            setShowLoadingMessage(true);
+        }, 500);
+    } else {
+        setShowLoadingMessage(false);
+    }
+    return () => clearTimeout(timer);
+  }, [isLoading, isVisible]);
   
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -187,7 +202,7 @@ const ExerciseInfoModal: React.FC<{
         <div className="p-4 flex-grow overflow-hidden flex flex-col">
           {isLoading ? (
             <div className="flex-grow flex items-center justify-center text-center" dir="rtl">
-              <p className="text-gray-300 animate-pulse">מצאתי סרטונים, אני מנתח אותם כדי למצוא את הטוב ביותר. תהליך זה עשוי לקחת כדקה, תודה על הסבלנות.</p>
+              {showLoadingMessage && <p className="text-gray-300 animate-pulse">מצאתי סרטונים, אני מנתח אותם כדי למצוא את הטוב ביותר. תהליך זה עשוי לקחת כדקה, תודה על הסבלנות.</p>}
             </div>
           ) : (
             <>
@@ -242,7 +257,7 @@ const ExerciseInfoModal: React.FC<{
                             {parsedInstructions.map((item, index) => <li key={index}>{item}</li>)}
                         </ol>
                      ) : parsedInstructions.length === 1 ? (
-                        <p className="text-gray-200">{parsedInstructions[0]}</p>
+                        <p className="text-gray-200 whitespace-pre-wrap">{parsedInstructions[0]}</p>
                      ) : (
                         <p className="text-gray-400">{isHebrew ? "לא נמצאו הוראות." : "No instructions found."}</p>
                      )}
@@ -1850,16 +1865,6 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
     }
   }, [isModalVisible, settings.isMuted, updateSettings]);
   
-  // Effect to clear inspect state after modal's closing animation
-  useEffect(() => {
-    if (!isModalVisible) {
-        const timer = setTimeout(() => {
-            setExerciseToInspect(null);
-        }, 300); // Should match modal's transition duration
-        return () => clearTimeout(timer);
-    }
-  }, [isModalVisible]);
-
   const planToDelete = useMemo(() => {
     return plans.find(p => p.id === confirmDeletePlanId) || null;
   }, [confirmDeletePlanId, plans]);
@@ -1920,6 +1925,10 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
   };
 
   const handleInspectExercise = (exerciseName: string, forceRefresh = false) => {
+    // If the modal is already open for the same exercise, don't do anything unless forcing a refresh.
+    if (isModalVisible && exerciseToInspect?.name === exerciseName && !forceRefresh) {
+        return;
+    }
     setExerciseToInspect({ name: exerciseName, refresh: forceRefresh });
     setIsModalVisible(true);
   };
@@ -1962,14 +1971,13 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
           />
       )}
 
-      {exerciseToInspect && (
-        <ExerciseInfoModal 
-            exerciseName={exerciseToInspect.name}
-            forceRefresh={exerciseToInspect.refresh}
-            onClose={handleCloseModal}
-            isVisible={isModalVisible}
-        />
-      )}
+      {/* Always render the modal to preserve its state, control with isVisible */}
+      <ExerciseInfoModal 
+          exerciseName={exerciseToInspect?.name ?? null}
+          forceRefresh={exerciseToInspect?.refresh ?? false}
+          onClose={handleCloseModal}
+          isVisible={isModalVisible}
+      />
 
       <div 
         className={`fixed top-0 left-0 h-full w-full max-w-sm bg-gray-800/80 backdrop-blur-md shadow-2xl z-50 transform transition-all ease-in-out ${isOpen ? 'duration-500' : 'duration-[1500ms]'} ${isOpen ? 'translate-x-0 opacity-100' : '-translate-x-full opacity-0 pointer-events-none'}`}
