@@ -5,6 +5,8 @@ const youtubeApiKey = process.env.YOUTUBE_API_KEY;
 
 // Simple in-memory cache for YouTube search results to avoid redundant API calls
 const youtubeCache = new Map<string, any>();
+// Simple in-memory cache for the final Gemini analysis result to improve speed for repeated requests
+const geminiResultCache = new Map<string, any>();
 
 interface YouTubeVideo {
   id: { videoId: string };
@@ -53,6 +55,14 @@ export default async function handler(req: any, res: any) {
   if (!exerciseName || typeof exerciseName !== 'string') {
     return res.status(400).json({ message: 'A valid exerciseName is required in the request body.' });
   }
+
+  const normalizedExerciseName = exerciseName.trim().toLowerCase();
+
+  // STAGE 0: Check the final result cache first.
+  if (geminiResultCache.has(normalizedExerciseName)) {
+      return res.status(200).json(geminiResultCache.get(normalizedExerciseName));
+  }
+
 
   try {
     // STAGE 1: Get the best search query from Gemini
@@ -156,6 +166,10 @@ export default async function handler(req: any, res: any) {
     }
     
     const data = JSON.parse(cleanedJsonString);
+
+    // Cache the final successful result before returning
+    geminiResultCache.set(normalizedExerciseName, data);
+
     return res.status(200).json(data);
 
   } catch (error: any) {

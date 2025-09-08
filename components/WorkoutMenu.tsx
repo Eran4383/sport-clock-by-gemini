@@ -178,7 +178,7 @@ const ExerciseInfoModal: React.FC<{
         <div className="p-4 flex-grow overflow-hidden flex flex-col">
           {isLoading ? (
             <div className="flex-grow flex items-center justify-center">
-              <p className="text-gray-300 animate-pulse">מאחזר סרטונים ומנתח נתונים...</p>
+              <p className="text-gray-300 animate-pulse">אני מחפש לך אחד מדוייק, המתן רגע בבקשה...</p>
             </div>
           ) : (
             <>
@@ -190,8 +190,8 @@ const ExerciseInfoModal: React.FC<{
 
               {/* Tab Content */}
               <div className="flex-grow overflow-y-auto pr-2 min-h-0">
-                {activeTab === 'howto' && (
-                  <div className="space-y-4">
+                {/* How-To Tab Pane */}
+                <div className={`space-y-4 ${activeTab !== 'howto' ? 'hidden' : ''}`}>
                     {/* Video Embed */}
                     <div className="aspect-video bg-gray-900 rounded-lg overflow-hidden flex items-center justify-center">
                         {embedUrl ? (
@@ -236,11 +236,10 @@ const ExerciseInfoModal: React.FC<{
                      ) : (
                         <p className="text-gray-400">{isHebrew ? "לא נמצאו הוראות." : "No instructions found."}</p>
                      )}
-                  </div>
-                )}
-                
-                {activeTab === 'details' && (
-                  <div className="space-y-6">
+                </div>
+
+                {/* Details Tab Pane */}
+                <div className={`space-y-6 ${activeTab !== 'details' ? 'hidden' : ''}`}>
                     {info && info.tips && info.tips.length > 0 && (
                       <div>
                         <h4 className="font-semibold text-lg text-white mb-2">{isHebrew ? "דגשים" : "Tips"}</h4>
@@ -255,8 +254,7 @@ const ExerciseInfoModal: React.FC<{
                         <p className="text-gray-300 whitespace-pre-wrap">{info.generalInfo}</p>
                       </div>
                     )}
-                  </div>
-                )}
+                </div>
               </div>
             </>
           )}
