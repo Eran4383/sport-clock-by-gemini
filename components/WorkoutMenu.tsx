@@ -861,7 +861,7 @@ const PlanList: React.FC<{
   return (
     <div>
       {sharingPlan && <ShareModal plan={sharingPlan} onClose={() => setSharingPlan(null)} />}
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-2">
         <h2 className="text-2xl font-bold text-white flex items-center gap-3">
           Workout Plans
         </h2>
@@ -871,7 +871,12 @@ const PlanList: React.FC<{
                 className="p-2 rounded-full hover:bg-gray-500/30 text-gray-400"
                 title="View Workout Log"
             >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" /></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                    <line x1="16" y1="2" x2="16" y2="6"></line>
+                    <line x1="8" y1="2" x2="8" y2="6"></line>
+                    <line x1="3" y1="10" x2="21" y2="10"></line>
+                </svg>
             </button>
             <button
                 onClick={() => setIsImportTextVisible(true)}
@@ -908,18 +913,21 @@ const PlanList: React.FC<{
                   {isPinned && <path d="M10 18a8 8 0 100-16 8 8 0 000 16z" opacity="0.1" />}
                 </svg>
             </button>
-            <button 
-              onClick={onCreateNew}
-              className="px-4 py-2 bg-blue-500 text-white rounded-lg font-semibold hover:bg-blue-600 transition-colors disabled:opacity-50"
-              disabled={!!activeWorkout}
-            >
-              + Create New
-            </button>
         </div>
       </div>
 
       {isImportTextVisible && <ImportTextModal onImport={(text) => handleJsonImport(text, 'text')} onCancel={() => setIsImportTextVisible(false)} />}
       
+      {!activeWorkout && (
+          <button 
+            onClick={onCreateNew}
+            className="w-full text-center py-1.5 mb-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={!!activeWorkout}
+          >
+            + Create New Plan
+          </button>
+      )}
+
       {selectedPlanIds.length > 0 && !activeWorkout && (
           <button
             onClick={handleStartSelected}
@@ -1275,12 +1283,26 @@ const PlanEditor: React.FC<{
 
 
     const handleSave = () => {
-        if (!editedPlan || editedPlan.name.trim() === '' || editedPlan.steps.length === 0) {
-            alert('Please provide a name and at least one step.');
+        if (!editedPlan || editedPlan.steps.length === 0) {
+            alert('Please add at least one step to the plan.');
             return;
         }
         
         const planToSave = { ...editedPlan };
+
+        if (planToSave.name.trim() === '') {
+            const uniqueExercises = [...new Set(planToSave.steps
+                .filter(s => s.type === 'exercise')
+                .map(s => getBaseExerciseName(s.name))
+            )];
+            
+            if (uniqueExercises.length > 0) {
+                planToSave.name = `אימון ${uniqueExercises.slice(0, 2).join(' ו')}`;
+            } else {
+                planToSave.name = 'אימון מנוחה';
+            }
+        }
+
         if (planToSave.id.startsWith('new_')) {
             planToSave.id = Date.now().toString();
         }
