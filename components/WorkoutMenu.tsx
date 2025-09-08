@@ -3,7 +3,7 @@ import { useWorkout } from '../contexts/WorkoutContext';
 import { WorkoutPlan, WorkoutStep } from '../types';
 import { useSettings } from '../contexts/SettingsContext';
 import { HoverNumberInput } from './HoverNumberInput';
-import { getExerciseInfo, ExerciseInfo, clearExerciseFromCache } from '../services/geminiService';
+import { getExerciseInfo, ExerciseInfo, clearExerciseFromCache, prefetchExercises } from '../services/geminiService';
 import { WorkoutLog } from './WorkoutLog';
 import { getBaseExerciseName, generateCircuitSteps } from '../utils/workout';
 
@@ -186,8 +186,8 @@ const ExerciseInfoModal: React.FC<{
         {/* Content */}
         <div className="p-4 flex-grow overflow-hidden flex flex-col">
           {isLoading ? (
-            <div className="flex-grow flex items-center justify-center" dir="rtl">
-              <p className="text-gray-300 animate-pulse">אני מחפש סרטון הדרכה מתאים...</p>
+            <div className="flex-grow flex items-center justify-center text-center" dir="rtl">
+              <p className="text-gray-300 animate-pulse">מצאתי סרטונים, אני מנתח אותם כדי למצוא את הטוב ביותר. תהליך זה עשוי לקחת כדקה, תודה על הסבלנות.</p>
             </div>
           ) : (
             <>
@@ -198,7 +198,7 @@ const ExerciseInfoModal: React.FC<{
               </div>
 
               {/* Tab Content */}
-              <div className="flex-grow overflow-y-auto pr-2 min-h-0">
+              <div className="flex-grow overflow-y-scroll pr-2 min-h-0">
                 {/* How-To Tab Pane */}
                 <div className={`space-y-4 ${activeTab !== 'howto' ? 'hidden' : ''}`}>
                     {/* Video Embed */}
@@ -1381,6 +1381,25 @@ const PlanEditor: React.FC<{
         }
         setExpandedGroups({}); // Collapse all on load
     }, [plan]);
+
+    // Pre-fetch exercise info in the background while the user is editing
+    useEffect(() => {
+        if (!editedPlan?.steps) return;
+
+        const handler = setTimeout(() => {
+            const exerciseNames = editedPlan.steps
+                .filter(s => s.type === 'exercise')
+                .map(s => getBaseExerciseName(s.name));
+            
+            if (exerciseNames.length > 0) {
+                prefetchExercises(exerciseNames);
+            }
+        }, 2000); // Debounce for 2 seconds after last edit
+
+        return () => {
+            clearTimeout(handler);
+        };
+    }, [editedPlan?.steps]);
 
 
     const handleSave = () => {

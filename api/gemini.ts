@@ -88,14 +88,9 @@ export default async function handler(req: any, res: any) {
         throw new Error("Gemini failed to generate a search query.");
     }
     
-    if (force_refresh) {
-      geminiResultCache.delete(normalizedExerciseName);
-      youtubeCache.delete(searchQuery);
-    }
-
     // STAGE 2: Search YouTube using the generated query
     let videoResults;
-    if (youtubeCache.has(searchQuery)) {
+    if (!force_refresh && youtubeCache.has(searchQuery)) {
         videoResults = youtubeCache.get(searchQuery);
     } else {
         const youtubeApiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(searchQuery)}&type=video&videoDuration=short&maxResults=5&key=${youtubeApiKey}`;
