@@ -50,7 +50,7 @@ export default async function handler(req: any, res: any) {
   }
 
   const ai = new GoogleGenAI({ apiKey: geminiApiKey });
-  const { exerciseName } = req.body;
+  const { exerciseName, force_refresh } = req.body;
 
   if (!exerciseName || typeof exerciseName !== 'string') {
     return res.status(400).json({ message: 'A valid exerciseName is required in the request body.' });
@@ -59,7 +59,7 @@ export default async function handler(req: any, res: any) {
   const normalizedExerciseName = exerciseName.trim().toLowerCase();
 
   // STAGE 0: Check the final result cache first.
-  if (geminiResultCache.has(normalizedExerciseName)) {
+  if (!force_refresh && geminiResultCache.has(normalizedExerciseName)) {
       return res.status(200).json(geminiResultCache.get(normalizedExerciseName));
   }
 
@@ -86,6 +86,11 @@ export default async function handler(req: any, res: any) {
 
     if (!searchQuery) {
         throw new Error("Gemini failed to generate a search query.");
+    }
+    
+    if (force_refresh) {
+      geminiResultCache.delete(normalizedExerciseName);
+      youtubeCache.delete(searchQuery);
     }
 
     // STAGE 2: Search YouTube using the generated query

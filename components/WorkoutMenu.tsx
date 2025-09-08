@@ -11,7 +11,8 @@ const ExerciseInfoModal: React.FC<{
   exerciseName: string;
   onClose: () => void;
   isVisible: boolean;
-}> = ({ exerciseName, onClose, isVisible }) => {
+  forceRefresh: boolean;
+}> = ({ exerciseName, onClose, isVisible, forceRefresh }) => {
   const [info, setInfo] = useState<ExerciseInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +27,7 @@ const ExerciseInfoModal: React.FC<{
       setIsLoading(true);
       setError(null);
       try {
-        const result = await getExerciseInfo(exerciseName);
+        const result = await getExerciseInfo(exerciseName, forceRefresh);
         setInfo(result);
         setActiveVideoId(result.primaryVideoId);
         if (result.instructions.toLowerCase().includes("error") || result.instructions.toLowerCase().includes("failed") || result.instructions.includes("api key") || result.instructions.includes("מפתח api")) {
@@ -40,10 +41,10 @@ const ExerciseInfoModal: React.FC<{
         setIsLoading(false);
       }
     };
-    if (exerciseName) {
+    if (exerciseName && isVisible) {
         fetchInfo();
     }
-  }, [exerciseName]);
+  }, [exerciseName, forceRefresh, isVisible]);
   
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -391,7 +392,7 @@ const PlanListItem: React.FC<{
   plan: WorkoutPlan;
   onSelectPlan: (plan: WorkoutPlan) => void;
   onInitiateDelete: (planId: string) => void;
-  onInspectExercise: (exerciseName: string) => void;
+  onInspectExercise: (exerciseName: string, forceRefresh?: boolean) => void;
   onShare: (plan: WorkoutPlan) => void;
   isSelected: boolean;
   onToggleSelection: (planId: string) => void;
@@ -490,8 +491,7 @@ const PlanListItem: React.FC<{
 
   const handleRefreshExercise = async () => {
     if (!contextMenu) return;
-    clearExerciseFromCache(contextMenu.exerciseName);
-    onInspectExercise(contextMenu.exerciseName);
+    onInspectExercise(contextMenu.exerciseName, true);
     setContextMenu(null);
   };
 
@@ -821,7 +821,7 @@ const PlanList: React.FC<{
   onCreateNew: () => void;
   onInitiateDelete: (planId: string) => void;
   onShowLog: () => void;
-  onInspectExercise: (exerciseName: string) => void;
+  onInspectExercise: (exerciseName: string, forceRefresh?: boolean) => void;
   isPinned: boolean;
   onTogglePin: () => void;
 }> = ({ onSelectPlan, onCreateNew, onInitiateDelete, onShowLog, onInspectExercise, isPinned, onTogglePin }) => {
@@ -1808,7 +1808,7 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
   const [editingPlan, setEditingPlan] = useState<WorkoutPlan | null>(null);
   const [view, setView] = useState<'list' | 'editor' | 'log'>('list');
   const [confirmDeletePlanId, setConfirmDeletePlanId] = useState<string | null>(null);
-  const [displayedExercise, setDisplayedExercise] = useState<string | null>(null);
+  const [exerciseToInspect, setExerciseToInspect] = useState<{name: string, refresh: boolean} | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const { activeWorkout, plans, deletePlan } = useWorkout();
   const { settings, updateSettings } = useSettings();
@@ -1830,6 +1830,16 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
       }
     }
   }, [isModalVisible, settings.isMuted, updateSettings]);
+  
+  // Effect to clear inspect state after modal's closing animation
+  useEffect(() => {
+    if (!isModalVisible) {
+        const timer = setTimeout(() => {
+            setExerciseToInspect(null);
+        }, 300); // Should match modal's transition duration
+        return () => clearTimeout(timer);
+    }
+  }, [isModalVisible]);
 
   const planToDelete = useMemo(() => {
     return plans.find(p => p.id === confirmDeletePlanId) || null;
@@ -1890,8 +1900,8 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
     }
   };
 
-  const handleInspectExercise = (exerciseName: string) => {
-    setDisplayedExercise(exerciseName);
+  const handleInspectExercise = (exerciseName: string, forceRefresh = false) => {
+    setExerciseToInspect({ name: exerciseName, refresh: forceRefresh });
     setIsModalVisible(true);
   };
 
@@ -1933,9 +1943,10 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
           />
       )}
 
-      {displayedExercise && (
+      {exerciseToInspect && (
         <ExerciseInfoModal 
-            exerciseName={displayedExercise}
+            exerciseName={exerciseToInspect.name}
+            forceRefresh={exerciseToInspect.refresh}
             onClose={handleCloseModal}
             isVisible={isModalVisible}
         />

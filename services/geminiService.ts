@@ -77,23 +77,28 @@ const getGenericErrorResponse = (message: string): ExerciseInfo => ({
     language: 'he',
 });
 
-export async function getExerciseInfo(exerciseName: string): Promise<ExerciseInfo> {
+export async function getExerciseInfo(exerciseName: string, forceRefresh = false): Promise<ExerciseInfo> {
     const normalizedName = exerciseName.trim().toLowerCase();
-    const cache = getCache();
-
-    // 1. Check cache first
-    if (cache[normalizedName]) {
-        return cache[normalizedName];
+    
+    if (forceRefresh) {
+        // Clear local storage cache before fetching from server
+        clearExerciseFromCache(exerciseName);
+    } else {
+        const cache = getCache();
+        // 1. Check cache first
+        if (cache[normalizedName]) {
+            return cache[normalizedName];
+        }
     }
     
-    // 2. If not in cache, fetch from the server
+    // 2. If not in cache or refreshing, fetch from the server
     try {
         const res = await fetch('/api/gemini', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ exerciseName }),
+            body: JSON.stringify({ exerciseName, force_refresh: forceRefresh }),
         });
 
         const data = await res.json();
