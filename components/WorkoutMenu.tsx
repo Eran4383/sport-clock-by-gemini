@@ -178,7 +178,7 @@ const ExerciseInfoModal: React.FC<{
         <div className="p-4 flex-grow overflow-hidden flex flex-col">
           {isLoading ? (
             <div className="flex-grow flex items-center justify-center">
-              <p className="text-gray-300 animate-pulse">טוען מידע על התרגיל...</p>
+              <p className="text-gray-300 animate-pulse">מאחזר סרטונים ומנתח נתונים...</p>
             </div>
           ) : (
             <>
@@ -214,11 +214,11 @@ const ExerciseInfoModal: React.FC<{
                     {/* Video Navigation */}
                     {allVideoIds.length > 1 && (
                        <div className="flex justify-center items-center gap-4 mt-2">
-                           <button onClick={handlePrevVideo} className="p-2 rounded-full hover:bg-gray-700" title={isHebrew ? "הסרטון הקודם" : "Previous video"}>
-                               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-                           </button>
                            <button onClick={handleNextVideo} className="p-2 rounded-full hover:bg-gray-700" title={isHebrew ? "הסרטון הבא" : "Next video"}>
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                           </button>
+                           <button onClick={handlePrevVideo} className="p-2 rounded-full hover:bg-gray-700" title={isHebrew ? "הסרטון הקודם" : "Previous video"}>
+                               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
                            </button>
                        </div>
                     )}
@@ -1265,6 +1265,10 @@ const PlanEditor: React.FC<{
     const [editedPlan, setEditedPlan] = useState<WorkoutPlan | null>(null);
     const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
     const exerciseColorMap = useExerciseColorMap(editedPlan?.steps || []);
+    
+    // Drag and Drop state
+    const [draggedGroupIndex, setDraggedGroupIndex] = useState<number | null>(null);
+    const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
 
     useEffect(() => {
         if (plan) {
@@ -1500,6 +1504,44 @@ const PlanEditor: React.FC<{
         setEditedPlan(p => p ? { ...p, steps: finalSteps } : null);
     };
 
+    const handleDragStart = (e: React.DragEvent, groupIndex: number) => {
+        setDraggedGroupIndex(groupIndex);
+        e.dataTransfer.effectAllowed = 'move';
+    };
+
+    const handleDragOver = (e: React.DragEvent, groupIndex: number) => {
+        e.preventDefault();
+        if (groupIndex !== draggedGroupIndex) {
+            setDropTargetIndex(groupIndex);
+        }
+    };
+    
+    const handleDragLeave = () => {
+        setDropTargetIndex(null);
+    };
+
+    const handleDrop = () => {
+        if (draggedGroupIndex === null || dropTargetIndex === null || !editedPlan) return;
+        
+        const grouped = groupSteps(editedPlan.steps);
+        const draggedGroup = grouped.splice(draggedGroupIndex, 1)[0];
+        grouped.splice(dropTargetIndex, 0, draggedGroup);
+
+        const newStepsFlat = grouped.flat();
+        const finalSteps = renumberAllSets(newStepsFlat);
+        
+        setEditedPlan(p => p ? { ...p, steps: finalSteps } : null);
+
+        // Reset state
+        setDraggedGroupIndex(null);
+        setDropTargetIndex(null);
+    };
+
+    const handleDragEnd = () => {
+        setDraggedGroupIndex(null);
+        setDropTargetIndex(null);
+    };
+
     if (!editedPlan) {
         return null;
     }
@@ -1540,53 +1582,76 @@ const PlanEditor: React.FC<{
 
                 <div className="space-y-3 max-h-[45vh] overflow-y-auto pr-2">
                    {groupedRenderItems.map((item, index) => {
-                       if (Array.isArray(item)) {
-                           // It's a set group
-                           const startIndex = stepIndexCounter;
-                           stepIndexCounter += item.length;
-                           const groupId = `group-${item[0].id}`;
-                           const color = exerciseColorMap.get(getBaseExerciseName(item[0].name));
+                       const isBeingDragged = draggedGroupIndex === index;
+                       const isDropTarget = dropTargetIndex === index;
+                       const showTopIndicator = isDropTarget && draggedGroupIndex !== null && draggedGroupIndex > index;
+                       const showBottomIndicator = isDropTarget && draggedGroupIndex !== null && draggedGroupIndex < index;
 
-                           return (
-                               <EditableSetGroup
-                                   key={groupId}
-                                   steps={item}
-                                   startIndex={startIndex}
-                                   updateStep={updateStep}
-                                   removeStep={removeStep}
-                                   removeSetGroup={() => removeSetGroup(startIndex, item.length)}
-                                   isExpanded={!!expandedGroups[groupId]}
-                                   onToggleExpand={() => toggleGroupExpansion(groupId)}
-                                   onAddSet={() => handleAddSet(startIndex, item)}
-                                   color={color}
-                                   settings={settings}
-                                   updateSettings={updateSettings}
-                                   expandedSteps={expandedGroups}
-                                   onToggleStepExpand={toggleGroupExpansion}
-                               />
-                           );
-                       } else {
-                           // It's a single step
-                           const step = item;
-                           const stepIndex = stepIndexCounter;
-                           stepIndexCounter++;
-                           const color = step.type === 'exercise' ? exerciseColorMap.get(getBaseExerciseName(step.name)) : undefined;
-                           
-                           return (
-                               <EditableStepItem
-                                   key={step.id}
-                                   step={step}
-                                   index={stepIndex}
-                                   updateStep={updateStep}
-                                   removeStep={removeStep}
-                                   isExpanded={!!expandedGroups[step.id]}
-                                   onToggleExpand={() => toggleGroupExpansion(step.id)}
-                                   color={color}
-                                   settings={settings}
-                                   updateSettings={updateSettings}
-                               />
-                           );
-                       }
+                       const groupContent = () => {
+                           if (Array.isArray(item)) {
+                               const startIndex = stepIndexCounter;
+                               stepIndexCounter += item.length;
+                               const groupId = `group-${item[0].id}`;
+                               const color = exerciseColorMap.get(getBaseExerciseName(item[0].name));
+
+                               return (
+                                   <EditableSetGroup
+                                       key={groupId}
+                                       steps={item}
+                                       startIndex={startIndex}
+                                       updateStep={updateStep}
+                                       removeStep={removeStep}
+                                       removeSetGroup={() => removeSetGroup(startIndex, item.length)}
+                                       isExpanded={!!expandedGroups[groupId]}
+                                       onToggleExpand={() => toggleGroupExpansion(groupId)}
+                                       onAddSet={() => handleAddSet(startIndex, item)}
+                                       color={color}
+                                       settings={settings}
+                                       updateSettings={updateSettings}
+                                       expandedSteps={expandedGroups}
+                                       onToggleStepExpand={toggleGroupExpansion}
+                                   />
+                               );
+                           } else {
+                               const step = item;
+                               const stepIndex = stepIndexCounter;
+                               stepIndexCounter++;
+                               const color = step.type === 'exercise' ? exerciseColorMap.get(getBaseExerciseName(step.name)) : undefined;
+                               
+                               return (
+                                   <EditableStepItem
+                                       key={step.id}
+                                       step={step}
+                                       index={stepIndex}
+                                       updateStep={updateStep}
+                                       removeStep={removeStep}
+                                       isExpanded={!!expandedGroups[step.id]}
+                                       onToggleExpand={() => toggleGroupExpansion(step.id)}
+                                       color={color}
+                                       settings={settings}
+                                       updateSettings={updateSettings}
+                                   />
+                               );
+                           }
+                       };
+
+                       return (
+                           <div key={`group-wrapper-${index}`}>
+                               {showTopIndicator && <div className="h-2 my-1 bg-blue-500/50 rounded-full" />}
+                               <div
+                                 draggable
+                                 onDragStart={(e) => handleDragStart(e, index)}
+                                 onDragOver={(e) => handleDragOver(e, index)}
+                                 onDrop={handleDrop}
+                                 onDragEnd={handleDragEnd}
+                                 onDragLeave={handleDragLeave}
+                                 className={`transition-opacity duration-200 cursor-grab ${isBeingDragged ? 'opacity-40' : 'opacity-100'}`}
+                               >
+                                   {groupContent()}
+                               </div>
+                               {showBottomIndicator && <div className="h-2 my-1 bg-blue-500/50 rounded-full" />}
+                           </div>
+                       );
                    })}
                 </div>
                 
@@ -1648,6 +1713,26 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
   const [confirmDeletePlanId, setConfirmDeletePlanId] = useState<string | null>(null);
   const [inspectingExercise, setInspectingExercise] = useState<string | null>(null);
   const { activeWorkout, plans, deletePlan } = useWorkout();
+  const { settings, updateSettings } = useSettings();
+  const wasMutedRef = useRef<boolean>(false);
+
+  // Mute app sounds when the exercise modal is open
+  useEffect(() => {
+    if (inspectingExercise) {
+        wasMutedRef.current = settings.isMuted;
+        if (!wasMutedRef.current) {
+            updateSettings({ isMuted: true });
+        }
+    }
+    // Cleanup function to restore mute state when modal closes
+    return () => {
+        if (inspectingExercise) {
+            if (!wasMutedRef.current) {
+                updateSettings({ isMuted: false });
+            }
+        }
+    };
+  }, [inspectingExercise, settings.isMuted, updateSettings]);
 
   const planToDelete = useMemo(() => {
     return plans.find(p => p.id === confirmDeletePlanId) || null;

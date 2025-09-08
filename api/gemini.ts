@@ -60,12 +60,17 @@ export default async function handler(req: any, res: any) {
       Translate the exercise name "${exerciseName}" into the best possible English search query for finding a short, instructional video on YouTube.
       CRITICAL: The translation must be in the context of sports, anatomy, and physiotherapy to ensure professional and accurate terminology. 
       For example, "פיתול" should become "torso rotation tutorial" or a similar specific term, not just "twist". 
+      Give STRONG preference to channels known for clear, animated, anatomical tutorials like "Passion4Profession".
       The output should be ONLY the search query string and nothing else.
     `;
     
     const queryGenerationResponse = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: searchQueryPrompt,
+      config: {
+        // This is a simple, fast task. Disable thinking to speed it up.
+        thinkingConfig: { thinkingBudget: 0 }
+      }
     });
     const searchQuery = queryGenerationResponse.text.trim();
 
@@ -113,12 +118,12 @@ export default async function handler(req: any, res: any) {
       ${JSON.stringify(videoResults, null, 2)}
 
       Your tasks are:
-      1.  **Select the single BEST video** from this list. The best video is a short (ideally under 120 seconds), direct, high-quality instructional tutorial focusing on proper form. Avoid long workouts, vlogs, or videos that are not primarily instructional.
+      1.  **Select the single BEST video** from this list. The best video is a short (ideally under 120 seconds), direct, high-quality instructional tutorial focusing on proper form. Give strong preference to animated, anatomical videos (like from 'Passion4Profession') over videos with real people. Avoid long intros, vlogs, or full workout routines.
       2.  **Based on the content of your selected video**, generate the following information IN THE SAME LANGUAGE as the original exercise name ("${exerciseName}"):
-          - "instructions": A clear, step-by-step guide.
+          - "instructions": A clear, step-by-step guide. Each step MUST be on a new line, separated by '\\n'.
           - "tips": 2-4 concise tips for proper form.
           - "generalInfo": A short paragraph about the exercise, its benefits, and primary muscles targeted.
-      3.  Provide a list of up to 3 other good video IDs from the provided list as alternatives for the user. Do not include your primary selection in this list.
+      3.  Provide a list of up to 3 other good video IDs from the provided list as alternatives. Do not include your primary selection in this list.
       4.  Return everything as a single, valid JSON object with the specified structure.
 
       If NONE of the provided videos are suitable instructional tutorials, all video ID fields MUST be null.
@@ -155,13 +160,29 @@ export default async function handler(req: any, res: any) {
 
   } catch (error: any) {
     console.error("Error in API handler:", error);
-    // Return a generic error in the same ExerciseInfo format for consistent client-side handling
-    const errorMessage = error.message || 'An error occurred while processing your request.';
+    
+    let errorMessage = error.message || 'An error occurred while processing your request.';
+    let tips = ["אנא נסה שוב מאוחר יותר.", "בדוק את קונסולת המפתחים לפרטים טכניים."];
+
+    // Check for specific YouTube API error patterns to provide more helpful advice.
+    if (errorMessage.includes("YouTube API Error")) {
+        const lowerCaseError = errorMessage.toLowerCase();
+        if (lowerCaseError.includes("api key not valid") || lowerCaseError.includes("permission") || lowerCaseError.includes("denied") || lowerCaseError.includes("restricted")) {
+            errorMessage = "שגיאה באימות מפתח YouTube API.";
+            tips = [
+                "ודא שהעתקת את המפתח הנכון.",
+                "ודא ש-YouTube Data API v3 מופעל בפרויקט שלך ב-Google Cloud.",
+                "חשוב: בדוק את הגבלות המפתח (Restrictions). אם הגדרת הגבלת 'Websites', שנה אותה ל-'None'. הגבלת אתרים לא תעבוד עבור קריאות מהשרת.",
+                "לאחר שינוי הגדרות המפתח, יש להמתין מספר דקות עד שהשינוי ייכנס לתוקף."
+            ];
+        }
+    }
+
     const clientError = {
         primaryVideoId: null,
         alternativeVideoIds: [],
         instructions: `אירעה שגיאה: ${errorMessage}`,
-        tips: ["אנא נסה שוב מאוחר יותר.", "בדוק את קונסולת המפתחים לפרטים טכניים."],
+        tips: tips,
         generalInfo: "לא ניתן היה לאחזר מידע עבור תרגיל זה עקב שגיאה בצד השרת.",
         language: 'he',
     };
