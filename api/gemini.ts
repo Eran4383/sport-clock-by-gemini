@@ -29,6 +29,24 @@ export default async function handler(req: any, res: any) {
     });
   }
 
+  // The YouTube API key is now also mandatory for the full functionality.
+  // Instead of a silent fallback, we return a specific, helpful error message.
+  if (!youtubeApiKey) {
+    console.error("YOUTUBE_API_KEY is not configured on the server.");
+    return res.status(500).json({
+        primaryVideoId: null,
+        alternativeVideoIds: [],
+        instructions: "מפתח YouTube API אינו מוגדר בשרת.",
+        tips: [
+            "יש לוודא שהגדרת משתנה סביבה בשם YOUTUBE_API_KEY.",
+            "יש לוודא שהמשתנה מופעל עבור סביבת הייצור (Production).",
+            "יש לבצע פריסה מחדש (Redeploy) של האפליקציה לאחר הוספת המפתח."
+        ],
+        generalInfo: "נדרש מפתח YouTube API כדי לחפש ולהציג סרטונים. המפתח חסר כרגע בהגדרות השרת.",
+        language: 'he',
+    });
+  }
+
   const ai = new GoogleGenAI({ apiKey: geminiApiKey });
   const { exerciseName } = req.body;
 
@@ -37,59 +55,6 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    // ===== FALLBACK PATH (No YouTube API Key) =====
-    // If YouTube key is missing, fall back to text-only generation from Gemini's internal knowledge.
-    if (!youtubeApiKey) {
-        console.warn("YOUTUBE_API_KEY is missing. Falling back to text-only generation from Gemini's knowledge base.");
-        
-        const textOnlyPrompt = `
-          You are an expert fitness coach. For the exercise "${exerciseName}", generate the following information IN THE SAME LANGUAGE as the original exercise name ("${exerciseName}"):
-          - "instructions": A clear, step-by-step guide on how to perform the exercise correctly.
-          - "tips": 2-4 concise tips for proper form and common mistakes to avoid.
-          - "generalInfo": A short paragraph about the exercise, its benefits, and primary muscles targeted. At the end of this paragraph, add the following sentence in the target language: "Video tutorials require additional configuration."
-          - "language": The ISO 639-1 code for the language used (e.g., 'he' for Hebrew, 'en' for English).
-
-          Return everything as a single, valid JSON object.
-        `;
-
-        const textOnlyResponse = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: textOnlyPrompt,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.OBJECT,
-                    properties: {
-                        instructions: { type: Type.STRING },
-                        tips: { type: Type.ARRAY, items: { type: Type.STRING } },
-                        generalInfo: { type: Type.STRING },
-                        language: { type: Type.STRING },
-                    },
-                    required: ["instructions", "tips", "generalInfo", "language"],
-                },
-            },
-        });
-        
-        const responseText = textOnlyResponse.text;
-        const cleanedJsonString = responseText.replace(/^```json\s*/, '').replace(/\s*```$/, '').trim();
-        if (!cleanedJsonString) {
-            throw new Error("Received an empty response from the AI service for text-only generation.");
-        }
-    
-        const data = JSON.parse(cleanedJsonString);
-        
-        // Add the video fields manually to conform to the ExerciseInfo interface
-        const finalData = {
-            ...data,
-            primaryVideoId: null,
-            alternativeVideoIds: [],
-        };
-        
-        return res.status(200).json(finalData);
-    }
-
-    // ===== FULL PATH (with YouTube API Key) =====
-
     // STAGE 1: Get the best search query from Gemini
     const searchQueryPrompt = `
       Translate the exercise name "${exerciseName}" into the best possible English search query for finding a short, instructional video on YouTube.
@@ -118,7 +83,9 @@ export default async function handler(req: any, res: any) {
         if (!youtubeResponse.ok) {
             const errorData = await youtubeResponse.json();
             console.error("YouTube API Error:", errorData);
-            throw new Error(`YouTube API request failed with status: ${youtubeResponse.status}`);
+            // Pass a more informative error to the client
+            const errorDetails = errorData.error?.message || `YouTube API request failed with status: ${youtubeResponse.status}`;
+            throw new Error(`YouTube API Error: ${errorDetails}`);
         }
         const youtubeData = await youtubeResponse.json();
         videoResults = youtubeData.items.map((item: YouTubeVideo) => ({
@@ -133,10 +100,10 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json({
           primaryVideoId: null,
           alternativeVideoIds: [],
-          instructions: "No suitable instructional video was found for this exercise.",
-          tips: ["Try searching for a different variation of the exercise.", "Check your spelling."],
-          generalInfo: `We could not locate a high-quality, short instructional video for "${exerciseName}" at this time.`,
-          language: 'en'
+          instructions: "לא נמצאו סרטוני הדרכה מתאימים עבור תרגיל זה.",
+          tips: ["נסה לחפש וריאציה אחרת של התרגיל.", "ודא שהשם מאוית נכון."],
+          generalInfo: `לא הצלחנו לאתר סרטון הדרכה קצר ואיכותי עבור "${exerciseName}" בשלב זה.`,
+          language: 'he'
       });
     }
 
@@ -188,7 +155,16 @@ export default async function handler(req: any, res: any) {
 
   } catch (error: any) {
     console.error("Error in API handler:", error);
+    // Return a generic error in the same ExerciseInfo format for consistent client-side handling
     const errorMessage = error.message || 'An error occurred while processing your request.';
-    return res.status(500).json({ message: errorMessage });
+    const clientError = {
+        primaryVideoId: null,
+        alternativeVideoIds: [],
+        instructions: `אירעה שגיאה: ${errorMessage}`,
+        tips: ["אנא נסה שוב מאוחר יותר.", "בדוק את קונסולת המפתחים לפרטים טכניים."],
+        generalInfo: "לא ניתן היה לאחזר מידע עבור תרגיל זה עקב שגיאה בצד השרת.",
+        language: 'he',
+    };
+    return res.status(500).json(clientError);
   }
 }
