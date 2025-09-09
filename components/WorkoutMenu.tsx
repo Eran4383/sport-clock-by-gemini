@@ -1,11 +1,12 @@
 
 
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useWorkout } from '../contexts/WorkoutContext';
 import { WorkoutPlan, WorkoutStep } from '../types';
 import { useSettings } from '../contexts/SettingsContext';
 import { HoverNumberInput } from './HoverNumberInput';
-import { getExerciseInfo, ExerciseInfo, clearExerciseFromCache, prefetchExercises, generateWorkoutPlan } from '../services/geminiService';
+import { getExerciseInfo, ExerciseInfo, clearExerciseFromCache, prefetchExercises, generateWorkoutPlan, checkCacheStatus } from '../services/geminiService';
 import { WorkoutLog } from './WorkoutLog';
 import { getBaseExerciseName, generateCircuitSteps } from '../utils/workout';
 
@@ -870,14 +871,34 @@ const PlanList: React.FC<{
   const [isImportTextVisible, setIsImportTextVisible] = useState(false);
   const [sharingPlan, setSharingPlan] = useState<WorkoutPlan | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [refreshComplete, setRefreshComplete] = useState(false);
-  const [isWarmupEditorExpanded, setIsWarmupEditorExpanded] = useState(false);
+  const [refreshStatus, setRefreshStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [isWarmupSettingsExpanded, setIsWarmupSettingsExpanded] = useState(false);
+
+  useEffect(() => {
+    if (isRefreshing) {
+        setRefreshStatus('loading');
+        return;
+    }
+
+    const allExerciseNames = plans.flatMap(plan => plan.steps)
+                                  .filter(step => step.type === 'exercise')
+                                  .map(step => getBaseExerciseName(step.name));
+
+    const uniqueNames = [...new Set(allExerciseNames)];
+    if (uniqueNames.length === 0) {
+        setRefreshStatus('idle');
+        return;
+    }
+
+    const status = checkCacheStatus(uniqueNames);
+    setRefreshStatus(status.allCached ? 'success' : 'error');
+
+  }, [plans, isRefreshing]);
 
   const handleRefreshAll = async () => {
     if (isRefreshing || plans.length === 0) return;
 
     setIsRefreshing(true);
-    setRefreshComplete(false);
     const allExerciseNames = plans.flatMap(plan => plan.steps)
                                   .filter(step => step.type === 'exercise')
                                   .map(step => getBaseExerciseName(step.name));
@@ -888,8 +909,16 @@ const PlanList: React.FC<{
     }
     
     setIsRefreshing(false);
-    setRefreshComplete(true);
-    setTimeout(() => setRefreshComplete(false), 3000);
+  };
+  
+  const getRefreshTooltip = () => {
+    switch (refreshStatus) {
+        case 'loading': return "Refreshing info in background...";
+        case 'success': return "All exercise info is up to date!";
+        case 'error': return "Some exercise info is missing. Click to refresh.";
+        case 'idle':
+        default: return "Refresh all exercise info";
+    }
   };
 
   const handleToggleSelection = (planId: string) => {
@@ -1024,17 +1053,21 @@ const PlanList: React.FC<{
         <div className="flex items-center gap-2">
             <button
                 onClick={handleRefreshAll}
-                className={`p-2 rounded-full hover:bg-gray-500/30 text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${refreshComplete ? 'text-green-400' : ''}`}
-                title={isRefreshing ? "Refreshing info in background..." : (refreshComplete ? "Refresh complete!" : "Refresh all exercise info")}
+                className={`p-2 rounded-full hover:bg-gray-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors`}
+                title={getRefreshTooltip()}
                 disabled={isRefreshing || !!activeWorkout}
             >
-                {isRefreshing ? (
+                {refreshStatus === 'loading' ? (
                     <svg className="animate-spin h-6 w-6 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
                 ) : (
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <svg xmlns="http://www.w3.org/2000/svg" className={`h-6 w-6 ${
+                        refreshStatus === 'success' ? 'text-green-400' : 
+                        refreshStatus === 'error' ? 'text-red-400' : 
+                        'text-gray-400'
+                    }`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5" />
                       <path strokeLinecap="round" strokeLinejoin="round" d="M4 9a9 9 0 0114.13-5.23M20 15a9 9 0 01-14.13 5.23" />
                     </svg>
@@ -1097,33 +1130,35 @@ const PlanList: React.FC<{
       
       {!activeWorkout && (
           <>
-            <button 
-                onClick={onOpenAiPlanner}
-                className="w-full text-center py-2 mb-4 bg-purple-600 text-white rounded-lg font-bold hover:bg-purple-700 transition-colors flex items-center justify-center gap-2"
-            >
-                ✨ AI Plan Generator
-            </button>
-            <button 
-              onClick={onCreateNew}
-              className="w-full text-center py-1 mb-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors"
-            >
-              + Create New Plan
-            </button>
+            <div className="flex gap-4 mb-4">
+                <button
+                    onClick={onOpenAiPlanner}
+                    className="flex-1 text-center py-2 bg-purple-600 text-white rounded-lg font-bold hover:bg-purple-700 transition-colors flex items-center justify-center gap-2"
+                >
+                    ✨ AI Plan Generator
+                </button>
+                <button
+                  onClick={onCreateNew}
+                  className="flex-1 text-center py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+                >
+                  + Create New Plan
+                </button>
+            </div>
              <div className="bg-gray-700/50 rounded-lg p-3 mb-4">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between cursor-pointer" onClick={() => setIsWarmupSettingsExpanded(prev => !prev)}>
                     <div className="flex items-center gap-2">
                         <label htmlFor="warmup-toggle" className="font-semibold text-white cursor-pointer">Warm-up Routine</label>
-                        <button onClick={() => onSelectPlan('_warmup_')} className="p-1 rounded-full text-gray-400 hover:text-white hover:bg-gray-600">
+                        <button onClick={(e) => { e.stopPropagation(); onSelectPlan('_warmup_'); }} className="p-1 rounded-full text-gray-400 hover:text-white hover:bg-gray-600">
                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" /><path fillRule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clipRule="evenodd" /></svg>
                         </button>
                     </div>
-                    <label htmlFor="warmup-toggle" className="relative inline-flex items-center cursor-pointer">
+                    <label htmlFor="warmup-toggle" className="relative inline-flex items-center cursor-pointer" onClick={(e) => e.stopPropagation()}>
                         <input type="checkbox" id="warmup-toggle" className="sr-only peer" checked={settings.isWarmupEnabled} onChange={(e) => updateSettings({ isWarmupEnabled: e.target.checked })} />
                         <div className="w-11 h-6 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
                     </label>
                 </div>
-                 {settings.isWarmupEnabled && (
-                     <div className="mt-3 pt-3 border-t border-gray-600">
+                 {isWarmupSettingsExpanded && settings.isWarmupEnabled && (
+                     <div className="mt-3 pt-3 border-t border-gray-600 animate-fadeIn" style={{ animationDuration: '0.3s'}}>
                          <label htmlFor="warmup-rest" className="text-sm text-gray-400">Rest after warm-up (seconds)</label>
                          <HoverNumberInput
                              id="warmup-rest"
@@ -1979,12 +2014,28 @@ const AiPlannerModal: React.FC<{
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-    const scrollToBottom = () => {
+    useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    };
+    }, [messages]);
 
-    useEffect(scrollToBottom, [messages]);
+    useEffect(() => {
+        const textarea = textareaRef.current;
+        if (textarea) {
+            textarea.style.height = 'auto';
+            const scrollHeight = textarea.scrollHeight;
+            
+            const computedStyle = getComputedStyle(textarea);
+            const lineHeight = parseFloat(computedStyle.lineHeight) || 24; // Fallback
+            const paddingTop = parseFloat(computedStyle.paddingTop);
+            const paddingBottom = parseFloat(computedStyle.paddingBottom);
+            const maxHeight = (lineHeight * 5) + paddingTop + paddingBottom;
+
+            textarea.style.height = `${Math.min(scrollHeight, maxHeight)}px`;
+            textarea.style.overflowY = scrollHeight > maxHeight ? 'auto' : 'hidden';
+        }
+    }, [input]);
 
     const handleSend = async () => {
         if (!input.trim() || isLoading) return;
@@ -1998,16 +2049,14 @@ const AiPlannerModal: React.FC<{
         try {
             const responseText = await generateWorkoutPlan(messages, input);
             
-            // Check for a JSON block in the response
             const jsonRegex = /```json\s*([\s\S]*?)\s*```/;
             const match = responseText.match(jsonRegex);
 
             if (match && match[1]) {
                 try {
                     const planJson = JSON.parse(match[1]);
-                    // Add AI plan specific properties
                     planJson.isSmartPlan = true;
-                    planJson.color = '#a855f7'; // Purple
+                    planJson.color = '#a855f7';
                     
                     importPlan(planJson, 'ai');
                     
@@ -2018,7 +2067,6 @@ const AiPlannerModal: React.FC<{
                     setMessages([...newMessages, { role: 'model', parts: [{ text: "I tried to generate a plan, but there was an error in the format. Could you please clarify your request?" }] }]);
                 }
             } else {
-                // No JSON found, just a regular chat message
                 setMessages([...newMessages, { role: 'model', parts: [{ text: responseText }] }]);
             }
 
@@ -2041,16 +2089,18 @@ const AiPlannerModal: React.FC<{
             </div>
             <div className="flex-grow overflow-y-auto mb-4 space-y-4 pr-2">
                  {messages.length === 0 && (
-                    <div className="text-center text-gray-400 p-8">
-                        <p className="text-lg">Welcome to the AI Workout Planner!</p>
-                        <p className="mt-2">Describe the workout you want. For example:</p>
-                        <em className="block mt-2">"Create a 20-minute, high-intensity workout for me."</em>
+// FIX: Replaced invalid `style={{direction: 'rtl'}}` with the correct HTML attribute `dir="rtl"` for proper text directionality.
+                    <div className="text-center text-gray-400 p-8" dir="rtl">
+                        <p className="text-lg">ברוכים הבאים למתכנן האימונים החכם!</p>
+                        <p className="mt-2">תאר את האימון שברצונך לבנות. לדוגמה:</p>
+                        <em className="block mt-2">"צור לי תוכנית אימון למתחילים באורך 20 דקות לכל הגוף."</em>
                     </div>
                 )}
                 {messages.map((msg, index) => (
                     <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                         <div className={`max-w-prose p-3 rounded-lg ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-200'}`}>
-                            <p className="whitespace-pre-wrap">{msg.parts[0].text}</p>
+{/* FIX: Replaced invalid `style={{direction: 'auto'}}` with the correct HTML attribute `dir="auto"` to fix the TypeScript error and enable automatic text direction detection. */}
+                            <p className="whitespace-pre-wrap" dir="auto">{msg.parts[0].text}</p>
                         </div>
                     </div>
                 ))}
@@ -2068,13 +2118,21 @@ const AiPlannerModal: React.FC<{
                  <div ref={messagesEndRef} />
             </div>
             <div className="flex gap-2">
-                <input
-                    type="text"
+                <textarea
+                    ref={textareaRef}
+                    rows={1}
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-                    placeholder="Describe your desired workout..."
-                    className="flex-grow bg-gray-800 text-white p-3 rounded-lg focus:outline-none focus:ring-2 ring-blue-500"
+                    onKeyPress={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSend();
+                        }
+                    }}
+                    placeholder="תאר את האימון הרצוי..."
+                    className="flex-grow bg-gray-800 text-white p-3 rounded-lg focus:outline-none focus:ring-2 ring-blue-500 resize-none"
+// FIX: Replaced `style={{direction: 'rtl'}}` with the correct HTML attribute `dir="rtl"` for proper text directionality.
+                    dir="rtl"
                     disabled={isLoading}
                 />
                 <button onClick={handleSend} disabled={isLoading || !input.trim()} className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed">

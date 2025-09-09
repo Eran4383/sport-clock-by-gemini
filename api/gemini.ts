@@ -180,6 +180,8 @@ interface WorkoutPlan {
   executionMode?: 'linear' | 'circuit';
 }
 \`\`\`
+
+IMPORTANT: You MUST respond in the same language as the user's last message. For example, if the user writes in Hebrew, your response (both conversational text and the content within the JSON, like plan and step names) must also be in Hebrew.
 `,
         },
     });

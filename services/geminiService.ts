@@ -37,6 +37,22 @@ const saveToCache = (key: string, data: ExerciseInfo) => {
 };
 
 /**
+ * Checks if all provided exercise names are present in the local storage cache.
+ * @param exerciseNames - An array of exercise names to check.
+ * @returns An object indicating if all are cached and a list of any that are not.
+ */
+export const checkCacheStatus = (exerciseNames: string[]): { allCached: boolean; uncachedCount: number } => {
+    if (exerciseNames.length === 0) return { allCached: true, uncachedCount: 0 };
+    const cache = getCache();
+    const uniqueNames = [...new Set(exerciseNames.map(name => name.trim().toLowerCase()))].filter(Boolean);
+    if (uniqueNames.length === 0) return { allCached: true, uncachedCount: 0 };
+    
+    const uncached = uniqueNames.filter(name => !cache[name]);
+    return { allCached: uncached.length === 0, uncachedCount: uncached.length };
+};
+
+
+/**
  * Removes a single exercise from the client-side localStorage cache.
  * @param exerciseName - The name of the exercise to clear.
  */
@@ -120,7 +136,7 @@ export async function getExerciseInfo(exerciseName: string, forceRefresh = false
     } catch (error) {
         console.error("Error fetching exercise info from server:", error);
         if (error instanceof TypeError) { // Network error
-             return getGenericErrorResponse("לא ניתן להתחבר לשרת. אנא בדוק את חיבור האינטרנט שלך.");
+             return getGenericErrorResponse("לא ניתן להתחבר לשרת. אנא בדוק את חיבור האינטררנט שלך.");
         }
         const errorMessage = error instanceof Error ? error.message : "אירעה שגיאה לא ידועה.";
         return getGenericErrorResponse(errorMessage);
