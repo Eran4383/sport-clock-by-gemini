@@ -1162,8 +1162,8 @@ const PlanList: React.FC<{
                 </button>
             </div>
              <div className="bg-gray-700/50 rounded-lg p-3 mb-4">
-                <div className="flex items-center justify-between" onClick={() => setIsWarmupSettingsExpanded(prev => !prev)}>
-                    <div className="flex items-center gap-2 cursor-pointer">
+                <div className="flex items-center justify-between cursor-pointer" onClick={() => setIsWarmupSettingsExpanded(prev => !prev)}>
+                    <div className="flex items-center gap-2">
                         <span className="font-semibold text-white">Warm-up Routine</span>
                         <button onClick={(e) => { e.stopPropagation(); onSelectPlan('_warmup_'); }} className="p-1 rounded-full text-gray-400 hover:text-white hover:bg-gray-600">
                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" /><path fillRule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clipRule="evenodd" /></svg>
@@ -1184,6 +1184,19 @@ const PlanList: React.FC<{
                              min={0}
                              className="w-full mt-1 bg-gray-600 p-2 rounded-md text-center"
                          />
+                         {settings.warmupSteps.length > 0 && (
+                            <div className="mt-4">
+                                <h4 className="text-sm font-semibold text-gray-300 mb-2">Steps:</h4>
+                                <ol className="text-gray-300 space-y-1 text-sm">
+                                    {settings.warmupSteps.map((step, index) => (
+                                        <li key={index} className="flex items-center gap-2 p-1 -m-1 rounded hover:bg-gray-600/50" title={step.name}>
+                                            <span className={`w-1.5 h-4 rounded ${step.type === 'exercise' ? 'bg-orange-400' : 'bg-transparent'}`}></span>
+                                            <span className="truncate">{step.name} - <span className="text-gray-400 font-normal">{step.isRepBased ? `${step.reps} reps` : `${step.duration}s`}</span></span>
+                                        </li>
+                                    ))}
+                                </ol>
+                            </div>
+                        )}
                      </div>
                  )}
             </div>
@@ -2196,10 +2209,13 @@ const AiPlannerModal: React.FC<{
                 {isLoading && (
                      <div className="flex justify-start">
                         <div className="max-w-sm p-3 rounded-lg bg-gray-700 text-gray-200">
-                            <div className="flex items-center gap-2">
-                                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0s'}}></div>
-                                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
-                                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                            <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0s'}}></div>
+                                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+                                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                                </div>
+                                <span className="text-sm italic text-gray-400">בונה לך את האימון המושלם, כמה רגעים...</span>
                             </div>
                         </div>
                     </div>

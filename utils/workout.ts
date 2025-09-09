@@ -1,3 +1,4 @@
+
 import { WorkoutStep } from '../types';
 
 /**
@@ -89,32 +90,32 @@ export const processAndFormatAiSteps = (steps: WorkoutStep[]): WorkoutStep[] => 
         const step = { ...steps[i] }; // Create a mutable copy.
 
         if (step.type === 'exercise') {
-            const totalSets = exerciseSetCounts.get(step.name) || 1;
+            const baseName = step.name; // Original name
+            const totalSets = exerciseSetCounts.get(baseName) || 1;
             
             if (totalSets > 1) {
-                const currentSet = (currentSetCounters.get(step.name) || 0) + 1;
-                currentSetCounters.set(step.name, currentSet);
+                const currentSet = (currentSetCounters.get(baseName) || 0) + 1;
+                currentSetCounters.set(baseName, currentSet);
                 
-                step.name = `${step.name} (Set ${currentSet}/${totalSets})`;
+                step.name = `${baseName} (Set ${currentSet}/${totalSets})`;
             }
             formattedSteps.push(step);
 
         } else if (step.type === 'rest') {
             const prevStep = i > 0 ? steps[i - 1] : null;
-            const nextStep = i + 1 < steps.length ? steps[i + 1] : null;
-
-            // An inter-set rest is one that's between two identical exercises.
-            if (prevStep && prevStep.type === 'exercise' && 
-                nextStep && nextStep.type === 'exercise' && 
-                prevStep.name === nextStep.name) {
+            
+            // If the previous step was an exercise, format the rest name to match its set count.
+            // This works for both linear and circuit style plans.
+            if (prevStep && prevStep.type === 'exercise') {
+                const prevStepBaseName = prevStep.name; // Use the original name from the input array
+                const totalSets = exerciseSetCounts.get(prevStepBaseName) || 1;
                 
-                const baseName = prevStep.name;
-                const totalSets = exerciseSetCounts.get(baseName) || 1;
-                const currentSet = currentSetCounters.get(baseName) || 0;
-
-                if (currentSet > 0 && totalSets > 1) {
-                    // Use a standard name for rests between sets for consistency.
-                    step.name = `Rest (סט ${currentSet}/${totalSets})`;
+                if (totalSets > 1) {
+                    const currentSetOfPrev = currentSetCounters.get(prevStepBaseName) || 0;
+                    // Format the rest if it's not after the absolute final set of that exercise
+                    if (currentSetOfPrev < totalSets) {
+                        step.name = `Rest (סט ${currentSetOfPrev}/${totalSets})`;
+                    }
                 }
             }
             formattedSteps.push(step);
