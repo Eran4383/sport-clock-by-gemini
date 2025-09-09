@@ -1,6 +1,4 @@
 
-
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useWorkout } from '../contexts/WorkoutContext';
 import { WorkoutPlan, WorkoutStep } from '../types';
@@ -438,7 +436,8 @@ const PlanListItem: React.FC<{
   isDragTarget: boolean;
   isNewlyImported: boolean;
   index: number;
-}> = ({ plan, onSelectPlan, onInitiateDelete, onInspectExercise, onShare, isSelected, onToggleSelection, isDraggable, onDragStart, onDragOver, onDrop, onDragEnd, onDragLeave, isDragTarget, isNewlyImported, index }) => {
+  setRef: (el: HTMLDivElement | null) => void;
+}> = ({ plan, onSelectPlan, onInitiateDelete, onInspectExercise, onShare, isSelected, onToggleSelection, isDraggable, onDragStart, onDragOver, onDrop, onDragEnd, onDragLeave, isDragTarget, isNewlyImported, index, setRef }) => {
   const { 
       activeWorkout,
       currentStep,
@@ -638,7 +637,8 @@ const PlanListItem: React.FC<{
           </div>
       )}
       <div 
-          className={`bg-gray-700/50 rounded-lg transition-all duration-300 ${isDraggable ? 'cursor-grab' : ''} ${dragStyles} ${animationClass}`}
+          ref={setRef}
+          className={`rounded-lg transition-all duration-300 ${isDraggable ? 'cursor-grab' : ''} ${dragStyles} ${animationClass} ${plan.isSmartPlan ? 'bg-purple-500/20' : 'bg-gray-700/50'}`}
           style={{ borderLeft: `5px solid ${plan.isSmartPlan ? '#a855f7' : (plan.color || 'transparent')}` }}
           draggable={isDraggable}
           onDragStart={(e) => onDragStart(e, index)}
@@ -873,6 +873,23 @@ const PlanList: React.FC<{
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshStatus, setRefreshStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [isWarmupSettingsExpanded, setIsWarmupSettingsExpanded] = useState(false);
+  
+  const planRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const lastScrolledPlanId = useRef<string | null>(null);
+
+  // Effect to scroll to a newly imported plan
+  useEffect(() => {
+    if (recentlyImportedPlanId && recentlyImportedPlanId !== lastScrolledPlanId.current) {
+        // Use a timeout to allow the DOM to update and the modal to close
+        setTimeout(() => {
+            const element = planRefs.current[recentlyImportedPlanId];
+            if (element) {
+                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                lastScrolledPlanId.current = recentlyImportedPlanId;
+            }
+        }, 300);
+    }
+  }, [recentlyImportedPlanId]);
 
   useEffect(() => {
     if (isRefreshing) {
@@ -1133,13 +1150,13 @@ const PlanList: React.FC<{
             <div className="flex gap-4 mb-4">
                 <button
                     onClick={onOpenAiPlanner}
-                    className="flex-1 text-center py-2 bg-purple-600 text-white rounded-lg font-bold hover:bg-purple-700 transition-colors flex items-center justify-center gap-2"
+                    className="flex-1 text-center py-1 bg-purple-600 text-white rounded-lg font-bold hover:bg-purple-700 transition-colors flex items-center justify-center gap-2"
                 >
                     ✨ AI Plan Generator
                 </button>
                 <button
                   onClick={onCreateNew}
-                  className="flex-1 text-center py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+                  className="flex-1 text-center py-1 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors"
                 >
                   + Create New Plan
                 </button>
@@ -1191,6 +1208,7 @@ const PlanList: React.FC<{
                 key={plan.id} 
                 plan={plan} 
                 index={index}
+                setRef={el => { if (el) planRefs.current[plan.id] = el; }}
                 onSelectPlan={() => onSelectPlan(plan)}
                 onInitiateDelete={onInitiateDelete}
                 onInspectExercise={onInspectExercise}
@@ -2008,15 +2026,25 @@ const ConfirmDeleteModal: React.FC<{
 const AiPlannerModal: React.FC<{
     onClose: () => void;
 }> = ({ onClose }) => {
-    type ChatMessage = { role: 'user' | 'model'; parts: { text: string }[] };
+    type ChatPart = { text: string; isPlanLink?: boolean; planName?: string };
+    type ChatMessage = { role: 'user' | 'model'; parts: ChatPart[] };
+    
     const { importPlan } = useWorkout();
-    const [messages, setMessages] = useState<ChatMessage[]>([]);
+    const AI_CHAT_HISTORY_KEY = 'sportsClockAiChatHistory_v2';
+
+    const [messages, setMessages] = useState<ChatMessage[]>(() => {
+        try {
+            const saved = localStorage.getItem(AI_CHAT_HISTORY_KEY);
+            return saved ? JSON.parse(saved) : [];
+        } catch { return []; }
+    });
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
     useEffect(() => {
+        localStorage.setItem(AI_CHAT_HISTORY_KEY, JSON.stringify(messages));
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages]);
 
@@ -2037,6 +2065,11 @@ const AiPlannerModal: React.FC<{
         }
     }, [input]);
 
+    const handleNewChat = () => {
+        setMessages([]);
+        localStorage.removeItem(AI_CHAT_HISTORY_KEY);
+    };
+
     const handleSend = async () => {
         if (!input.trim() || isLoading) return;
 
@@ -2051,6 +2084,13 @@ const AiPlannerModal: React.FC<{
             
             const jsonRegex = /```json\s*([\s\S]*?)\s*```/;
             const match = responseText.match(jsonRegex);
+            const conversationalText = responseText.replace(jsonRegex, '').trim();
+            
+            let finalMessages = [...newMessages];
+
+            if (conversationalText) {
+                finalMessages.push({ role: 'model', parts: [{ text: conversationalText }]});
+            }
 
             if (match && match[1]) {
                 try {
@@ -2060,15 +2100,18 @@ const AiPlannerModal: React.FC<{
                     
                     importPlan(planJson, 'ai');
                     
-                    const confirmationText = `I've created the "${planJson.name}" workout plan and added it to your list. Let me know if you need another one!`;
-                    setMessages([...newMessages, { role: 'model', parts: [{ text: confirmationText }] }]);
+                    finalMessages.push({ role: 'model', parts: [{ text: '', isPlanLink: true, planName: planJson.name }]});
+                    
                 } catch (e) {
                     console.error("Failed to parse AI-generated JSON:", e);
-                    setMessages([...newMessages, { role: 'model', parts: [{ text: "I tried to generate a plan, but there was an error in the format. Could you please clarify your request?" }] }]);
+                    finalMessages.push({ role: 'model', parts: [{ text: "I tried to generate a plan, but there was an error in the format. Could you please clarify your request? The full response is below for debugging:\n\n" + responseText }] });
                 }
-            } else {
-                setMessages([...newMessages, { role: 'model', parts: [{ text: responseText }] }]);
+            } else if (!conversationalText) {
+                // If there's no conversational text and no JSON, it's probably just a text response.
+                 finalMessages.push({ role: 'model', parts: [{ text: responseText }]});
             }
+            
+            setMessages(finalMessages);
 
         } catch (error) {
             console.error("AI Planner error:", error);
@@ -2083,13 +2126,17 @@ const AiPlannerModal: React.FC<{
         <div className="fixed inset-0 bg-gray-900/90 z-[100] flex flex-col p-4" aria-modal="true" role="dialog">
              <div className="flex justify-between items-center mb-4 text-white">
                 <h2 className="text-xl font-bold flex items-center gap-2">✨ AI Workout Planner</h2>
-                <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-700">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                </button>
+                <div className="flex items-center gap-2">
+                    <button onClick={handleNewChat} title="Start a new chat" className="p-2 rounded-full hover:bg-gray-700">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 110 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" /></svg>
+                    </button>
+                    <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-700">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                </div>
             </div>
             <div className="flex-grow overflow-y-auto mb-4 space-y-4 pr-2">
                  {messages.length === 0 && (
-// FIX: Replaced invalid `style={{direction: 'rtl'}}` with the correct HTML attribute `dir="rtl"` for proper text directionality.
                     <div className="text-center text-gray-400 p-8" dir="rtl">
                         <p className="text-lg">ברוכים הבאים למתכנן האימונים החכם!</p>
                         <p className="mt-2">תאר את האימון שברצונך לבנות. לדוגמה:</p>
@@ -2099,8 +2146,18 @@ const AiPlannerModal: React.FC<{
                 {messages.map((msg, index) => (
                     <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                         <div className={`max-w-prose p-3 rounded-lg ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-200'}`}>
-{/* FIX: Replaced invalid `style={{direction: 'auto'}}` with the correct HTML attribute `dir="auto"` to fix the TypeScript error and enable automatic text direction detection. */}
-                            <p className="whitespace-pre-wrap" dir="auto">{msg.parts[0].text}</p>
+                            {msg.parts.map((part, partIndex) => 
+                                part.isPlanLink ? (
+                                    <div key={partIndex} dir="auto">
+                                        <p>הוספתי את תוכנית "{part.planName}" לרשימה שלך.</p>
+                                        <button onClick={onClose} className="mt-2 font-bold text-blue-300 hover:text-blue-200 underline">
+                                            הצג תוכנית
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <p key={partIndex} className="whitespace-pre-wrap" dir="auto">{part.text}</p>
+                                )
+                            )}
                         </div>
                     </div>
                 ))}
@@ -2131,7 +2188,6 @@ const AiPlannerModal: React.FC<{
                     }}
                     placeholder="תאר את האימון הרצוי..."
                     className="flex-grow bg-gray-800 text-white p-3 rounded-lg focus:outline-none focus:ring-2 ring-blue-500 resize-none"
-// FIX: Replaced `style={{direction: 'rtl'}}` with the correct HTML attribute `dir="rtl"` for proper text directionality.
                     dir="rtl"
                     disabled={isLoading}
                 />

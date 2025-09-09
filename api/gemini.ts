@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type, HarmCategory, HarmBlockThreshold } from "@google/genai";
 
 const geminiApiKey = process.env.API_KEY;
@@ -54,13 +55,14 @@ const handleExerciseInfoRequest = async (exerciseName: string, force_refresh: bo
       The output should be ONLY the search query string and nothing else.
     `;
     
+    // FIX: The 'safetySettings' property should be inside the 'config' object and was previously misspelled as 'safety'.
     const queryGenerationResponse = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: searchQueryPrompt,
       config: {
-        thinkingConfig: { thinkingBudget: 0 }
+        thinkingConfig: { thinkingBudget: 0 },
+        safetySettings: safetySettings,
       },
-      safety: safetySettings,
     });
     const searchQuery = queryGenerationResponse.text.trim();
 
@@ -118,10 +120,10 @@ const handleExerciseInfoRequest = async (exerciseName: string, force_refresh: bo
       If NONE of the provided videos are suitable instructional tutorials, all video ID fields MUST be null.
     `;
     
+    // FIX: The 'safetySettings' property should be inside the 'config' object and was previously misspelled as 'safety'.
     const finalResponse = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: videoSelectionPrompt,
-        safety: safetySettings,
         config: {
             responseMimeType: "application/json",
             responseSchema: {
@@ -136,6 +138,7 @@ const handleExerciseInfoRequest = async (exerciseName: string, force_refresh: bo
                 },
                 required: ["primaryVideoId", "alternativeVideoIds", "instructions", "tips", "generalInfo", "language"],
             },
+            safetySettings: safetySettings,
         },
     });
 
@@ -154,16 +157,28 @@ const handleExerciseInfoRequest = async (exerciseName: string, force_refresh: bo
 const handleChatRequest = async (history: any[], message: string) => {
     const ai = new GoogleGenAI({ apiKey: geminiApiKey! });
     
+    // FIX: The 'safetySettings' property should be inside the 'config' object and was previously misspelled as 'safety'.
     const chat = ai.chats.create({
         model: 'gemini-2.5-flash',
         history,
-        safety: safetySettings,
         config: {
-            systemInstruction: `You are a world-class sports expert with doctorates in orthopedic medicine, physiotherapy, and human anatomy. Your goal is to create safe, effective, and personalized workout plans.
-When asked to create a workout plan, you MUST respond with a valid JSON object that conforms to the following TypeScript interface, and NOTHING else.
-The JSON object MUST be enclosed in a markdown code block (\`\`\`json ... \`\`\`). Do NOT include any explanatory text outside of the JSON block.
+            safetySettings: safetySettings,
+            systemInstruction: `You are a world-class sports expert with doctorates in orthopedic medicine, physiotherapy, and human anatomy. Your primary goal is to help users create safe, effective, and personalized workout plans.
 
-Workout Plan Interface:
+**Interaction Flow:**
+1.  **Be Conversational:** Act like a personal coach. If the user's request is vague (e.g., "give me a workout"), you MUST ask clarifying questions before creating a plan. Ask about their goals, available time, fitness level, available equipment, preferred exercises, etc.
+2.  **Generate the Plan:** Once you have enough information, generate the plan.
+3.  **Provide a Summary:** FIRST, provide a friendly, human-readable summary of the plan you've created. This summary should appear as regular text.
+4.  **Provide the JSON:** AFTER the summary, you MUST provide the plan as a single, valid JSON object enclosed in a markdown code block (\`\`\`json ... \`\`\`). Do NOT include any other text after the JSON block.
+
+**JSON Rules:**
+- The JSON MUST conform to the TypeScript interface provided below.
+- **CRITICAL:** The \`name\` property for each exercise step MUST ONLY contain the base name of the exercise (e.g., "Squats", "Push-ups", "שכיבות סמיכה"). DO NOT include set counts, reps, or durations in the exercise name itself (e.g., NO "Push-ups (Set 1/3)", NO "Plank 30s"). This information is handled by other properties in the app.
+
+**Language:**
+- You MUST respond in the same language as the user's last message. This includes all conversational text, the plan summary, and all strings within the JSON object (like \`name\` fields for the plan and its steps).
+
+**Workout Plan Interface:**
 \`\`\`typescript
 interface WorkoutStep {
   id: string; // Should be a unique placeholder like "step_1"
@@ -180,8 +195,6 @@ interface WorkoutPlan {
   executionMode?: 'linear' | 'circuit';
 }
 \`\`\`
-
-IMPORTANT: You MUST respond in the same language as the user's last message. For example, if the user writes in Hebrew, your response (both conversational text and the content within the JSON, like plan and step names) must also be in Hebrew.
 `,
         },
     });
