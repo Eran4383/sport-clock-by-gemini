@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useMemo } from 'react';
 import { WorkoutPlan, WorkoutStep, WorkoutLogEntry } from '../types';
 import { prefetchExercises } from '../services/geminiService';
-import { getBaseExerciseName, generateCircuitSteps } from '../utils/workout';
+import { getBaseExerciseName, generateCircuitSteps, processAndFormatAiSteps } from '../utils/workout';
 import { useSettings } from '../hooks/useSettings';
 
 interface ActiveWorkout {
@@ -143,6 +143,11 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         id: `${Date.now()}_imported_step_${index}`
       }))
     };
+    
+    // If the plan is from the AI, process its steps to add set formatting.
+    if (source === 'ai') {
+        newPlan.steps = processAndFormatAiSteps(newPlan.steps);
+    }
     
     setPlans(prevPlans => {
         // AI plans can have generic names, allow them. For others, check.
