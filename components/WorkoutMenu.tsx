@@ -34,7 +34,7 @@ const ExerciseInfoModal: React.FC<{
         const result = await getExerciseInfo(exerciseName, forceRefresh);
         setInfo(result);
         setActiveVideoId(result.primaryVideoId);
-        if (result.instructions.toLowerCase().includes("error") || result.instructions.toLowerCase().includes("failed") || result.instructions.includes("api key") || result.instructions.includes("מפתח api")) {
+        if (result.instructions.toLowerCase().includes("error") || result.instructions.toLowerCase().includes("failed") || result.instructions.includes("api key") || result.instructions.includes("מפתח api") || result.instructions.includes("שגיאה")) {
             setError(result.instructions);
         }
       } catch (e) {
@@ -267,7 +267,7 @@ const ExerciseInfoModal: React.FC<{
                     {/* Instructions List */}
                     <h4 className="font-semibold text-lg text-white mt-4">{isHebrew ? "הוראות" : "Instructions"}</h4>
                      {error ? (
-                        <p className="text-yellow-400 bg-yellow-900/30 p-3 rounded-md">{error}</p>
+                        <p className="text-yellow-400 bg-yellow-900/30 p-3 rounded-md whitespace-pre-wrap">{error}</p>
                      ) : parsedInstructions.length > 1 ? (
                         <ol className="list-decimal list-inside space-y-2 text-gray-200">
                             {parsedInstructions.map((item, index) => <li key={index}>{item}</li>)}

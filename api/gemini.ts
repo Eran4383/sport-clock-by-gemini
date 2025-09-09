@@ -160,17 +160,18 @@ const handleChatRequest = async (history: any[], message: string) => {
         history,
         config: {
             safetySettings: safetySettings,
-            systemInstruction: `You are a world-class sports expert with doctorates in orthopedic medicine, physiotherapy, and human anatomy. Your primary goal is to help users create safe, effective, and personalized workout plans.
+            systemInstruction: `You are a world-class expert in human performance and rehabilitation, with deep knowledge in sports science, physiotherapy, and occupational therapy. Your primary goal is to help users create safe, effective, and personalized plans.
 
 **Interaction Flow:**
-1.  **Be Conversational:** Act like a personal coach. If the user's request is vague (e.g., "give me a workout"), you MUST ask clarifying questions before creating a plan. Ask about their goals, available time, fitness level, available equipment, preferred exercises, etc.
-2.  **Generate the Plan:** Once you have enough information, generate the plan.
+1.  **Be Conversational:** Act like a personal coach or therapist. If the user's request is vague (e.g., "give me a plan"), you MUST ask clarifying questions before creating a plan. Ask about their goals, available time, physical condition, available equipment, etc.
+2.  **Generate the Plan:** Once you have enough information, generate the plan. It could be a workout plan, a physiotherapy routine, a set of daily activities for occupational therapy, etc.
 3.  **Provide a Summary:** FIRST, provide a friendly, human-readable summary of the plan you've created. This summary should appear as regular text.
 4.  **Provide the JSON:** AFTER the summary, you MUST provide the plan as a single, valid JSON object enclosed in a markdown code block (\`\`\`json ... \`\`\`). Do NOT include any other text after the JSON block.
 
 **JSON Rules:**
 - The JSON MUST conform to the TypeScript interface provided below.
-- **CRITICAL:** The \`name\` property for each exercise step MUST ONLY contain the base name of the exercise (e.g., "Squats", "Push-ups", "שכיבות סמיכה"). DO NOT include set counts, reps, or durations in the exercise name itself (e.g., NO "Push-ups (Set 1/3)", NO "Plank 30s"). This information is handled by other properties in the app.
+- The \`type\` for steps can be 'exercise' for physical movements or 'rest' for breaks. Use these categories broadly. For example, a physiotherapy stretch is an 'exercise'.
+- **CRITICAL:** The \`name\` property for each step MUST ONLY contain the base name of the activity (e.g., "Squats", "Push-ups", "Gentle Wrist Stretches"). DO NOT include set counts, reps, or durations in the activity name itself.
 
 **Language:**
 - You MUST respond in the same language as the user's last message. This includes all conversational text, the plan summary, and all strings within the JSON object (like \`name\` fields for the plan and its steps).
@@ -249,34 +250,32 @@ export default async function handler(req: any, res: any) {
   } catch (error: any) {
     console.error("Error in API handler:", error);
     
-    // Attempt to parse the Gemini error response for a more specific message.
-    let geminiError;
+    let extractedError;
     try {
         if (typeof error.message === 'string' && error.message.includes('GoogleGenerativeAI Error')) {
-            const jsonMatch = error.message.match(/\[{.*}\]/s);
-            if (jsonMatch) {
-                geminiError = JSON.parse(jsonMatch[0]);
+            const jsonMatch = error.message.match(/\[(\{.*?\})\]/s);
+            if (jsonMatch && jsonMatch[1]) {
+                extractedError = JSON.parse(jsonMatch[1]);
             }
         }
     } catch(e) { /* ignore parsing errors */ }
     
-    const finalErrorJson = geminiError || {
-        error: {
-            code: 500,
-            message: error.message || 'An error occurred while processing your request.',
-            details: [],
-        }
+    const errorPayload = extractedError || {
+        code: 500,
+        message: error.message || 'An error occurred while processing your request.',
+        details: [],
     };
+
+    const finalErrorForClient = { error: errorPayload };
     
-    // Create a user-friendly error string from the JSON
-    const errorMessage = `AI Planner Error: ${JSON.stringify(finalErrorJson)}`;
+    const clientMessage = `AI Planner Error: ${JSON.stringify(finalErrorForClient)}`;
     
     const clientError = chatRequest 
-        ? { message: errorMessage }
+        ? { message: clientMessage }
         : {
             primaryVideoId: null,
             alternativeVideoIds: [],
-            instructions: `אירעה שגיאה: ${finalErrorJson.error.message}`,
+            instructions: `אירעה שגיאה: ${errorPayload.message}`,
             tips: ["אנא נסה שוב מאוחר יותר.", "בדוק את קונסולת המפתחים לפרטים טכניים."],
             generalInfo: "לא ניתן היה לאחזר מידע עבור תרגיל זה עקב שגיאה בצד השרת.",
             language: 'he',

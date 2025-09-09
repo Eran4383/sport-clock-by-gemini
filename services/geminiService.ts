@@ -124,7 +124,12 @@ export async function getExerciseInfo(exerciseName: string, forceRefresh = false
             if (data.code === 'API_KEY_MISSING') {
                 return getApiKeyErrorResponse();
             }
-            // Use the message from the backend for other errors
+            // The backend often sends a structured error that looks like ExerciseInfo
+            // for non-200 responses. If it has the right shape, we can use it directly.
+            if (data.instructions && Array.isArray(data.tips)) {
+                return data as ExerciseInfo;
+            }
+            // Fallback for other error structures
             throw new Error(data.message || 'Failed to fetch exercise info from the server.');
         }
 
