@@ -150,35 +150,38 @@ export async function getExerciseInfo(exerciseName: string, forceRefresh = false
 
 /**
  * Pre-fetches exercise information for a list of exercise names and populates the cache.
+ * This function processes requests SEQUENTIALLY to avoid hitting API rate limits.
  * @param exerciseNames - An array of exercise names to prefetch.
  * @returns A promise that resolves when all fetches are complete.
  */
-export function prefetchExercises(exerciseNames: string[]): Promise<void> {
+export async function prefetchExercises(exerciseNames: string[]): Promise<void> {
     const cache = getCache();
-    // Get unique, normalized names
-    const uniqueNames = [...new Set(exerciseNames.map(name => name.trim().toLowerCase()))];
-    const namesToFetch = uniqueNames.filter(name => name && !cache[name]); // also filter out empty names
+    // Get unique, normalized, non-empty names
+    const uniqueNames = [...new Set(exerciseNames.map(name => name.trim().toLowerCase()))].filter(Boolean);
+    const namesToFetch = uniqueNames.filter(name => !cache[name]);
 
     if (namesToFetch.length === 0) {
-        return Promise.resolve();
+        return;
     }
 
-    console.log(`Prefetching info for ${namesToFetch.length} exercises in the background...`);
+    console.log(`Prefetching info for ${namesToFetch.length} exercises sequentially to respect API rate limits...`);
 
-    const fetchPromises = namesToFetch.map(name => 
-        getExerciseInfo(name, true).catch(e => { // force refresh on prefetch all
+    // Process sequentially to avoid API rate limits (e.g., 15 RPM).
+    for (const name of namesToFetch) {
+        try {
+            // Force refresh to update both local and server caches.
+            await getExerciseInfo(name, true);
+            // Add a delay to be cautious with the API's rate limit.
+            await new Promise(resolve => setTimeout(resolve, 2000)); // 2-second delay
+        } catch (e) {
             console.error(`Failed to prefetch exercise "${name}":`, e);
-            return null; // Don't let one failure stop others
-        })
-    );
+            // Don't let one failure stop the entire process.
+        }
+    }
     
-    return new Promise<void>((resolve) => {
-        Promise.allSettled(fetchPromises).then(() => {
-            console.log("Prefetching session complete.");
-            resolve();
-        });
-    });
+    console.log("Sequential prefetching session complete.");
 }
+
 
 /**
  * Sends a chat message to the AI workout planner backend.
