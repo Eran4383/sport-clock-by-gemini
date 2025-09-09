@@ -1,5 +1,7 @@
 
+
 import { useState, useEffect, useCallback } from 'react';
+import { WorkoutStep } from '../types';
 
 export interface Settings {
   showTimer: boolean;
@@ -28,6 +30,9 @@ export interface Settings {
   showRestTitleOnDefaultCountdown: boolean;
   preWorkoutCountdownDuration: number;
   settingsCategoryOrder: string[];
+  isWarmupEnabled: boolean;
+  warmupSteps: WorkoutStep[];
+  restAfterWarmupDuration: number;
 }
 
 const defaultSettings: Settings = {
@@ -57,6 +62,9 @@ const defaultSettings: Settings = {
   showRestTitleOnDefaultCountdown: true,
   preWorkoutCountdownDuration: 10,
   settingsCategoryOrder: ['sounds', 'countdown', 'stopwatch', 'workoutDisplay', 'displaySizes', 'displayColors'],
+  isWarmupEnabled: false,
+  warmupSteps: [],
+  restAfterWarmupDuration: 15,
 };
 
 const getInitialSettings = (): Settings => {

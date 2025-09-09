@@ -1,10 +1,11 @@
 
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useWorkout } from '../contexts/WorkoutContext';
 import { WorkoutPlan, WorkoutStep } from '../types';
 import { useSettings } from '../contexts/SettingsContext';
 import { HoverNumberInput } from './HoverNumberInput';
-import { getExerciseInfo, ExerciseInfo, clearExerciseFromCache, prefetchExercises } from '../services/geminiService';
+import { getExerciseInfo, ExerciseInfo, clearExerciseFromCache, prefetchExercises, generateWorkoutPlan } from '../services/geminiService';
 import { WorkoutLog } from './WorkoutLog';
 import { getBaseExerciseName, generateCircuitSteps } from '../utils/workout';
 
@@ -22,6 +23,7 @@ const ExerciseInfoModal: React.FC<{
   const modalRef = useRef<HTMLDivElement>(null);
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
   const [showLoadingMessage, setShowLoadingMessage] = useState(false);
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
 
 
   useEffect(() => {
@@ -48,6 +50,15 @@ const ExerciseInfoModal: React.FC<{
         fetchInfo();
     }
   }, [exerciseName, forceRefresh, isVisible]);
+  
+  // Bug Fix: Clear video URL when modal is hidden to stop playback
+  useEffect(() => {
+    if (isVisible && activeVideoId) {
+      setVideoUrl(`https://www.youtube.com/embed/${activeVideoId}?autoplay=1`);
+    } else {
+      setVideoUrl(null);
+    }
+  }, [isVisible, activeVideoId]);
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
@@ -157,13 +168,6 @@ const ExerciseInfoModal: React.FC<{
     return info.tips.map(tip => tip.trim().replace(/^\d+\.?\s*/, ''));
   }, [info?.tips]);
 
-  const embedUrl = useMemo(() => {
-    if (activeVideoId && typeof activeVideoId === 'string' && activeVideoId.trim().length === 11) {
-      return `https://www.youtube.com/embed/${activeVideoId}`;
-    }
-    return null;
-  }, [activeVideoId]);
-
   const TabButton: React.FC<{
     label: string;
     isActive: boolean;
@@ -231,11 +235,11 @@ const ExerciseInfoModal: React.FC<{
                 <div className={`space-y-4 ${activeTab !== 'howto' ? 'hidden' : ''}`}>
                     {/* Video Embed */}
                     <div className="aspect-video bg-gray-900 rounded-lg overflow-hidden flex items-center justify-center">
-                        {embedUrl ? (
+                        {videoUrl ? (
                             <iframe
                                 key={activeVideoId}
                                 className="w-full h-full"
-                                src={embedUrl}
+                                src={videoUrl}
                                 title={`Video tutorial for ${exerciseName}`}
                                 frameBorder="0"
                                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -634,7 +638,7 @@ const PlanListItem: React.FC<{
       )}
       <div 
           className={`bg-gray-700/50 rounded-lg transition-all duration-300 ${isDraggable ? 'cursor-grab' : ''} ${dragStyles} ${animationClass}`}
-          style={{ borderLeft: `5px solid ${plan.color || 'transparent'}` }}
+          style={{ borderLeft: `5px solid ${plan.isSmartPlan ? '#a855f7' : (plan.color || 'transparent')}` }}
           draggable={isDraggable}
           onDragStart={(e) => onDragStart(e, index)}
           onDragOver={(e) => onDragOver(e, index)}
@@ -659,7 +663,10 @@ const PlanListItem: React.FC<{
                   />
               )}
               <div className="flex-1 min-w-0">
-                  <h3 className="text-xl font-semibold text-white break-words" title={plan.name}>{plan.name}</h3>
+                  <div className="flex items-center gap-2">
+                    {plan.isSmartPlan && <span title="AI Generated Plan">✨</span>}
+                    <h3 className="text-xl font-semibold text-white break-words" title={plan.name}>{plan.name}</h3>
+                  </div>
                   <p className="text-sm text-gray-400">
                     {plan.steps.length} steps, Total: {getTotalDuration(plan)}
                   </p>
@@ -845,15 +852,17 @@ const ImportTextModal: React.FC<{ onImport: (text: string) => void; onCancel: ()
 };
 
 const PlanList: React.FC<{
-  onSelectPlan: (plan: WorkoutPlan) => void;
+  onSelectPlan: (plan: WorkoutPlan | string) => void;
   onCreateNew: () => void;
   onInitiateDelete: (planId: string) => void;
   onShowLog: () => void;
   onInspectExercise: (exerciseName: string, forceRefresh?: boolean) => void;
   isPinned: boolean;
   onTogglePin: () => void;
-}> = ({ onSelectPlan, onCreateNew, onInitiateDelete, onShowLog, onInspectExercise, isPinned, onTogglePin }) => {
+  onOpenAiPlanner: () => void;
+}> = ({ onSelectPlan, onCreateNew, onInitiateDelete, onShowLog, onInspectExercise, isPinned, onTogglePin, onOpenAiPlanner }) => {
   const { plans, reorderPlans, startWorkout, importPlan, activeWorkout, recentlyImportedPlanId } = useWorkout();
+  const { settings, updateSettings } = useSettings();
   const [selectedPlanIds, setSelectedPlanIds] = useState<string[]>([]);
   const dragItemIndex = useRef<number | null>(null);
   const [dragTargetIndex, setDragTargetIndex] = useState<number | null>(null);
@@ -862,11 +871,13 @@ const PlanList: React.FC<{
   const [sharingPlan, setSharingPlan] = useState<WorkoutPlan | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshComplete, setRefreshComplete] = useState(false);
+  const [isWarmupEditorExpanded, setIsWarmupEditorExpanded] = useState(false);
 
   const handleRefreshAll = async () => {
     if (isRefreshing || plans.length === 0) return;
 
     setIsRefreshing(true);
+    setRefreshComplete(false);
     const allExerciseNames = plans.flatMap(plan => plan.steps)
                                   .filter(step => step.type === 'exercise')
                                   .map(step => getBaseExerciseName(step.name));
@@ -1013,7 +1024,7 @@ const PlanList: React.FC<{
         <div className="flex items-center gap-2">
             <button
                 onClick={handleRefreshAll}
-                className="p-2 rounded-full hover:bg-gray-500/30 text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                className={`p-2 rounded-full hover:bg-gray-500/30 text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${refreshComplete ? 'text-green-400' : ''}`}
                 title={isRefreshing ? "Refreshing info in background..." : (refreshComplete ? "Refresh complete!" : "Refresh all exercise info")}
                 disabled={isRefreshing || !!activeWorkout}
             >
@@ -1085,19 +1096,52 @@ const PlanList: React.FC<{
       {isImportTextVisible && <ImportTextModal onImport={(text) => handleJsonImport(text, 'text')} onCancel={() => setIsImportTextVisible(false)} />}
       
       {!activeWorkout && (
-          <button 
-            onClick={onCreateNew}
-            className="w-full text-center py-1 mb-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={!!activeWorkout}
-          >
-            + Create New Plan
-          </button>
+          <>
+            <button 
+                onClick={onOpenAiPlanner}
+                className="w-full text-center py-2 mb-4 bg-purple-600 text-white rounded-lg font-bold hover:bg-purple-700 transition-colors flex items-center justify-center gap-2"
+            >
+                ✨ AI Plan Generator
+            </button>
+            <button 
+              onClick={onCreateNew}
+              className="w-full text-center py-1 mb-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+            >
+              + Create New Plan
+            </button>
+             <div className="bg-gray-700/50 rounded-lg p-3 mb-4">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="warmup-toggle" className="font-semibold text-white cursor-pointer">Warm-up Routine</label>
+                        <button onClick={() => onSelectPlan('_warmup_')} className="p-1 rounded-full text-gray-400 hover:text-white hover:bg-gray-600">
+                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" /><path fillRule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clipRule="evenodd" /></svg>
+                        </button>
+                    </div>
+                    <label htmlFor="warmup-toggle" className="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="warmup-toggle" className="sr-only peer" checked={settings.isWarmupEnabled} onChange={(e) => updateSettings({ isWarmupEnabled: e.target.checked })} />
+                        <div className="w-11 h-6 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
+                    </label>
+                </div>
+                 {settings.isWarmupEnabled && (
+                     <div className="mt-3 pt-3 border-t border-gray-600">
+                         <label htmlFor="warmup-rest" className="text-sm text-gray-400">Rest after warm-up (seconds)</label>
+                         <HoverNumberInput
+                             id="warmup-rest"
+                             value={settings.restAfterWarmupDuration}
+                             onChange={(val) => updateSettings({ restAfterWarmupDuration: val })}
+                             min={0}
+                             className="w-full mt-1 bg-gray-600 p-2 rounded-md text-center"
+                         />
+                     </div>
+                 )}
+            </div>
+          </>
       )}
 
       {selectedPlanIds.length > 0 && !activeWorkout && (
           <button
             onClick={handleStartSelected}
-            className="w-full mb-4 py-2.5 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 transition-colors"
+            className="w-full mb-4 py-2.5 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition-colors"
           >
               Start Selected ({selectedPlanIds.length})
           </button>
@@ -1112,7 +1156,7 @@ const PlanList: React.FC<{
                 key={plan.id} 
                 plan={plan} 
                 index={index}
-                onSelectPlan={onSelectPlan}
+                onSelectPlan={() => onSelectPlan(plan)}
                 onInitiateDelete={onInitiateDelete}
                 onInspectExercise={onInspectExercise}
                 onShare={handleShare}
@@ -1424,7 +1468,8 @@ const groupSteps = (steps: WorkoutStep[]): (WorkoutStep | WorkoutStep[])[] => {
 const PlanEditor: React.FC<{
   plan: WorkoutPlan | null;
   onBack: () => void;
-}> = ({ plan, onBack }) => {
+  isWarmupEditor?: boolean;
+}> = ({ plan, onBack, isWarmupEditor = false }) => {
     const { savePlan } = useWorkout();
     const { settings, updateSettings } = useSettings();
 
@@ -1436,8 +1481,13 @@ const PlanEditor: React.FC<{
     const [draggedGroupIndex, setDraggedGroupIndex] = useState<number | null>(null);
     const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
 
+    const EDITOR_STORAGE_KEY = 'sportsClockPlanEditorDraft';
+
     useEffect(() => {
-        if (plan) {
+        const savedDraft = localStorage.getItem(EDITOR_STORAGE_KEY);
+        if (savedDraft) {
+            setEditedPlan(JSON.parse(savedDraft));
+        } else if (plan) {
             setEditedPlan(JSON.parse(JSON.stringify(plan)));
         } else {
             setEditedPlan({
@@ -1450,6 +1500,13 @@ const PlanEditor: React.FC<{
         }
         setExpandedGroups({}); // Collapse all on load
     }, [plan]);
+
+     // Auto-save draft to local storage
+    useEffect(() => {
+        if (editedPlan) {
+            localStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify(editedPlan));
+        }
+    }, [editedPlan]);
 
     // Pre-fetch exercise info in the background while the user is editing
     useEffect(() => {
@@ -1479,25 +1536,42 @@ const PlanEditor: React.FC<{
         
         const planToSave = { ...editedPlan };
 
-        if (planToSave.name.trim() === '') {
-            const uniqueExercises = [...new Set(planToSave.steps
-                .filter(s => s.type === 'exercise')
-                .map(s => getBaseExerciseName(s.name))
-            )];
-            
-            if (uniqueExercises.length > 0) {
-                planToSave.name = `אימון ${uniqueExercises.slice(0, 2).join(' ו')}`;
-            } else {
-                planToSave.name = 'אימון מנוחה';
+        if (isWarmupEditor) {
+            updateSettings({ warmupSteps: planToSave.steps });
+        } else {
+             if (planToSave.name.trim() === '') {
+                const uniqueExercises = [...new Set(planToSave.steps
+                    .filter(s => s.type === 'exercise')
+                    .map(s => getBaseExerciseName(s.name))
+                )];
+                
+                if (uniqueExercises.length > 0) {
+                    planToSave.name = `אימון ${uniqueExercises.slice(0, 2).join(' ו')}`;
+                } else {
+                    planToSave.name = 'אימון מנוחה';
+                }
             }
+
+            if (planToSave.id.startsWith('new_')) {
+                planToSave.id = Date.now().toString();
+            }
+            savePlan(planToSave);
         }
 
-        if (planToSave.id.startsWith('new_')) {
-            planToSave.id = Date.now().toString();
-        }
-
-        savePlan(planToSave);
+        localStorage.removeItem(EDITOR_STORAGE_KEY);
         onBack();
+    };
+    
+    const handleBackWithConfirm = () => {
+        const hasUnsavedChanges = localStorage.getItem(EDITOR_STORAGE_KEY) !== null;
+        if(hasUnsavedChanges) {
+            if(window.confirm("You have unsaved changes. Are you sure you want to discard them?")) {
+                 localStorage.removeItem(EDITOR_STORAGE_KEY);
+                 onBack();
+            }
+        } else {
+            onBack();
+        }
     };
 
     const toggleGroupExpansion = (groupId: string) => {
@@ -1734,36 +1808,42 @@ const PlanEditor: React.FC<{
     const groupedRenderItems = groupSteps(editedPlan.steps);
     let stepIndexCounter = 0;
 
+    const editorTitle = isWarmupEditor ? 'Edit Warm-up' : (plan ? 'Edit Plan' : 'Create Plan');
+
     return (
         <div>
             <div className="flex items-center mb-6">
-                <button onClick={onBack} className="p-2 rounded-full hover:bg-gray-500/30 mr-2">
+                <button onClick={handleBackWithConfirm} className="p-2 rounded-full hover:bg-gray-500/30 mr-2">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
                 </button>
-                <h2 className="text-2xl font-bold text-white">{plan ? 'Edit Plan' : 'Create Plan'}</h2>
+                <h2 className="text-2xl font-bold text-white">{editorTitle}</h2>
             </div>
             
             <div className="space-y-6">
-                <input 
-                    type="text"
-                    placeholder="Workout Plan Name"
-                    title="The name for your workout plan"
-                    value={editedPlan.name}
-                    onChange={e => setEditedPlan(p => p ? { ...p, name: e.target.value } : null)}
-                    className="w-full bg-gray-600 text-white p-3 rounded-lg text-lg focus:outline-none focus:ring-2 ring-blue-500"
-                />
+                {!isWarmupEditor && (
+                    <>
+                        <input 
+                            type="text"
+                            placeholder="Workout Plan Name"
+                            title="The name for your workout plan"
+                            value={editedPlan.name}
+                            onChange={e => setEditedPlan(p => p ? { ...p, name: e.target.value } : null)}
+                            className="w-full bg-gray-600 text-white p-3 rounded-lg text-lg focus:outline-none focus:ring-2 ring-blue-500"
+                        />
+                        <div className="flex items-center gap-3 bg-gray-600 p-2 rounded-lg">
+                            <label htmlFor="planColor" className="text-white font-semibold">Plan Color</label>
+                            <input 
+                                type="color"
+                                id="planColor"
+                                value={editedPlan.color || '#808080'}
+                                onChange={e => setEditedPlan(p => p ? { ...p, color: e.target.value } : null)}
+                                className="w-10 h-10 p-0 bg-transparent border-none rounded-md cursor-pointer"
+                                title="Choose a color for this plan"
+                            />
+                        </div>
+                    </>
+                )}
 
-                <div className="flex items-center gap-3 bg-gray-600 p-2 rounded-lg">
-                    <label htmlFor="planColor" className="text-white font-semibold">Plan Color</label>
-                    <input 
-                        type="color"
-                        id="planColor"
-                        value={editedPlan.color || '#808080'}
-                        onChange={e => setEditedPlan(p => p ? { ...p, color: e.target.value } : null)}
-                        className="w-10 h-10 p-0 bg-transparent border-none rounded-md cursor-pointer"
-                        title="Choose a color for this plan"
-                    />
-                </div>
 
                 <div className="space-y-3 max-h-[45vh] overflow-y-auto pr-2">
                    {groupedRenderItems.map((item, index) => {
@@ -1890,10 +1970,125 @@ const ConfirmDeleteModal: React.FC<{
     </div>
 );
 
+const AiPlannerModal: React.FC<{
+    onClose: () => void;
+}> = ({ onClose }) => {
+    type ChatMessage = { role: 'user' | 'model'; parts: { text: string }[] };
+    const { importPlan } = useWorkout();
+    const [messages, setMessages] = useState<ChatMessage[]>([]);
+    const [input, setInput] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    const scrollToBottom = () => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    };
+
+    useEffect(scrollToBottom, [messages]);
+
+    const handleSend = async () => {
+        if (!input.trim() || isLoading) return;
+
+        const userMessage: ChatMessage = { role: 'user', parts: [{ text: input }] };
+        const newMessages = [...messages, userMessage];
+        setMessages(newMessages);
+        setInput('');
+        setIsLoading(true);
+
+        try {
+            const responseText = await generateWorkoutPlan(messages, input);
+            
+            // Check for a JSON block in the response
+            const jsonRegex = /```json\s*([\s\S]*?)\s*```/;
+            const match = responseText.match(jsonRegex);
+
+            if (match && match[1]) {
+                try {
+                    const planJson = JSON.parse(match[1]);
+                    // Add AI plan specific properties
+                    planJson.isSmartPlan = true;
+                    planJson.color = '#a855f7'; // Purple
+                    
+                    importPlan(planJson, 'ai');
+                    
+                    const confirmationText = `I've created the "${planJson.name}" workout plan and added it to your list. Let me know if you need another one!`;
+                    setMessages([...newMessages, { role: 'model', parts: [{ text: confirmationText }] }]);
+                } catch (e) {
+                    console.error("Failed to parse AI-generated JSON:", e);
+                    setMessages([...newMessages, { role: 'model', parts: [{ text: "I tried to generate a plan, but there was an error in the format. Could you please clarify your request?" }] }]);
+                }
+            } else {
+                // No JSON found, just a regular chat message
+                setMessages([...newMessages, { role: 'model', parts: [{ text: responseText }] }]);
+            }
+
+        } catch (error) {
+            console.error("AI Planner error:", error);
+            const errorMessage = error instanceof Error ? error.message : "Sorry, something went wrong.";
+            setMessages([...newMessages, { role: 'model', parts: [{ text: errorMessage }] }]);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-gray-900/90 z-[100] flex flex-col p-4" aria-modal="true" role="dialog">
+             <div className="flex justify-between items-center mb-4 text-white">
+                <h2 className="text-xl font-bold flex items-center gap-2">✨ AI Workout Planner</h2>
+                <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-700">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+            </div>
+            <div className="flex-grow overflow-y-auto mb-4 space-y-4 pr-2">
+                 {messages.length === 0 && (
+                    <div className="text-center text-gray-400 p-8">
+                        <p className="text-lg">Welcome to the AI Workout Planner!</p>
+                        <p className="mt-2">Describe the workout you want. For example:</p>
+                        <em className="block mt-2">"Create a 20-minute, high-intensity workout for me."</em>
+                    </div>
+                )}
+                {messages.map((msg, index) => (
+                    <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-prose p-3 rounded-lg ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-200'}`}>
+                            <p className="whitespace-pre-wrap">{msg.parts[0].text}</p>
+                        </div>
+                    </div>
+                ))}
+                {isLoading && (
+                     <div className="flex justify-start">
+                        <div className="max-w-sm p-3 rounded-lg bg-gray-700 text-gray-200">
+                            <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0s'}}></div>
+                                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+                                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+                 <div ref={messagesEndRef} />
+            </div>
+            <div className="flex gap-2">
+                <input
+                    type="text"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+                    placeholder="Describe your desired workout..."
+                    className="flex-grow bg-gray-800 text-white p-3 rounded-lg focus:outline-none focus:ring-2 ring-blue-500"
+                    disabled={isLoading}
+                />
+                <button onClick={handleSend} disabled={isLoading || !input.trim()} className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed">
+                    Send
+                </button>
+            </div>
+        </div>
+    );
+};
+
 
 export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean) => void; }> = ({ isOpen, setIsOpen }) => {
   const [isPinned, setIsPinned] = useState(false);
-  const [editingPlan, setEditingPlan] = useState<WorkoutPlan | null>(null);
+  const [editingPlan, setEditingPlan] = useState<WorkoutPlan | null | string>(null);
   const [view, setView] = useState<'list' | 'editor' | 'log'>('list');
   const [confirmDeletePlanId, setConfirmDeletePlanId] = useState<string | null>(null);
   const [exerciseToInspect, setExerciseToInspect] = useState<{name: string, refresh: boolean} | null>(null);
@@ -1901,6 +2096,7 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
   const { activeWorkout, plans, deletePlan } = useWorkout();
   const { settings, updateSettings } = useSettings();
   const modalMutedApp = useRef(false);
+  const [isAiPlannerOpen, setIsAiPlannerOpen] = useState(false);
 
   // Mute app sounds when the exercise modal is visible and restore on close.
   useEffect(() => {
@@ -1922,6 +2118,19 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
   const planToDelete = useMemo(() => {
     return plans.find(p => p.id === confirmDeletePlanId) || null;
   }, [confirmDeletePlanId, plans]);
+  
+  const planToEdit = useMemo(() => {
+    if(editingPlan === null) return null;
+    if(typeof editingPlan === 'string' && editingPlan === '_warmup_') {
+        return {
+            id: '_warmup_',
+            name: 'Warm-up Routine',
+            steps: settings.warmupSteps,
+            color: '#f97316' // Orange for warm-up
+        } as WorkoutPlan
+    }
+    return editingPlan as WorkoutPlan;
+  }, [editingPlan, settings.warmupSteps]);
 
   // Touch handlers for swipe-to-close gesture
   const touchStartX = useRef<number | null>(null);
@@ -1961,7 +2170,7 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
       setView('editor');
   };
 
-  const handleSelectPlan = (plan: WorkoutPlan) => {
+  const handleSelectPlan = (plan: WorkoutPlan | string) => {
       setEditingPlan(plan);
       setView('editor');
   };
@@ -2033,6 +2242,8 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
           isVisible={isModalVisible}
       />
 
+      {isAiPlannerOpen && <AiPlannerModal onClose={() => setIsAiPlannerOpen(false)} />}
+
       <div 
         className={`fixed top-0 left-0 h-full w-full max-w-sm bg-gray-800/80 backdrop-blur-md shadow-2xl z-50 transform transition-all ease-in-out ${isOpen ? 'duration-500' : 'duration-[1500ms]'} ${isOpen ? 'translate-x-0 opacity-100' : '-translate-x-full opacity-0 pointer-events-none'}`}
         onTouchStart={handleTouchStart}
@@ -2049,10 +2260,15 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
                     onInspectExercise={handleInspectExercise}
                     isPinned={isPinned}
                     onTogglePin={() => setIsPinned(!isPinned)}
+                    onOpenAiPlanner={() => setIsAiPlannerOpen(true)}
                 />
             )}
             {view === 'editor' && (
-                <PlanEditor plan={editingPlan} onBack={handleBack} />
+                <PlanEditor 
+                    plan={planToEdit} 
+                    onBack={handleBack} 
+                    isWarmupEditor={typeof editingPlan === 'string' && editingPlan === '_warmup_'}
+                />
             )}
             {view === 'log' && (
                 <WorkoutLog onBack={handleBack} />

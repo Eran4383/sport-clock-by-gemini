@@ -8,6 +8,8 @@ export interface WorkoutStep {
   duration: number;
   // Number of repetitions for rep-based steps.
   reps: number;
+  // Internal property to mark a step as part of the warm-up
+  isWarmup?: boolean;
 }
 
 export interface WorkoutPlan {
@@ -17,6 +19,7 @@ export interface WorkoutPlan {
   executionMode?: 'linear' | 'circuit';
   color?: string;
   isLocked?: boolean;
+  isSmartPlan?: boolean; // To identify AI-generated plans
 }
 
 export interface WorkoutLogEntry {

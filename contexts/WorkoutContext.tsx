@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, Rea
 import { WorkoutPlan, WorkoutStep, WorkoutLogEntry } from '../types';
 import { prefetchExercises } from '../services/geminiService';
 import { getBaseExerciseName, generateCircuitSteps } from '../utils/workout';
+import { useSettings } from '../hooks/useSettings';
 
 interface ActiveWorkout {
   plan: WorkoutPlan; // This can be a "meta-plan" if multiple plans are selected
@@ -72,6 +73,7 @@ const getInitialHistory = (): WorkoutLogEntry[] => {
 };
 
 export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const { settings } = useSettings(); // Get settings for warm-up logic
   const [plans, setPlans] = useState<WorkoutPlan[]>(getInitialPlans);
   const [activeWorkout, setActiveWorkout] = useState<ActiveWorkout | null>(null);
   const [isWorkoutPaused, setIsWorkoutPaused] = useState(false);
@@ -135,7 +137,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     const newPlan: WorkoutPlan = {
       ...planToImport,
       id: newPlanId,
-      name: planToImport.name, // Keep original name, remove "(Imported)" suffix
+      name: planToImport.name, // Keep original name
       steps: planToImport.steps.map((step, index) => ({
         ...step,
         id: `${Date.now()}_imported_step_${index}`
@@ -143,12 +145,12 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     };
     
     setPlans(prevPlans => {
-      // Avoid adding duplicates if imported multiple times quickly
-      if (prevPlans.some(p => p.name === newPlan.name)) {
-        // Optional: show a notification that plan already exists
-        return prevPlans;
-      }
-      return [...prevPlans, newPlan];
+        // AI plans can have generic names, allow them. For others, check.
+        if (!newPlan.isSmartPlan && prevPlans.some(p => p.name === newPlan.name)) {
+          console.warn(`A plan named "${newPlan.name}" already exists. Skipping import.`);
+          return prevPlans;
+        }
+        return [...prevPlans, newPlan];
     });
 
     setImportNotification({
@@ -251,11 +253,36 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
 
     const executionMode = plansToRun.length === 1 ? (plansToRun[0].executionMode || 'linear') : 'linear';
-    let allSteps = plansToRun.flatMap(p => p.steps);
+    let mainWorkoutSteps = plansToRun.flatMap(p => p.steps);
     
     if (executionMode === 'circuit') {
-      allSteps = generateCircuitSteps(allSteps);
+      mainWorkoutSteps = generateCircuitSteps(mainWorkoutSteps);
     }
+    
+    let allSteps: WorkoutStep[] = [];
+    
+    // Warm-up logic
+    if (settings.isWarmupEnabled && settings.warmupSteps.length > 0) {
+        // Mark warm-up steps
+        const markedWarmupSteps = settings.warmupSteps.map(step => ({ ...step, isWarmup: true }));
+        allSteps.push(...markedWarmupSteps);
+
+        // Add rest after warm-up
+        if (settings.restAfterWarmupDuration > 0) {
+            const restStep: WorkoutStep = {
+                id: `rest_after_warmup_${Date.now()}`,
+                name: 'מנוחה לפני אימון',
+                type: 'rest',
+                isRepBased: false,
+                duration: settings.restAfterWarmupDuration,
+                reps: 0,
+                isWarmup: true, // Consider this part of the warm-up phase
+            };
+            allSteps.push(restStep);
+        }
+    }
+    
+    allSteps.push(...mainWorkoutSteps);
 
     if (allSteps.length === 0) {
         setPlansToStart([]);
@@ -273,7 +300,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     setIsWorkoutPaused(false);
     setIsCountdownPaused(false);
     setPlansToStart([]);
-  }, [plans, plansToStart]);
+  }, [plans, plansToStart, settings]);
 
   const stopWorkout = useCallback(({ completed, durationMs, planName, steps }: { completed: boolean; durationMs?: number; planName?: string; steps?: WorkoutStep[] }) => {
     if (completed && durationMs !== undefined && planName && steps) {

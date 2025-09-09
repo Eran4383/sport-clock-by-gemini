@@ -414,6 +414,7 @@ const AppContent: React.FC = () => {
     isWorkoutActive ? restartCurrentStep() : countdown.reset();
   };
 
+  const isWarmupStep = isWorkoutActive && currentStep.isWarmup;
 
   return (
     <div 
@@ -436,15 +437,17 @@ const AppContent: React.FC = () => {
       <main onDoubleClick={toggleFullScreen} className="flex-grow flex flex-col items-center justify-center w-full max-w-4xl mx-auto">
         {/* TOP TITLE CONTAINER - reserves space to prevent layout shift */}
         <div className="text-center mb-2 h-28 flex items-end justify-center">
-          {(workoutCompleted || (isWorkoutActive && currentStep.type === 'rest') || (!isWorkoutActive && countdown.isResting && settings.showRestTitleOnDefaultCountdown)) && (
-            <p className="text-8xl font-bold">
-              {workoutCompleted
-                ? 'סוף האימון'
-                : (isWorkoutActive && isWorkoutPaused) ? 'PAUSED' 
-                : (isWorkoutActive && isCountdownPaused) ? 'מנוחה (Paused)' 
-                : 'מנוחה'}
-            </p>
-          )}
+            {workoutCompleted && <p className="text-8xl font-bold">סוף האימון</p>}
+            {isWarmupStep && !workoutCompleted && <p className="text-8xl font-bold">חימום</p>}
+            {!isWarmupStep && !workoutCompleted && (
+                ( (isWorkoutActive && currentStep.type === 'rest') || (!isWorkoutActive && countdown.isResting && settings.showRestTitleOnDefaultCountdown) ) && (
+                <p className="text-8xl font-bold">
+                    { (isWorkoutActive && isWorkoutPaused) ? 'PAUSED' 
+                    : (isWorkoutActive && isCountdownPaused) ? 'מנוחה (Paused)' 
+                    : 'מנוחה'}
+                </p>
+                )
+            )}
         </div>
 
         {settings.showCountdown && (

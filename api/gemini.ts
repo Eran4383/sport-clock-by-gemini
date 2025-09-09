@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, HarmCategory, HarmBlockThreshold } from "@google/genai";
 
 const geminiApiKey = process.env.API_KEY;
 const youtubeApiKey = process.env.YOUTUBE_API_KEY;
@@ -16,55 +16,35 @@ interface YouTubeVideo {
   };
 }
 
-export default async function handler(req: any, res: any) {
-  if (req.method !== 'POST') {
-    res.setHeader('Allow', ['POST']);
-    return res.status(405).end(`Method ${req.method} Not Allowed`);
-  }
-
-  // The Gemini API key is mandatory for all operations.
-  if (!geminiApiKey) {
-    console.error(`API_KEY (for Gemini) is not configured on the server.`);
-    return res.status(500).json({ 
-        message: `The Gemini API key (API_KEY) is not configured. Please set it in your project's environment variables.`,
-        code: "API_KEY_MISSING"
-    });
-  }
-
-  // The YouTube API key is now also mandatory for the full functionality.
-  // Instead of a silent fallback, we return a specific, helpful error message.
-  if (!youtubeApiKey) {
-    console.error("YOUTUBE_API_KEY is not configured on the server.");
-    return res.status(500).json({
-        primaryVideoId: null,
-        alternativeVideoIds: [],
-        instructions: "מפתח YouTube API אינו מוגדר בשרת.",
-        tips: [
-            "יש לוודא שהגדרת משתנה סביבה בשם YOUTUBE_API_KEY.",
-            "יש לוודא שהמשתנה מופעל עבור סביבת הייצור (Production).",
-            "יש לבצע פריסה מחדש (Redeploy) של האפליקציה לאחר הוספת המפתח."
-        ],
-        generalInfo: "נדרש מפתח YouTube API כדי לחפש ולהציג סרטונים. המפתח חסר כרגע בהגדרות השרת.",
-        language: 'he',
-    });
-  }
-
-  const ai = new GoogleGenAI({ apiKey: geminiApiKey });
-  const { exerciseName, force_refresh } = req.body;
-
-  if (!exerciseName || typeof exerciseName !== 'string') {
-    return res.status(400).json({ message: 'A valid exerciseName is required in the request body.' });
-  }
-
-  const normalizedExerciseName = exerciseName.trim().toLowerCase();
-
-  // STAGE 0: Check the final result cache first.
-  if (!force_refresh && geminiResultCache.has(normalizedExerciseName)) {
-      return res.status(200).json(geminiResultCache.get(normalizedExerciseName));
-  }
+const safetySettings = [
+  {
+    category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+    threshold: HarmBlockThreshold.BLOCK_NONE,
+  },
+  {
+    category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+    threshold: HarmBlockThreshold.BLOCK_NONE,
+  },
+  {
+    category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+    threshold: HarmBlockThreshold.BLOCK_NONE,
+  },
+  {
+    category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+    threshold: HarmBlockThreshold.BLOCK_NONE,
+  },
+];
 
 
-  try {
+const handleExerciseInfoRequest = async (exerciseName: string, force_refresh: boolean) => {
+    const ai = new GoogleGenAI({ apiKey: geminiApiKey! });
+    const normalizedExerciseName = exerciseName.trim().toLowerCase();
+
+    // STAGE 0: Check the final result cache first.
+    if (!force_refresh && geminiResultCache.has(normalizedExerciseName)) {
+        return { status: 200, body: geminiResultCache.get(normalizedExerciseName) };
+    }
+
     // STAGE 1: Get the best search query from Gemini
     const searchQueryPrompt = `
       Translate the exercise name "${exerciseName}" into the best possible English search query for finding a short, instructional video on YouTube.
@@ -78,9 +58,9 @@ export default async function handler(req: any, res: any) {
       model: 'gemini-2.5-flash',
       contents: searchQueryPrompt,
       config: {
-        // This is a simple, fast task. Disable thinking to speed it up.
         thinkingConfig: { thinkingBudget: 0 }
-      }
+      },
+      safety: safetySettings,
     });
     const searchQuery = queryGenerationResponse.text.trim();
 
@@ -98,7 +78,6 @@ export default async function handler(req: any, res: any) {
         if (!youtubeResponse.ok) {
             const errorData = await youtubeResponse.json();
             console.error("YouTube API Error:", errorData);
-            // Pass a more informative error to the client
             const errorDetails = errorData.error?.message || `YouTube API request failed with status: ${youtubeResponse.status}`;
             throw new Error(`YouTube API Error: ${errorDetails}`);
         }
@@ -108,18 +87,18 @@ export default async function handler(req: any, res: any) {
             title: item.snippet.title,
             description: item.snippet.description
         }));
-        youtubeCache.set(searchQuery, videoResults); // Cache the result
+        youtubeCache.set(searchQuery, videoResults);
     }
 
     if (!videoResults || videoResults.length === 0) {
-      return res.status(200).json({
+      return { status: 200, body: {
           primaryVideoId: null,
           alternativeVideoIds: [],
           instructions: "לא נמצאו סרטוני הדרכה מתאימים עבור תרגיל זה.",
           tips: ["נסה לחפש וריאציה אחרת של התרגיל.", "ודא שהשם מאוית נכון."],
           generalInfo: `לא הצלחנו לאתר סרטון הדרכה קצר ואיכותי עבור "${exerciseName}" בשלב זה.`,
           language: 'he'
-      });
+      }};
     }
 
     // STAGE 3: Let Gemini choose the best video and generate content
@@ -142,6 +121,7 @@ export default async function handler(req: any, res: any) {
     const finalResponse = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: videoSelectionPrompt,
+        safety: safetySettings,
         config: {
             responseMimeType: "application/json",
             responseSchema: {
@@ -166,11 +146,93 @@ export default async function handler(req: any, res: any) {
     }
     
     const data = JSON.parse(cleanedJsonString);
-
-    // Cache the final successful result before returning
     geminiResultCache.set(normalizedExerciseName, data);
 
-    return res.status(200).json(data);
+    return { status: 200, body: data };
+}
+
+const handleChatRequest = async (history: any[], message: string) => {
+    const ai = new GoogleGenAI({ apiKey: geminiApiKey! });
+    
+    const chat = ai.chats.create({
+        model: 'gemini-2.5-flash',
+        history,
+        safety: safetySettings,
+        config: {
+            systemInstruction: `You are a world-class sports expert with doctorates in orthopedic medicine, physiotherapy, and human anatomy. Your goal is to create safe, effective, and personalized workout plans.
+When asked to create a workout plan, you MUST respond with a valid JSON object that conforms to the following TypeScript interface, and NOTHING else.
+The JSON object MUST be enclosed in a markdown code block (\`\`\`json ... \`\`\`). Do NOT include any explanatory text outside of the JSON block.
+
+Workout Plan Interface:
+\`\`\`typescript
+interface WorkoutStep {
+  id: string; // Should be a unique placeholder like "step_1"
+  name: string; // e.g., "Push-ups", "Rest"
+  type: 'exercise' | 'rest';
+  isRepBased: boolean; // true for reps, false for time-based
+  duration: number; // Duration in seconds (if not rep-based)
+  reps: number; // Number of reps (if rep-based)
+}
+
+interface WorkoutPlan {
+  name: string; // A descriptive name for the plan, e.g., "Full Body Beginner Workout"
+  steps: WorkoutStep[];
+  executionMode?: 'linear' | 'circuit';
+}
+\`\`\`
+`,
+        },
+    });
+
+    const response = await chat.sendMessage({ message });
+    return { status: 200, body: { responseText: response.text } };
+};
+
+
+export default async function handler(req: any, res: any) {
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', ['POST']);
+    return res.status(405).end(`Method ${req.method} Not Allowed`);
+  }
+
+  if (!geminiApiKey) {
+    console.error(`API_KEY (for Gemini) is not configured on the server.`);
+    return res.status(500).json({ 
+        message: `The Gemini API key (API_KEY) is not configured. Please set it in your project's environment variables.`,
+        code: "API_KEY_MISSING"
+    });
+  }
+
+  const { exerciseName, force_refresh, chatRequest } = req.body;
+
+  try {
+      let result;
+      if (chatRequest) {
+          // Handle AI Planner Chat Request
+          const { history, message } = chatRequest;
+          if (!message || typeof message !== 'string') {
+              return res.status(400).json({ message: 'A valid message is required for chat requests.' });
+          }
+          result = await handleChatRequest(history || [], message);
+      } else {
+          // Handle Exercise Info Request
+          if (!exerciseName || typeof exerciseName !== 'string') {
+              return res.status(400).json({ message: 'A valid exerciseName is required in the request body.' });
+          }
+          if (!youtubeApiKey) {
+              console.error("YOUTUBE_API_KEY is not configured on the server.");
+              return res.status(200).json({
+                  primaryVideoId: null,
+                  alternativeVideoIds: [],
+                  instructions: "מפתח YouTube API אינו מוגדר בשרת.",
+                  tips: [ "נדרש מפתח YouTube API כדי לחפש ולהציג סרטונים. המפתח חסר כרגע בהגדרות השרת." ],
+                  generalInfo: "",
+                  language: 'he',
+              });
+          }
+          result = await handleExerciseInfoRequest(exerciseName, force_refresh);
+      }
+      return res.status(result.status).json(result.body);
 
   } catch (error: any) {
     console.error("Error in API handler:", error);
@@ -178,28 +240,25 @@ export default async function handler(req: any, res: any) {
     let errorMessage = error.message || 'An error occurred while processing your request.';
     let tips = ["אנא נסה שוב מאוחר יותר.", "בדוק את קונסולת המפתחים לפרטים טכניים."];
 
-    // Check for specific YouTube API error patterns to provide more helpful advice.
     if (errorMessage.includes("YouTube API Error")) {
         const lowerCaseError = errorMessage.toLowerCase();
         if (lowerCaseError.includes("api key not valid") || lowerCaseError.includes("permission") || lowerCaseError.includes("denied") || lowerCaseError.includes("restricted")) {
             errorMessage = "שגיאה באימות מפתח YouTube API.";
-            tips = [
-                "ודא שהעתקת את המפתח הנכון.",
-                "ודא ש-YouTube Data API v3 מופעל בפרויקט שלך ב-Google Cloud.",
-                "חשוב: בדוק את הגבלות המפתח (Restrictions). אם הגדרת הגבלת 'Websites', שנה אותה ל-'None'. הגבלת אתרים לא תעבוד עבור קריאות מהשרת.",
-                "לאחר שינוי הגדרות המפתח, יש להמתין מספר דקות עד שהשינוי ייכנס לתוקף."
-            ];
+            tips = [ "ודא שהעתקת את המפתח הנכון.", "ודא ש-YouTube Data API v3 מופעל בפרויקט שלך ב-Google Cloud."];
         }
     }
 
-    const clientError = {
-        primaryVideoId: null,
-        alternativeVideoIds: [],
-        instructions: `אירעה שגיאה: ${errorMessage}`,
-        tips: tips,
-        generalInfo: "לא ניתן היה לאחזר מידע עבור תרגיל זה עקב שגיאה בצד השרת.",
-        language: 'he',
-    };
+    const clientError = chatRequest 
+        ? { message: `AI Planner Error: ${errorMessage}` }
+        : {
+            primaryVideoId: null,
+            alternativeVideoIds: [],
+            instructions: `אירעה שגיאה: ${errorMessage}`,
+            tips: tips,
+            generalInfo: "לא ניתן היה לאחזר מידע עבור תרגיל זה עקב שגיאה בצד השרת.",
+            language: 'he',
+          };
+          
     return res.status(500).json(clientError);
   }
 }

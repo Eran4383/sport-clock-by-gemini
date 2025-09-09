@@ -1,4 +1,5 @@
 
+
 export interface ExerciseInfo {
     primaryVideoId: string | null;
     alternativeVideoIds: string[];
@@ -144,7 +145,7 @@ export function prefetchExercises(exerciseNames: string[]): Promise<void> {
     console.log(`Prefetching info for ${namesToFetch.length} exercises in the background...`);
 
     const fetchPromises = namesToFetch.map(name => 
-        getExerciseInfo(name).catch(e => {
+        getExerciseInfo(name, true).catch(e => { // force refresh on prefetch all
             console.error(`Failed to prefetch exercise "${name}":`, e);
             return null; // Don't let one failure stop others
         })
@@ -156,4 +157,40 @@ export function prefetchExercises(exerciseNames: string[]): Promise<void> {
             resolve();
         });
     });
+}
+
+/**
+ * Sends a chat message to the AI workout planner backend.
+ * @param chatHistory The history of the conversation so far.
+ * @param userMessage The latest message from the user.
+ * @returns The raw text response from the AI model.
+ */
+export async function generateWorkoutPlan(chatHistory: { role: 'user' | 'model'; parts: { text: string }[] }[], userMessage: string): Promise<string> {
+    try {
+        const res = await fetch('/api/gemini', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                chatRequest: {
+                    history: chatHistory,
+                    message: userMessage,
+                },
+            }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+            throw new Error(data.message || 'Failed to communicate with the AI planner.');
+        }
+
+        return data.responseText;
+
+    } catch (error) {
+        console.error("Error calling AI planner API:", error);
+        const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
+        return `Error: Could not generate a response. ${errorMessage}`;
+    }
 }
