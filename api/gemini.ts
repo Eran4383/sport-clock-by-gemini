@@ -55,7 +55,6 @@ const handleExerciseInfoRequest = async (exerciseName: string, force_refresh: bo
       The output should be ONLY the search query string and nothing else.
     `;
     
-    // FIX: The 'safetySettings' property should be inside the 'config' object and was previously misspelled as 'safety'.
     const queryGenerationResponse = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: searchQueryPrompt,
@@ -120,7 +119,6 @@ const handleExerciseInfoRequest = async (exerciseName: string, force_refresh: bo
       If NONE of the provided videos are suitable instructional tutorials, all video ID fields MUST be null.
     `;
     
-    // FIX: The 'safetySettings' property should be inside the 'config' object and was previously misspelled as 'safety'.
     const finalResponse = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: videoSelectionPrompt,
@@ -157,7 +155,6 @@ const handleExerciseInfoRequest = async (exerciseName: string, force_refresh: bo
 const handleChatRequest = async (history: any[], message: string) => {
     const ai = new GoogleGenAI({ apiKey: geminiApiKey! });
     
-    // FIX: The 'safetySettings' property should be inside the 'config' object and was previously misspelled as 'safety'.
     const chat = ai.chats.create({
         model: 'gemini-2.5-flash',
         history,
@@ -252,24 +249,35 @@ export default async function handler(req: any, res: any) {
   } catch (error: any) {
     console.error("Error in API handler:", error);
     
-    let errorMessage = error.message || 'An error occurred while processing your request.';
-    let tips = ["אנא נסה שוב מאוחר יותר.", "בדוק את קונסולת המפתחים לפרטים טכניים."];
-
-    if (errorMessage.includes("YouTube API Error")) {
-        const lowerCaseError = errorMessage.toLowerCase();
-        if (lowerCaseError.includes("api key not valid") || lowerCaseError.includes("permission") || lowerCaseError.includes("denied") || lowerCaseError.includes("restricted")) {
-            errorMessage = "שגיאה באימות מפתח YouTube API.";
-            tips = [ "ודא שהעתקת את המפתח הנכון.", "ודא ש-YouTube Data API v3 מופעל בפרויקט שלך ב-Google Cloud."];
+    // Attempt to parse the Gemini error response for a more specific message.
+    let geminiError;
+    try {
+        if (typeof error.message === 'string' && error.message.includes('GoogleGenerativeAI Error')) {
+            const jsonMatch = error.message.match(/\[{.*}\]/s);
+            if (jsonMatch) {
+                geminiError = JSON.parse(jsonMatch[0]);
+            }
         }
-    }
-
+    } catch(e) { /* ignore parsing errors */ }
+    
+    const finalErrorJson = geminiError || {
+        error: {
+            code: 500,
+            message: error.message || 'An error occurred while processing your request.',
+            details: [],
+        }
+    };
+    
+    // Create a user-friendly error string from the JSON
+    const errorMessage = `AI Planner Error: ${JSON.stringify(finalErrorJson)}`;
+    
     const clientError = chatRequest 
-        ? { message: `AI Planner Error: ${errorMessage}` }
+        ? { message: errorMessage }
         : {
             primaryVideoId: null,
             alternativeVideoIds: [],
-            instructions: `אירעה שגיאה: ${errorMessage}`,
-            tips: tips,
+            instructions: `אירעה שגיאה: ${finalErrorJson.error.message}`,
+            tips: ["אנא נסה שוב מאוחר יותר.", "בדוק את קונסולת המפתחים לפרטים טכניים."],
             generalInfo: "לא ניתן היה לאחזר מידע עבור תרגיל זה עקב שגיאה בצד השרת.",
             language: 'he',
           };

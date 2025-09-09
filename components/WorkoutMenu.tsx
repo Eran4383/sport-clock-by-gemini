@@ -1150,21 +1150,21 @@ const PlanList: React.FC<{
             <div className="flex gap-4 mb-4">
                 <button
                     onClick={onOpenAiPlanner}
-                    className="flex-1 text-center py-1 bg-purple-600 text-white rounded-lg font-bold hover:bg-purple-700 transition-colors flex items-center justify-center gap-2"
+                    className="flex-1 text-center py-1 bg-purple-600 text-white rounded-lg font-bold hover:bg-purple-700 transition-colors flex items-center justify-center gap-2 text-sm"
                 >
-                    ✨ AI Plan Generator
+                    ✨ AI Generator
                 </button>
                 <button
                   onClick={onCreateNew}
-                  className="flex-1 text-center py-1 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+                  className="flex-1 text-center py-1 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors flex items-center justify-center text-sm"
                 >
-                  + Create New Plan
+                  + New Workout
                 </button>
             </div>
              <div className="bg-gray-700/50 rounded-lg p-3 mb-4">
-                <div className="flex items-center justify-between cursor-pointer" onClick={() => setIsWarmupSettingsExpanded(prev => !prev)}>
-                    <div className="flex items-center gap-2">
-                        <label htmlFor="warmup-toggle" className="font-semibold text-white cursor-pointer">Warm-up Routine</label>
+                <div className="flex items-center justify-between" onClick={() => setIsWarmupSettingsExpanded(prev => !prev)}>
+                    <div className="flex items-center gap-2 cursor-pointer">
+                        <span className="font-semibold text-white">Warm-up Routine</span>
                         <button onClick={(e) => { e.stopPropagation(); onSelectPlan('_warmup_'); }} className="p-1 rounded-full text-gray-400 hover:text-white hover:bg-gray-600">
                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" /><path fillRule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clipRule="evenodd" /></svg>
                         </button>
@@ -2082,6 +2082,38 @@ const AiPlannerModal: React.FC<{
         try {
             const responseText = await generateWorkoutPlan(messages, input);
             
+            // Check for specific API error string from our service
+            if (responseText.startsWith('Error: Could not generate a response.')) {
+                let userFriendlyMessage = 'An unknown error occurred with the AI planner. Please try again later.';
+                const errorContent = responseText.substring('Error: Could not generate a response. '.length);
+
+                // Try to parse the detailed error if it exists
+                if (errorContent.startsWith('AI Planner Error: ')) {
+                    const errorJsonStr = errorContent.substring('AI Planner Error: '.length);
+                    try {
+                        const errorData = JSON.parse(errorJsonStr);
+                        if (errorData?.error?.code === 429) {
+                            const retryInfo = errorData.error.details?.find((d: any) => d['@type'] === 'type.googleapis.com/google.rpc.RetryInfo');
+                            const retryDelay = retryInfo?.retryDelay || '45s';
+                            userFriendlyMessage = `The AI service is currently busy (Quota Exceeded).\n\nPlease wait ${retryDelay.replace('s', ' seconds')} and try again.\n\nThis is a temporary limit on the free plan.`;
+                        } else {
+                            userFriendlyMessage = `An AI error occurred: ${errorData?.error?.message || errorContent}`;
+                        }
+                    } catch (e) {
+                        // Parsing failed, show the content as is
+                        userFriendlyMessage = `An AI error occurred: ${errorContent}`;
+                    }
+                } else {
+                     // Generic error without the JSON structure
+                     userFriendlyMessage = `An error occurred: ${errorContent}`;
+                }
+
+                setMessages(prev => [...prev, { role: 'model', parts: [{ text: userFriendlyMessage }] }]);
+                return; // Stop further processing
+            }
+
+
+            // --- Success Path ---
             const jsonRegex = /```json\s*([\s\S]*?)\s*```/;
             const match = responseText.match(jsonRegex);
             const conversationalText = responseText.replace(jsonRegex, '').trim();
