@@ -268,13 +268,13 @@ const ExerciseInfoModal: React.FC<{
                     {/* Instructions List */}
                     <h4 className="font-semibold text-lg text-white mt-4">{isHebrew ? "הוראות" : "Instructions"}</h4>
                      {error ? (
-                        <p className="text-yellow-400 bg-yellow-900/30 p-3 rounded-md whitespace-pre-wrap">{error}</p>
+                        <p className="text-yellow-400 bg-yellow-900/30 p-3 rounded-md whitespace-pre-wrap select-text">{error}</p>
                      ) : parsedInstructions.length > 1 ? (
-                        <ol className="list-decimal list-inside space-y-2 text-gray-200">
+                        <ol className="list-decimal list-inside space-y-2 text-gray-200 select-text">
                             {parsedInstructions.map((item, index) => <li key={index}>{item}</li>)}
                         </ol>
                      ) : parsedInstructions.length === 1 ? (
-                        <p className="text-gray-200 whitespace-pre-wrap">{parsedInstructions[0]}</p>
+                        <p className="text-gray-200 whitespace-pre-wrap select-text">{parsedInstructions[0]}</p>
                      ) : (
                         <p className="text-gray-400">{isHebrew ? "לא נמצאו הוראות." : "No instructions found."}</p>
                      )}
@@ -285,7 +285,7 @@ const ExerciseInfoModal: React.FC<{
                     {info && info.tips && info.tips.length > 0 && (
                       <div>
                         <h4 className="font-semibold text-lg text-white mb-2">{isHebrew ? "דגשים" : "Tips"}</h4>
-                        <ul className="list-disc list-inside space-y-1 text-gray-300">
+                        <ul className="list-disc list-inside space-y-1 text-gray-300 select-text">
                           {parsedTips.map((tip, index) => <li key={index}>{tip}</li>)}
                         </ul>
                       </div>
@@ -293,7 +293,7 @@ const ExerciseInfoModal: React.FC<{
                     {info && info.generalInfo && (
                       <div>
                         <h4 className="font-semibold text-lg text-white mb-2">{isHebrew ? "מידע כללי" : "General Info"}</h4>
-                        <p className="text-gray-300 whitespace-pre-wrap">{info.generalInfo}</p>
+                        <p className="text-gray-300 whitespace-pre-wrap select-text">{info.generalInfo}</p>
                       </div>
                     )}
                 </div>
@@ -941,7 +941,7 @@ const PlanList: React.FC<{
 
   const handleToggleSelection = (planId: string) => {
     setSelectedPlanIds(prev =>
-      prev.includes(planId) ? prev.filter(id => id !== planId) : [...prev, planId]
+      prev.includes(planId) ? prev.filter(id => id !== id) : [...prev, planId]
     );
   };
   
