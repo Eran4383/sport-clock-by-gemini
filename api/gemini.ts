@@ -1,13 +1,9 @@
 
 import { GoogleGenAI, Type, HarmCategory, HarmBlockThreshold } from "@google/genai";
+import { kv } from "@vercel/kv";
 
 const geminiApiKey = process.env.API_KEY;
 const youtubeApiKey = process.env.YOUTUBE_API_KEY;
-
-// Simple in-memory cache for YouTube search results to avoid redundant API calls
-const youtubeCache = new Map<string, any>();
-// Simple in-memory cache for the final Gemini analysis result to improve speed for repeated requests
-const geminiResultCache = new Map<string, any>();
 
 interface YouTubeVideo {
   id: { videoId: string };
@@ -40,10 +36,15 @@ const safetySettings = [
 const handleExerciseInfoRequest = async (exerciseName: string, force_refresh: boolean) => {
     const ai = new GoogleGenAI({ apiKey: geminiApiKey! });
     const normalizedExerciseName = exerciseName.trim().toLowerCase();
+    const exerciseCacheKey = `exercise:${normalizedExerciseName}`;
+    const CACHE_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days
 
-    // STAGE 0: Check the final result cache first.
-    if (!force_refresh && geminiResultCache.has(normalizedExerciseName)) {
-        return { status: 200, body: geminiResultCache.get(normalizedExerciseName) };
+    // STAGE 0: Check our persistent KV cache first.
+    if (!force_refresh) {
+        const cachedData = await kv.get(exerciseCacheKey);
+        if (cachedData) {
+            return { status: 200, body: cachedData };
+        }
     }
 
     // STAGE 1: Get the best search query from Gemini
@@ -70,10 +71,17 @@ const handleExerciseInfoRequest = async (exerciseName: string, force_refresh: bo
     }
     
     // STAGE 2: Search YouTube using the generated query
+    const youtubeCacheKey = `youtube:${searchQuery}`;
     let videoResults;
-    if (!force_refresh && youtubeCache.has(searchQuery)) {
-        videoResults = youtubeCache.get(searchQuery);
-    } else {
+    
+    if (!force_refresh) {
+        const cachedVideos = await kv.get<any[]>(youtubeCacheKey);
+        if (cachedVideos) {
+            videoResults = cachedVideos;
+        }
+    }
+    
+    if (!videoResults) {
         const youtubeApiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(searchQuery)}&type=video&videoDuration=short&maxResults=5&key=${youtubeApiKey}`;
         const youtubeResponse = await fetch(youtubeApiUrl);
         if (!youtubeResponse.ok) {
@@ -88,8 +96,9 @@ const handleExerciseInfoRequest = async (exerciseName: string, force_refresh: bo
             title: item.snippet.title,
             description: item.snippet.description
         }));
-        youtubeCache.set(searchQuery, videoResults);
+        await kv.set(youtubeCacheKey, videoResults, { ex: CACHE_TTL_SECONDS });
     }
+
 
     if (!videoResults || videoResults.length === 0) {
       return { status: 200, body: {
@@ -147,7 +156,8 @@ const handleExerciseInfoRequest = async (exerciseName: string, force_refresh: bo
     }
     
     const data = JSON.parse(cleanedJsonString);
-    geminiResultCache.set(normalizedExerciseName, data);
+    // Save the final, processed result to our persistent KV cache before returning.
+    await kv.set(exerciseCacheKey, data, { ex: CACHE_TTL_SECONDS });
 
     return { status: 200, body: data };
 }
@@ -250,34 +260,59 @@ export default async function handler(req: any, res: any) {
   } catch (error: any) {
     console.error("Error in API handler:", error);
     
-    let extractedError;
+    let errorPayload: any;
     try {
+        // Attempt to parse the structured error from the Gemini SDK
         if (typeof error.message === 'string' && error.message.includes('GoogleGenerativeAI Error')) {
             const jsonMatch = error.message.match(/\[(\{.*?\})\]/s);
             if (jsonMatch && jsonMatch[1]) {
-                extractedError = JSON.parse(jsonMatch[1]);
+                errorPayload = JSON.parse(jsonMatch[1]);
             }
         }
     } catch(e) { /* ignore parsing errors */ }
-    
-    const errorPayload = extractedError || {
-        code: 500,
-        message: error.message || 'An error occurred while processing your request.',
-        details: [],
-    };
 
-    const finalErrorForClient = { error: errorPayload };
-    
-    const clientMessage = `AI Planner Error: ${JSON.stringify(finalErrorForClient)}`;
-    
+    // Fallback if parsing fails
+    if (!errorPayload) {
+        errorPayload = {
+            code: 500,
+            message: error.message || 'An unknown error occurred.',
+            status: 'UNKNOWN',
+            details: [],
+        };
+    }
+
+    // Check for Quota Exceeded error
+    if (errorPayload.code === 429 || errorPayload.status === 'RESOURCE_EXHAUSTED') {
+        const retryInfo = errorPayload.details?.find((d: any) => d['@type'] === 'type.googleapis.com/google.rpc.RetryInfo');
+        const retryDelay = retryInfo?.retryDelay || 'a few moments';
+
+        const userFriendlyMessage = `מכסת השימוש ב-API נוצלה במלואה. אנא נסה שוב בעוד ${retryDelay.replace('s', ' שניות')}.`;
+
+        const clientError = chatRequest 
+            ? { responseText: `שגיאה: ${userFriendlyMessage}` }
+            : {
+                primaryVideoId: null,
+                alternativeVideoIds: [],
+                instructions: userFriendlyMessage,
+                tips: ["זוהי מגבלה זמנית של הגרסה החינמית.", "ניתן להמשיך להשתמש בשאר תכונות האפליקציה."],
+                generalInfo: "שירות הבינה המלאכותית עמוס כרגע.",
+                language: 'he',
+              };
+        
+        // Use 429 status code for the response as well, it's more appropriate
+        return res.status(429).json(clientError);
+    }
+
+    // Handle other errors
+    const genericErrorMessage = `An unexpected error occurred: ${errorPayload.message}`;
     const clientError = chatRequest 
-        ? { message: clientMessage }
+        ? { responseText: `שגיאה: ${genericErrorMessage}` }
         : {
             primaryVideoId: null,
             alternativeVideoIds: [],
             instructions: `אירעה שגיאה: ${errorPayload.message}`,
-            tips: ["אנא נסה שוב מאוחר יותר.", "בדוק את קונסולת המפתחים לפרטים טכניים."],
-            generalInfo: "לא ניתן היה לאחזר מידע עבור תרגיל זה עקב שגיאה בצד השרת.",
+            tips: ["אנא נסה שוב מאוחר יותר.", "אם הבעיה נמשכת, בדוק את קונסולת המפתחים."],
+            generalInfo: "לא ניתן היה לאחזר מידע עבור תרגיל זה.",
             language: 'he',
           };
           

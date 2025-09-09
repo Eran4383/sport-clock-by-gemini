@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useWorkout } from '../contexts/WorkoutContext';
 import { WorkoutPlan, WorkoutStep } from '../types';
@@ -34,7 +35,7 @@ const ExerciseInfoModal: React.FC<{
         const result = await getExerciseInfo(exerciseName, forceRefresh);
         setInfo(result);
         setActiveVideoId(result.primaryVideoId);
-        if (result.instructions.toLowerCase().includes("error") || result.instructions.toLowerCase().includes("failed") || result.instructions.includes("api key") || result.instructions.includes("מפתח api") || result.instructions.includes("שגיאה")) {
+        if (result.instructions.toLowerCase().includes("error") || result.instructions.toLowerCase().includes("failed") || result.instructions.includes("api key") || result.instructions.includes("מפתח api") || result.instructions.includes("שגיאה") || result.instructions.includes("מכסת שימוש")) {
             setError(result.instructions);
         }
       } catch (e) {
@@ -2095,32 +2096,9 @@ const AiPlannerModal: React.FC<{
         try {
             const responseText = await generateWorkoutPlan(messages, input);
             
-            // Check for specific API error string from our service
-            if (responseText.startsWith('Error: Could not generate a response.')) {
-                let userFriendlyMessage = 'An unknown error occurred with the AI planner. Please try again later.';
-                const errorContent = responseText.substring('Error: Could not generate a response. '.length);
-
-                // Try to parse the detailed error if it exists
-                if (errorContent.startsWith('AI Planner Error: ')) {
-                    const errorJsonStr = errorContent.substring('AI Planner Error: '.length);
-                    try {
-                        const errorData = JSON.parse(errorJsonStr);
-                        if (errorData?.error?.code === 429) {
-                            const retryInfo = errorData.error.details?.find((d: any) => d['@type'] === 'type.googleapis.com/google.rpc.RetryInfo');
-                            const retryDelay = retryInfo?.retryDelay || '45s';
-                            userFriendlyMessage = `The AI service is currently busy (Quota Exceeded).\n\nPlease wait ${retryDelay.replace('s', ' seconds')} and try again.\n\nThis is a temporary limit on the free plan.`;
-                        } else {
-                            userFriendlyMessage = `An AI error occurred: ${errorData?.error?.message || errorContent}`;
-                        }
-                    } catch (e) {
-                        // Parsing failed, show the content as is
-                        userFriendlyMessage = `An AI error occurred: ${errorContent}`;
-                    }
-                } else {
-                     // Generic error without the JSON structure
-                     userFriendlyMessage = `An error occurred: ${errorContent}`;
-                }
-
+            // The service now returns a user-friendly error string, prefixed with "Error:".
+            if (responseText.startsWith('Error: ')) {
+                const userFriendlyMessage = responseText.substring('Error: '.length);
                 setMessages(prev => [...prev, { role: 'model', parts: [{ text: userFriendlyMessage }] }]);
                 return; // Stop further processing
             }

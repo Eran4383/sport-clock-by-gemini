@@ -204,14 +204,18 @@ export async function generateWorkoutPlan(chatHistory: { role: 'user' | 'model';
         const data = await res.json();
 
         if (!res.ok) {
-            throw new Error(data.message || 'Failed to communicate with the AI planner.');
+            // The backend now sends errors in the 'responseText' field for chat,
+            // or 'message' for older/generic errors. We can just return it.
+            const errorMessage = data.responseText || data.message || 'An unknown error occurred with the AI planner. Please try again later.';
+            // We prepend "Error:" so the UI can potentially identify it.
+            return `Error: ${errorMessage}`;
         }
 
         return data.responseText;
 
     } catch (error) {
         console.error("Error calling AI planner API:", error);
-        const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
-        return `Error: Could not generate a response. ${errorMessage}`;
+        const errorMessage = error instanceof Error ? error.message : "An unknown network error occurred.";
+        return `Error: Could not connect to the AI planner. ${errorMessage}`;
     }
 }
