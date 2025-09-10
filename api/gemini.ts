@@ -194,7 +194,7 @@ export default async function handler(req: any, res: any) {
     });
   }
 
-  const { exerciseName, force_refresh, chatRequest } = req.body;
+  const { exerciseName, force_refresh, chatRequest, checkCache } = req.body;
 
   try {
       let result;
@@ -205,10 +205,25 @@ export default async function handler(req: any, res: any) {
               return res.status(400).json({ message: 'A valid message is required for chat requests.' });
           }
           result = await handleChatRequest(history || [], message);
-      } else {
+      } else if (checkCache && Array.isArray(checkCache)) {
+          // Handle server-side cache check
+          const keys = checkCache.map(name => `exercise:${name.trim().toLowerCase()}`);
+          if (keys.length === 0) {
+              return res.status(200).json({ uncachedNames: [] });
+          }
+          try {
+              const results = await kv.mget(...keys);
+              const uncachedNames = checkCache.filter((_, index) => results[index] === null);
+              return res.status(200).json({ uncachedNames });
+          } catch (kvError) {
+               console.error("Vercel KV 'mget' operation failed.", kvError);
+               // If KV fails, assume nothing is cached so the client tries to fetch everything.
+               return res.status(200).json({ uncachedNames: checkCache });
+          }
+      } else if (exerciseName) {
           // Handle Exercise Info Request
-          if (!exerciseName || typeof exerciseName !== 'string') {
-              return res.status(400).json({ message: 'A valid exerciseName is required in the request body.' });
+          if (typeof exerciseName !== 'string') {
+              return res.status(400).json({ message: 'A valid exerciseName string is required.' });
           }
           if (!youtubeApiKey) {
               console.error("YOUTUBE_API_KEY is not configured on the server.");
@@ -222,7 +237,10 @@ export default async function handler(req: any, res: any) {
               });
           }
           result = await handleExerciseInfoRequest(exerciseName, force_refresh);
+      } else {
+        return res.status(400).json({ message: 'Invalid request. Must include exerciseName, chatRequest, or checkCache.' });
       }
+
       return res.status(result.status).json(result.body);
 
   } catch (error: any) {

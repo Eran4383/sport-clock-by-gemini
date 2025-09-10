@@ -1,5 +1,4 @@
 
-
 import { getBaseExerciseName } from '../utils/workout';
 
 export interface ExerciseInfo {
@@ -102,12 +101,13 @@ export const getCacheStatusForExercises = (exerciseNames: string[]): Map<string,
  * @param exerciseName - The name of the exercise to clear.
  */
 export const clearExerciseFromCache = (exerciseName: string) => {
-    const normalizedName = exerciseName.trim().toLowerCase();
+    const normalizedName = getBaseExerciseName(exerciseName).trim().toLowerCase();
     try {
         const cache = getCache();
         if (cache[normalizedName]) {
             delete cache[normalizedName];
             localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+            console.log(`Cleared "${normalizedName}" from local cache.`);
         }
     } catch (error) {
         console.error("Failed to clear exercise from cache", error);
@@ -140,7 +140,7 @@ const getGenericErrorResponse = (message: string): ExerciseInfo => ({
 });
 
 export async function getExerciseInfo(exerciseName: string, forceRefresh = false): Promise<ExerciseInfo> {
-    const normalizedName = exerciseName.trim().toLowerCase();
+    const normalizedName = getBaseExerciseName(exerciseName).trim().toLowerCase();
 
     // Short-circuit for generic terms to avoid unnecessary API calls
     if (GENERIC_TERMS.has(normalizedName)) {
@@ -148,11 +148,11 @@ export async function getExerciseInfo(exerciseName: string, forceRefresh = false
     }
     
     if (forceRefresh) {
-        // Clear local storage cache before fetching from server
-        clearExerciseFromCache(exerciseName);
+        // Clear local storage cache before fetching from server to ensure it gets updated
+        clearExerciseFromCache(normalizedName);
     } else {
         const cache = getCache();
-        // 1. Check cache first
+        // 1. Check local cache first for speed
         if (cache[normalizedName]) {
             return cache[normalizedName];
         }
@@ -165,7 +165,7 @@ export async function getExerciseInfo(exerciseName: string, forceRefresh = false
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ exerciseName, force_refresh: forceRefresh }),
+            body: JSON.stringify({ exerciseName: normalizedName, force_refresh: forceRefresh }),
         });
 
         const data = await res.json();
@@ -174,16 +174,13 @@ export async function getExerciseInfo(exerciseName: string, forceRefresh = false
             if (data.code === 'API_KEY_MISSING') {
                 return getApiKeyErrorResponse();
             }
-            // The backend often sends a structured error that looks like ExerciseInfo
-            // for non-200 responses. If it has the right shape, we can use it directly.
             if (data.instructions && Array.isArray(data.tips)) {
                 return data as ExerciseInfo;
             }
-            // Fallback for other error structures
             throw new Error(data.message || 'Failed to fetch exercise info from the server.');
         }
 
-        // 3. Save successful response to cache before returning
+        // 3. Save successful response to local cache before returning
         saveToCache(normalizedName, data);
 
         return data as ExerciseInfo;
@@ -199,19 +196,59 @@ export async function getExerciseInfo(exerciseName: string, forceRefresh = false
 }
 
 /**
- * Pre-fetches exercise information for a list of exercise names and populates the cache.
- * This function processes requests SEQUENTIALLY to avoid hitting API rate limits.
- * @param exerciseNames - An array of exercise names to prefetch.
+ * Asks the server which of the provided exercise names are NOT in the Vercel KV cache.
+ * @param exerciseNames An array of normalized, unique exercise names.
+ * @returns A promise that resolves to an array of names that need to be fetched.
+ */
+async function findUncachedExercisesOnServer(exerciseNames: string[]): Promise<string[]> {
+    if (exerciseNames.length === 0) {
+        return [];
+    }
+    try {
+        const res = await fetch('/api/gemini', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ checkCache: exerciseNames }),
+        });
+
+        if (!res.ok) {
+            console.error('Server error checking cache status. Assuming all are uncached.');
+            // Fallback: If the check fails, assume everything needs to be fetched.
+            return exerciseNames;
+        }
+
+        const data = await res.json();
+        return data.uncachedNames || [];
+    } catch (error) {
+        console.error('Network error checking cache status:', error);
+        // Fallback: On network error, assume everything needs to be fetched.
+        return exerciseNames;
+    }
+}
+
+/**
+ * Pre-fetches exercise information for a list of exercise names and populates all caches.
+ * This function now intelligently checks the server-side cache first to avoid
+ * refetching data that already exists, solving the local-cache-only problem.
+ * @param exerciseNames - An array of all exercise names from the user's plans.
  * @returns A promise that resolves with the status of the prefetch operation.
  */
 export async function prefetchExercises(exerciseNames: string[]): Promise<{ successCount: number; failedCount: number; failedNames: string[] }> {
-    const cache = getCache();
-    // Get unique, normalized, non-empty names
-    const uniqueNames = [...new Set(exerciseNames.map(name => name.trim().toLowerCase()))].filter(Boolean);
-    // Exclude exercises that are already cached or are generic terms.
-    const namesToFetch = uniqueNames.filter(name => !cache[name] && !GENERIC_TERMS.has(name));
+    // Get unique, normalized, non-empty names that are not generic terms.
+    const uniqueNames = [...new Set(exerciseNames.map(name => getBaseExerciseName(name).trim().toLowerCase()))]
+        .filter(Boolean)
+        .filter(name => !GENERIC_TERMS.has(name));
 
-    const alreadyProcessedCount = uniqueNames.length - namesToFetch.length;
+    if (uniqueNames.length === 0) {
+        // Return success if there's nothing to do (e.g., only generic exercises)
+        return { successCount: exerciseNames.length, failedCount: 0, failedNames: [] };
+    }
+
+    console.log(`Checking server cache for ${uniqueNames.length} unique exercises...`);
+    const namesToFetch = await findUncachedExercisesOnServer(uniqueNames);
+    
+    const alreadyCachedCount = uniqueNames.length - namesToFetch.length;
+    console.log(`${alreadyCachedCount} exercises are already cached on the server. Fetching info for the remaining ${namesToFetch.length}.`);
 
     if (namesToFetch.length === 0) {
         return { successCount: uniqueNames.length, failedCount: 0, failedNames: [] };
@@ -222,10 +259,11 @@ export async function prefetchExercises(exerciseNames: string[]): Promise<{ succ
     let successCount = 0;
     const failedNames: string[] = [];
 
-    // Process sequentially to avoid API rate limits (e.g., 15 RPM).
+    // Process sequentially to avoid API rate limits.
     for (const name of namesToFetch) {
         try {
-            // Force refresh to update both local and server caches.
+            // Force refresh is true to ensure it fetches from Gemini/YT and populates the KV cache.
+            // It will also populate the local cache via the saveToCache call inside getExerciseInfo.
             await getExerciseInfo(name, true);
             successCount++;
             // Add a delay to be cautious with the API's rate limit.
@@ -233,13 +271,12 @@ export async function prefetchExercises(exerciseNames: string[]): Promise<{ succ
         } catch (e) {
             console.error(`Failed to prefetch exercise "${name}":`, e);
             failedNames.push(name);
-            // Don't let one failure stop the entire process.
         }
     }
     
-    console.log("Sequential prefetching session complete.");
+    console.log("Prefetching session complete.");
     return {
-        successCount: alreadyProcessedCount + successCount,
+        successCount: alreadyCachedCount + successCount,
         failedCount: failedNames.length,
         failedNames,
     };

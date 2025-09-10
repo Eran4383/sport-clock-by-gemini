@@ -1,15 +1,10 @@
 
-
-
-
-
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useWorkout } from '../contexts/WorkoutContext';
 import { WorkoutPlan, WorkoutStep } from '../types';
 import { useSettings } from '../contexts/SettingsContext';
 import { HoverNumberInput } from './HoverNumberInput';
-import { getExerciseInfo, ExerciseInfo, clearExerciseFromCache, prefetchExercises, generateWorkoutPlan } from '../services/geminiService';
+import { getExerciseInfo, ExerciseInfo, prefetchExercises, generateWorkoutPlan } from '../services/geminiService';
 import { WorkoutLog } from './WorkoutLog';
 import { getBaseExerciseName, generateCircuitSteps } from '../utils/workout';
 
@@ -17,8 +12,7 @@ const ExerciseInfoModal: React.FC<{
   exerciseName: string | null;
   onClose: () => void;
   isVisible: boolean;
-  forceRefresh: boolean;
-}> = ({ exerciseName, onClose, isVisible, forceRefresh }) => {
+}> = ({ exerciseName, onClose, isVisible }) => {
   const [info, setInfo] = useState<ExerciseInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +30,7 @@ const ExerciseInfoModal: React.FC<{
       setIsLoading(true);
       setError(null);
       try {
-        const result = await getExerciseInfo(exerciseName, forceRefresh);
+        const result = await getExerciseInfo(exerciseName);
         setInfo(result);
         setActiveVideoId(result.primaryVideoId);
         if (result.instructions.toLowerCase().includes("error") || result.instructions.toLowerCase().includes("failed") || result.instructions.includes("api key") || result.instructions.includes("מפתח api") || result.instructions.includes("שגיאה") || result.instructions.includes("מכסת שימוש")) {
@@ -53,7 +47,7 @@ const ExerciseInfoModal: React.FC<{
     if (isVisible && exerciseName) {
         fetchInfo();
     }
-  }, [exerciseName, forceRefresh, isVisible]);
+  }, [exerciseName, isVisible]);
   
   // Bug Fix: Clear video URL when modal is hidden to stop playback
   useEffect(() => {
@@ -428,7 +422,7 @@ const PlanListItem: React.FC<{
   plan: WorkoutPlan;
   onSelectPlan: (plan: WorkoutPlan) => void;
   onInitiateDelete: (planId: string) => void;
-  onInspectExercise: (exerciseName: string, forceRefresh?: boolean) => void;
+  onInspectExercise: (exerciseName: string) => void;
   onShare: (plan: WorkoutPlan) => void;
   isSelected: boolean;
   onToggleSelection: (planId: string) => void;
@@ -457,10 +451,6 @@ const PlanListItem: React.FC<{
   const [isExpanded, setIsExpanded] = useState(false);
   const exerciseColorMap = useExerciseColorMap(plan.steps);
   const [confirmationMessage, setConfirmationMessage] = useState<string | null>(null);
-  const [contextMenu, setContextMenu] = useState<{ visible: boolean; x: number; y: number; exerciseName: string } | null>(null);
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const touchMoveThreshold = 10; // pixels
-  const touchStartCoords = useRef({ x: 0, y: 0 });
 
   const showConfirmation = (message: string) => {
       setConfirmationMessage(message);
@@ -476,63 +466,6 @@ const PlanListItem: React.FC<{
     }
   }, [isActive]);
   
-  // Context Menu Handlers
-  const handleContextMenu = (e: React.MouseEvent, exerciseName: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setContextMenu({ visible: true, x: e.clientX, y: e.clientY, exerciseName });
-  };
-  
-  const handleTouchStart = (e: React.TouchEvent, exerciseName: string) => {
-    e.stopPropagation();
-    touchStartCoords.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-    longPressTimer.current = setTimeout(() => {
-        setContextMenu({ visible: true, x: e.touches[0].clientX, y: e.touches[0].clientY, exerciseName });
-        longPressTimer.current = null;
-    }, 500); // 500ms for long press
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    const dx = Math.abs(e.touches[0].clientX - touchStartCoords.current.x);
-    const dy = Math.abs(e.touches[0].clientY - touchStartCoords.current.y);
-    if (dx > touchMoveThreshold || dy > touchMoveThreshold) {
-        if (longPressTimer.current) {
-            clearTimeout(longPressTimer.current);
-            longPressTimer.current = null;
-        }
-    }
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    if (longPressTimer.current) {
-        clearTimeout(longPressTimer.current);
-        longPressTimer.current = null;
-    }
-    if (contextMenu?.visible) {
-        e.preventDefault();
-        e.stopPropagation();
-    }
-  };
-  
-  useEffect(() => {
-    if (contextMenu?.visible) {
-        const close = () => setContextMenu(null);
-        window.addEventListener('click', close, { once: true });
-        window.addEventListener('contextmenu', close, { once: true });
-        return () => {
-            window.removeEventListener('click', close);
-            window.removeEventListener('contextmenu', close);
-        };
-    }
-  }, [contextMenu?.visible]);
-
-  const handleRefreshExercise = async () => {
-    if (!contextMenu) return;
-    onInspectExercise(contextMenu.exerciseName, true);
-    setContextMenu(null);
-  };
-
-
   const displayedSteps = useMemo(() => {
     if (plan.executionMode === 'circuit') {
         return generateCircuitSteps(plan.steps);
@@ -626,21 +559,6 @@ const PlanListItem: React.FC<{
   const animationClass = isNewlyImported ? 'animate-glow' : '';
 
   return (
-    <>
-      {contextMenu?.visible && (
-          <div
-              style={{ top: contextMenu.y, left: contextMenu.x, position: 'fixed', zIndex: 110 }}
-              className="bg-gray-900 border border-gray-700 rounded-md shadow-lg py-1 animate-fadeIn"
-              onClick={(e) => e.stopPropagation()} // Prevent this from closing the menu
-          >
-              <button
-                  onClick={handleRefreshExercise}
-                  className="block w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-blue-600 hover:text-white"
-              >
-                  רענן מידע על התרגיל
-              </button>
-          </div>
-      )}
       <div 
           ref={setRef}
           className={`rounded-lg transition-all duration-300 ${isDraggable ? 'cursor-grab' : ''} ${dragStyles} ${animationClass} ${plan.isSmartPlan ? 'bg-purple-500/20' : 'bg-gray-700/50'}`}
@@ -795,18 +713,6 @@ const PlanListItem: React.FC<{
                                   onInspectExercise(getBaseExerciseName(step.name));
                               }
                             }}
-                            onContextMenu={(e) => {
-                              if (step.type === 'exercise' && !isActive) {
-                                handleContextMenu(e, getBaseExerciseName(step.name));
-                              }
-                            }}
-                            onTouchStart={(e) => {
-                              if (step.type === 'exercise' && !isActive) {
-                                handleTouchStart(e, getBaseExerciseName(step.name));
-                              }
-                            }}
-                            onTouchMove={handleTouchMove}
-                            onTouchEnd={handleTouchEnd}
                           >
                               <span className="w-1.5 h-4 rounded" style={{ backgroundColor: color }}></span>
                               <span className="truncate flex-1">{step.name} - <span className="text-gray-400 font-normal">{step.isRepBased ? `${step.reps} reps` : `${step.duration}s`}</span></span>
@@ -817,7 +723,6 @@ const PlanListItem: React.FC<{
           </div>
         )}
       </div>
-    </>
   );
 };
 
@@ -862,7 +767,7 @@ const PlanList: React.FC<{
   onCreateNew: () => void;
   onInitiateDelete: (planId: string) => void;
   onShowLog: () => void;
-  onInspectExercise: (exerciseName: string, forceRefresh?: boolean) => void;
+  onInspectExercise: (exerciseName: string) => void;
   isPinned: boolean;
   onTogglePin: () => void;
   onOpenAiPlanner: () => void;
@@ -875,7 +780,6 @@ const PlanList: React.FC<{
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isImportTextVisible, setIsImportTextVisible] = useState(false);
   const [sharingPlan, setSharingPlan] = useState<WorkoutPlan | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshStatus, setRefreshStatus] = useState<'idle' | 'loading' | 'success' | 'partial' | 'error'>('idle');
   const [refreshFeedback, setRefreshFeedback] = useState<string | null>(null);
   const [isWarmupSettingsExpanded, setIsWarmupSettingsExpanded] = useState(false);
@@ -899,46 +803,39 @@ const PlanList: React.FC<{
 
 
   const handleRefreshAll = async () => {
-    if (isRefreshing || plans.length === 0) return;
+    if (refreshStatus === 'loading' || plans.length === 0) return;
 
-    setIsRefreshing(true);
     setRefreshStatus('loading');
-    setRefreshFeedback(null);
+    setRefreshFeedback('Checking server for missing exercises...');
     const allExerciseNames = plans.flatMap(plan => plan.steps)
                                   .filter(step => step.type === 'exercise')
                                   .map(step => getBaseExerciseName(step.name));
     
     const result = await prefetchExercises(allExerciseNames);
     
-    setIsRefreshing(false);
-
     if (result.failedCount === 0) {
         setRefreshStatus('success');
-        setRefreshFeedback('All exercises up to date!');
+        setRefreshFeedback('All exercises are up to date!');
     } else if (result.failedCount > 0 && result.successCount > 0) {
         setRefreshStatus('partial');
-        setRefreshFeedback(`Failed for: ${result.failedNames.join(', ')}`);
+        setRefreshFeedback(`Failed to refresh: ${result.failedNames.join(', ')}`);
     } else {
         setRefreshStatus('error');
-        setRefreshFeedback(`Failed for: ${result.failedNames.join(', ')}`);
+        setRefreshFeedback(`Failed to refresh all missing exercises: ${result.failedNames.join(', ')}`);
     }
     
     setTimeout(() => {
         setRefreshStatus('idle');
         setRefreshFeedback(null);
-    }, 8000); // Give more time to read a potential error message
+    }, 8000);
   };
   
   const getRefreshTooltip = () => {
     if (refreshFeedback) return refreshFeedback;
-
     switch (refreshStatus) {
         case 'loading': return "Refreshing info in background...";
         case 'success': return "All exercise info is up to date!";
-        case 'partial':
-        case 'error': return "Some exercise info might be missing. Click to refresh.";
-        case 'idle':
-        default: return "Refresh all exercise info";
+        default: return "Sync all exercises with the database";
     }
   };
 
@@ -1076,7 +973,7 @@ const PlanList: React.FC<{
                 onClick={handleRefreshAll}
                 className={`p-2 rounded-full hover:bg-gray-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors`}
                 title={getRefreshTooltip()}
-                disabled={isRefreshing || !!activeWorkout}
+                disabled={refreshStatus === 'loading' || !!activeWorkout}
             >
                 {refreshStatus === 'loading' ? (
                     <svg className="animate-spin h-6 w-6 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -2235,7 +2132,7 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
   const [editingPlan, setEditingPlan] = useState<WorkoutPlan | null | string>(null);
   const [view, setView] = useState<'list' | 'editor' | 'log'>('list');
   const [confirmDeletePlanId, setConfirmDeletePlanId] = useState<string | null>(null);
-  const [exerciseToInspect, setExerciseToInspect] = useState<{name: string, refresh: boolean} | null>(null);
+  const [exerciseToInspect, setExerciseToInspect] = useState<string | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const { activeWorkout, plans, deletePlan } = useWorkout();
   const { settings, updateSettings } = useSettings();
@@ -2331,12 +2228,11 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
     }
   };
 
-  const handleInspectExercise = (exerciseName: string, forceRefresh = false) => {
-    // If the modal is already open for the same exercise, don't do anything unless forcing a refresh.
-    if (isModalVisible && exerciseToInspect?.name === exerciseName && !forceRefresh) {
+  const handleInspectExercise = (exerciseName: string) => {
+    if (isModalVisible && exerciseToInspect === exerciseName) {
         return;
     }
-    setExerciseToInspect({ name: exerciseName, refresh: forceRefresh });
+    setExerciseToInspect(exerciseName);
     setIsModalVisible(true);
   };
 
@@ -2378,10 +2274,8 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
           />
       )}
 
-      {/* Always render the modal to preserve its state, control with isVisible */}
       <ExerciseInfoModal 
-          exerciseName={exerciseToInspect?.name ?? null}
-          forceRefresh={exerciseToInspect?.refresh ?? false}
+          exerciseName={exerciseToInspect}
           onClose={handleCloseModal}
           isVisible={isModalVisible}
       />
