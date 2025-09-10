@@ -10,6 +10,8 @@ export interface WorkoutStep {
   reps: number;
   // Internal property to mark a step as part of the warm-up
   isWarmup?: boolean;
+  // Allows disabling a step (primarily for warm-ups) without removing it. Defaults to true.
+  isEnabled?: boolean;
 }
 
 export interface WorkoutPlan {
@@ -28,4 +30,5 @@ export interface WorkoutLogEntry {
     planName: string;
     durationSeconds: number;
     steps: WorkoutStep[];
+    planIds: string[];
 }

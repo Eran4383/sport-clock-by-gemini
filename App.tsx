@@ -1,5 +1,6 @@
 
 
+
 import React, { useMemo, useEffect, useRef, useState, useCallback } from 'react';
 import { CountdownDisplay } from './components/CountdownDisplay';
 import { CountdownControls } from './components/CountdownControls';
@@ -333,7 +334,8 @@ const AppContent: React.FC = () => {
             completed: true,
             durationMs: stopwatch.time,
             planName: activeWorkout?.plan.name || 'Unnamed Workout',
-            steps: activeWorkout?.plan.steps
+            steps: activeWorkout?.plan.steps,
+            planIds: activeWorkout?.sourcePlanIds || [],
         });
         setWorkoutCompleted(true);
       }
