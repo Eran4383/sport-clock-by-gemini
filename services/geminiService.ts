@@ -1,5 +1,7 @@
 
 
+import { getBaseExerciseName } from '../utils/workout';
+
 export interface ExerciseInfo {
     primaryVideoId: string | null;
     alternativeVideoIds: string[];
@@ -49,6 +51,21 @@ export const checkCacheStatus = (exerciseNames: string[]): { allCached: boolean;
     
     const uncached = uniqueNames.filter(name => !cache[name]);
     return { allCached: uncached.length === 0, uncachedCount: uncached.length };
+};
+
+/**
+ * Checks the cache status for a list of individual exercises.
+ * @param exerciseNames - An array of exercise names.
+ * @returns A Map where keys are normalized exercise names and values are booleans (true if cached).
+ */
+export const getCacheStatusForExercises = (exerciseNames: string[]): Map<string, boolean> => {
+    const cache = getCache();
+    const statusMap = new Map<string, boolean>();
+    const uniqueNames = [...new Set(exerciseNames.map(name => getBaseExerciseName(name).trim().toLowerCase()))].filter(Boolean);
+    uniqueNames.forEach(name => {
+        statusMap.set(name, cache.hasOwnProperty(name));
+    });
+    return statusMap;
 };
 
 

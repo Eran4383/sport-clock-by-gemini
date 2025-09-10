@@ -5,14 +5,6 @@ import { kv } from "@vercel/kv";
 const geminiApiKey = process.env.API_KEY;
 const youtubeApiKey = process.env.YOUTUBE_API_KEY;
 
-interface YouTubeVideo {
-  id: { videoId: string };
-  snippet: {
-    title: string;
-    description: string;
-  };
-}
-
 const safetySettings = [
   {
     category: HarmCategory.HARM_CATEGORY_HARASSMENT,
@@ -37,7 +29,6 @@ const handleExerciseInfoRequest = async (exerciseName: string, force_refresh: bo
     const ai = new GoogleGenAI({ apiKey: geminiApiKey! });
     const normalizedExerciseName = exerciseName.trim().toLowerCase();
     const exerciseCacheKey = `exercise:${normalizedExerciseName}`;
-    const CACHE_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days
 
     // STAGE 0: Check our persistent KV cache first.
     if (!force_refresh) {
@@ -47,119 +38,88 @@ const handleExerciseInfoRequest = async (exerciseName: string, force_refresh: bo
         }
     }
 
-    // STAGE 1: Get the best search query from Gemini
-    const searchQueryPrompt = `
-      Translate the exercise name "${exerciseName}" into the best possible English search query for finding a short, instructional video on YouTube.
-      CRITICAL: The translation must be in the context of sports, anatomy, and physiotherapy to ensure professional and accurate terminology. 
-      For example, "פיתול" should become "torso rotation tutorial" or a similar specific term, not just "twist". 
-      Give STRONG preference to channels known for clear, animated, anatomical tutorials like "Passion4Profession".
-      The output should be ONLY the search query string and nothing else.
-    `;
+    // STAGE 1: Fetch YouTube videos and Gemini text in parallel for efficiency.
     
-    const queryGenerationResponse = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: searchQueryPrompt,
-      config: {
-        thinkingConfig: { thinkingBudget: 0 },
-        safetySettings: safetySettings,
-      },
-    });
-    const searchQuery = queryGenerationResponse.text.trim();
-
-    if (!searchQuery) {
-        throw new Error("Gemini failed to generate a search query.");
-    }
-    
-    // STAGE 2: Search YouTube using the generated query
-    const youtubeCacheKey = `youtube:${searchQuery}`;
-    let videoResults;
-    
-    if (!force_refresh) {
-        const cachedVideos = await kv.get<any[]>(youtubeCacheKey);
-        if (cachedVideos) {
-            videoResults = cachedVideos;
-        }
-    }
-    
-    if (!videoResults) {
+    // Task 1: Search YouTube for relevant videos.
+    const searchYouTube = async () => {
+        // A more direct and effective search query.
+        const searchQuery = `how to do ${exerciseName} proper form tutorial short`;
         const youtubeApiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(searchQuery)}&type=video&videoDuration=short&maxResults=5&key=${youtubeApiKey}`;
-        const youtubeResponse = await fetch(youtubeApiUrl);
-        if (!youtubeResponse.ok) {
-            const errorData = await youtubeResponse.json();
-            console.error("YouTube API Error:", errorData);
-            const errorDetails = errorData.error?.message || `YouTube API request failed with status: ${youtubeResponse.status}`;
-            throw new Error(`YouTube API Error: ${errorDetails}`);
+        
+        try {
+            const youtubeResponse = await fetch(youtubeApiUrl);
+            if (!youtubeResponse.ok) {
+                const errorData = await youtubeResponse.json();
+                console.error("YouTube API Error:", errorData);
+                return []; // Return empty array on error, don't fail the whole request.
+            }
+            const youtubeData = await youtubeResponse.json();
+            return youtubeData.items.map((item: any) => item.id.videoId).filter(Boolean);
+        } catch (error) {
+            console.error("Failed to fetch from YouTube API:", error);
+            return [];
         }
-        const youtubeData = await youtubeResponse.json();
-        videoResults = youtubeData.items.map((item: YouTubeVideo) => ({
-            id: item.id.videoId,
-            title: item.snippet.title,
-            description: item.snippet.description
-        }));
-        await kv.set(youtubeCacheKey, videoResults, { ex: CACHE_TTL_SECONDS });
-    }
+    };
 
-
-    if (!videoResults || videoResults.length === 0) {
-      return { status: 200, body: {
-          primaryVideoId: null,
-          alternativeVideoIds: [],
-          instructions: "לא נמצאו סרטוני הדרכה מתאימים עבור תרגיל זה.",
-          tips: ["נסה לחפש וריאציה אחרת של התרגיל.", "ודא שהשם מאוית נכון."],
-          generalInfo: `לא הצלחנו לאתר סרטון הדרכה קצר ואיכותי עבור "${exerciseName}" בשלב זה.`,
-          language: 'he'
-      }};
-    }
-
-    // STAGE 3: Let Gemini choose the best video and generate content
-    const videoSelectionPrompt = `
-      You are an expert fitness coach. For the exercise "${exerciseName}", I have found these potential YouTube videos:
-      ${JSON.stringify(videoResults, null, 2)}
-
-      Your tasks are:
-      1.  **Select the single BEST video** from this list. The best video is a short (ideally under 120 seconds), direct, high-quality instructional tutorial focusing on proper form. Give strong preference to animated, anatomical videos (like from 'Passion4Profession') over videos with real people. Avoid long intros, vlogs, or full workout routines.
-      2.  **Based on the content of your selected video**, generate the following information IN THE SAME LANGUAGE as the original exercise name ("${exerciseName}"):
+    // Task 2: Ask Gemini for instructional text.
+    const getGeminiText = async () => {
+        const textGenerationPrompt = `
+          You are an expert fitness coach. For the exercise "${exerciseName}", generate the following information IN THE SAME LANGUAGE as the original exercise name ("${exerciseName}"):
           - "instructions": A clear, step-by-step guide. Each step MUST be on a new line, separated by '\\n'.
           - "tips": 2-4 concise tips for proper form.
           - "generalInfo": A short paragraph about the exercise, its benefits, and primary muscles targeted.
-      3.  Provide a list of up to 3 other good video IDs from the provided list as alternatives. Do not include your primary selection in this list.
-      4.  Return everything as a single, valid JSON object with the specified structure.
+          - "language": The ISO 639-1 code for the language you are writing in.
 
-      If NONE of the provided videos are suitable instructional tutorials, all video ID fields MUST be null.
-    `;
-    
-    const finalResponse = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: videoSelectionPrompt,
-        config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                    primaryVideoId: { type: Type.STRING, description: "The ID of the best video chosen.", nullable: true },
-                    alternativeVideoIds: { type: Type.ARRAY, items: { type: Type.STRING }, description: "A list of other good video IDs." },
-                    instructions: { type: Type.STRING },
-                    tips: { type: Type.ARRAY, items: { type: Type.STRING } },
-                    generalInfo: { type: Type.STRING },
-                    language: { type: Type.STRING, description: "ISO 639-1 language code." },
+          Return ONLY a single, valid JSON object with the specified structure. Do not include video information.
+        `;
+        
+        const textResponse = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: textGenerationPrompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        instructions: { type: Type.STRING },
+                        tips: { type: Type.ARRAY, items: { type: Type.STRING } },
+                        generalInfo: { type: Type.STRING },
+                        language: { type: Type.STRING },
+                    },
+                    required: ["instructions", "tips", "generalInfo", "language"],
                 },
-                required: ["primaryVideoId", "alternativeVideoIds", "instructions", "tips", "generalInfo", "language"],
+                safetySettings: safetySettings,
             },
-            safetySettings: safetySettings,
-        },
-    });
+        });
+        const cleanedJsonString = textResponse.text.replace(/^```json\s*/, '').replace(/\s*```$/, '').trim();
+        if (!cleanedJsonString) {
+            throw new Error("Received an empty text response from the AI service.");
+        }
+        return JSON.parse(cleanedJsonString);
+    };
 
-    const responseText = finalResponse.text;
-    const cleanedJsonString = responseText.replace(/^```json\s*/, '').replace(/\s*```$/, '').trim();
-    if (!cleanedJsonString) {
-        throw new Error("Received an empty final response from the AI service.");
-    }
+    // Execute both tasks concurrently.
+    const [videoIds, textData] = await Promise.all([
+        searchYouTube(),
+        getGeminiText()
+    ]);
+
+    // STAGE 2: Combine the results.
+    const finalData = {
+        ...textData,
+        primaryVideoId: videoIds.length > 0 ? videoIds[0] : null,
+        alternativeVideoIds: videoIds.length > 1 ? videoIds.slice(1, 4) : [],
+    };
     
-    const data = JSON.parse(cleanedJsonString);
-    // Save the final, processed result to our persistent KV cache before returning.
-    await kv.set(exerciseCacheKey, data, { ex: CACHE_TTL_SECONDS });
+    // If we failed to get any videos, update the text to inform the user.
+    if (!finalData.primaryVideoId) {
+        finalData.instructions = "לא נמצאו סרטוני הדרכה מתאימים עבור תרגיל זה. המידע הכתוב עדיין זמין.";
+    }
 
-    return { status: 200, body: data };
+    // Save the final, combined result to our persistent KV store (permanently).
+    await kv.set(exerciseCacheKey, finalData);
+
+    return { status: 200, body: finalData };
 }
 
 const handleChatRequest = async (history: any[], message: string) => {
@@ -261,32 +221,37 @@ export default async function handler(req: any, res: any) {
     console.error("Error in API handler:", error);
     
     let errorPayload: any;
-    try {
-        // Attempt to parse the structured error from the Gemini SDK
-        if (typeof error.message === 'string' && error.message.includes('GoogleGenerativeAI Error')) {
-            const jsonMatch = error.message.match(/\[(\{.*?\})\]/s);
-            if (jsonMatch && jsonMatch[1]) {
-                errorPayload = JSON.parse(jsonMatch[1]);
-            }
-        }
-    } catch(e) { /* ignore parsing errors */ }
+    let statusCode: number = 500;
 
-    // Fallback if parsing fails
-    if (!errorPayload) {
-        errorPayload = {
-            code: 500,
-            message: error.message || 'An unknown error occurred.',
-            status: 'UNKNOWN',
-            details: [],
-        };
+    // Try to parse the error message if it's a JSON string from the API
+    try {
+        // The error message might be prefixed with text, so find the start of the JSON object.
+        const jsonStartIndex = error.message.indexOf('{');
+        if (jsonStartIndex > -1) {
+            const potentialJson = error.message.substring(jsonStartIndex);
+            const parsed = JSON.parse(potentialJson);
+            errorPayload = parsed.error || parsed; // Handle cases where it's wrapped in an 'error' object
+        }
+    } catch (e) {
+        // Parsing failed, will use fallback.
     }
 
-    // Check for Quota Exceeded error
-    if (errorPayload.code === 429 || errorPayload.status === 'RESOURCE_EXHAUSTED') {
-        const retryInfo = errorPayload.details?.find((d: any) => d['@type'] === 'type.googleapis.com/google.rpc.RetryInfo');
-        const retryDelay = retryInfo?.retryDelay || 'a few moments';
+    // If we couldn't parse a structured error, create a fallback payload from the error object itself.
+    if (!errorPayload) {
+        errorPayload = {
+            message: error.message || 'An unknown error occurred.',
+            status: error.status || 'UNKNOWN',
+            code: error.code || 500
+        };
+    }
+    
+    statusCode = errorPayload.code || statusCode;
 
-        const userFriendlyMessage = `מכסת השימוש ב-API נוצלה במלואה. אנא נסה שוב בעוד ${retryDelay.replace('s', ' שניות')}.`;
+
+    // Check for Quota Exceeded error
+    if (statusCode === 429 || errorPayload.status === 'RESOURCE_EXHAUSTED') {
+        const userFriendlyMessage = "מכסת השימוש היומית ב-API נוצלה. שירותי הבינה המלאכותית יחזרו לפעול מחר.";
+        const technicalDetails = `פרטים טכניים: ${errorPayload.message}`;
 
         const clientError = chatRequest 
             ? { responseText: `שגיאה: ${userFriendlyMessage}` }
@@ -294,28 +259,30 @@ export default async function handler(req: any, res: any) {
                 primaryVideoId: null,
                 alternativeVideoIds: [],
                 instructions: userFriendlyMessage,
-                tips: ["זוהי מגבלה זמנית של הגרסה החינמית.", "ניתן להמשיך להשתמש בשאר תכונות האפליקציה."],
-                generalInfo: "שירות הבינה המלאכותית עמוס כרגע.",
+                tips: [
+                    "זוהי מגבלה זמנית של הגרסה החינמית.", 
+                    "ניתן להמשיך להשתמש בשאר תכונות האפליקציה."
+                ],
+                generalInfo: technicalDetails, // Put technical details here for the user to see.
                 language: 'he',
               };
         
-        // Use 429 status code for the response as well, it's more appropriate
         return res.status(429).json(clientError);
     }
 
-    // Handle other errors
-    const genericErrorMessage = `An unexpected error occurred: ${errorPayload.message}`;
+    // Handle other generic errors
+    const genericErrorMessage = `אירעה שגיאה: ${errorPayload.message}`;
     const clientError = chatRequest 
         ? { responseText: `שגיאה: ${genericErrorMessage}` }
         : {
             primaryVideoId: null,
             alternativeVideoIds: [],
-            instructions: `אירעה שגיאה: ${errorPayload.message}`,
+            instructions: genericErrorMessage,
             tips: ["אנא נסה שוב מאוחר יותר.", "אם הבעיה נמשכת, בדוק את קונסולת המפתחים."],
             generalInfo: "לא ניתן היה לאחזר מידע עבור תרגיל זה.",
             language: 'he',
           };
           
-    return res.status(500).json(clientError);
+    return res.status(statusCode < 400 ? 500 : statusCode).json(clientError);
   }
 }

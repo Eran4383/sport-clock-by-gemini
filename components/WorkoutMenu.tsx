@@ -1,11 +1,13 @@
 
 
+
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useWorkout } from '../contexts/WorkoutContext';
 import { WorkoutPlan, WorkoutStep } from '../types';
 import { useSettings } from '../contexts/SettingsContext';
 import { HoverNumberInput } from './HoverNumberInput';
-import { getExerciseInfo, ExerciseInfo, clearExerciseFromCache, prefetchExercises, generateWorkoutPlan, checkCacheStatus } from '../services/geminiService';
+import { getExerciseInfo, ExerciseInfo, clearExerciseFromCache, prefetchExercises, generateWorkoutPlan } from '../services/geminiService';
 import { WorkoutLog } from './WorkoutLog';
 import { getBaseExerciseName, generateCircuitSteps } from '../utils/workout';
 
@@ -805,7 +807,7 @@ const PlanListItem: React.FC<{
                             onTouchEnd={handleTouchEnd}
                           >
                               <span className="w-1.5 h-4 rounded" style={{ backgroundColor: color }}></span>
-                              <span className="truncate">{step.name} - <span className="text-gray-400 font-normal">{step.isRepBased ? `${step.reps} reps` : `${step.duration}s`}</span></span>
+                              <span className="truncate flex-1">{step.name} - <span className="text-gray-400 font-normal">{step.isRepBased ? `${step.reps} reps` : `${step.duration}s`}</span></span>
                           </li>
                       )
                   })}
@@ -892,31 +894,12 @@ const PlanList: React.FC<{
     }
   }, [recentlyImportedPlanId]);
 
-  useEffect(() => {
-    if (isRefreshing) {
-        setRefreshStatus('loading');
-        return;
-    }
-
-    const allExerciseNames = plans.flatMap(plan => plan.steps)
-                                  .filter(step => step.type === 'exercise')
-                                  .map(step => getBaseExerciseName(step.name));
-
-    const uniqueNames = [...new Set(allExerciseNames)];
-    if (uniqueNames.length === 0) {
-        setRefreshStatus('idle');
-        return;
-    }
-
-    const status = checkCacheStatus(uniqueNames);
-    setRefreshStatus(status.allCached ? 'success' : 'error');
-
-  }, [plans, isRefreshing]);
 
   const handleRefreshAll = async () => {
     if (isRefreshing || plans.length === 0) return;
 
     setIsRefreshing(true);
+    setRefreshStatus('loading');
     const allExerciseNames = plans.flatMap(plan => plan.steps)
                                   .filter(step => step.type === 'exercise')
                                   .map(step => getBaseExerciseName(step.name));
@@ -927,6 +910,8 @@ const PlanList: React.FC<{
     }
     
     setIsRefreshing(false);
+    setRefreshStatus('success');
+    setTimeout(() => setRefreshStatus('idle'), 3000); // Reset icon after a few seconds
   };
   
   const getRefreshTooltip = () => {
@@ -1082,9 +1067,7 @@ const PlanList: React.FC<{
                     </svg>
                 ) : (
                     <svg xmlns="http://www.w3.org/2000/svg" className={`h-6 w-6 ${
-                        refreshStatus === 'success' ? 'text-green-400' : 
-                        refreshStatus === 'error' ? 'text-red-400' : 
-                        'text-gray-400'
+                        refreshStatus === 'success' ? 'text-green-400' : 'text-gray-400'
                     }`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5" />
                       <path strokeLinecap="round" strokeLinejoin="round" d="M4 9a9 9 0 0114.13-5.23M20 15a9 9 0 01-14.13 5.23" />
