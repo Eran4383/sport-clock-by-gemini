@@ -32,9 +32,13 @@ const handleExerciseInfoRequest = async (exerciseName: string, force_refresh: bo
 
     // STAGE 0: Check our persistent KV cache first.
     if (!force_refresh) {
-        const cachedData = await kv.get(exerciseCacheKey);
-        if (cachedData) {
-            return { status: 200, body: cachedData };
+        try {
+            const cachedData = await kv.get(exerciseCacheKey);
+            if (cachedData) {
+                return { status: 200, body: cachedData };
+            }
+        } catch (kvError) {
+            console.error("Vercel KV 'get' operation failed. This is likely a configuration issue. The app will proceed without server-side caching for this request.", kvError);
         }
     }
 
@@ -116,8 +120,12 @@ const handleExerciseInfoRequest = async (exerciseName: string, force_refresh: bo
         finalData.instructions = "לא נמצאו סרטוני הדרכה מתאימים עבור תרגיל זה. המידע הכתוב עדיין זמין.";
     }
 
-    // Save the final, combined result to our persistent KV store (permanently).
-    await kv.set(exerciseCacheKey, finalData);
+    // Attempt to save to KV but don't let it block the response.
+    try {
+        await kv.set(exerciseCacheKey, finalData);
+    } catch (kvError) {
+        console.error("Vercel KV 'set' operation failed. The response was sent to the user, but it was not cached on the server.", kvError);
+    }
 
     return { status: 200, body: finalData };
 }

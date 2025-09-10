@@ -13,6 +13,34 @@ export interface ExerciseInfo {
 
 const CACHE_KEY = 'geminiExerciseCache_v3';
 
+// A set of generic terms that don't need specific AI/video lookup.
+const GENERIC_TERMS = new Set(['warmup', 'stretches', 'cooldown', 'rest', 'חימום', 'מתיחות', 'מנוחה']);
+
+/**
+ * Returns a standardized, hardcoded response for generic exercise terms.
+ * This avoids making API calls for terms that are too broad.
+ * @param term - The generic term (e.g., "חימום").
+ * @returns A standard ExerciseInfo object.
+ */
+const getGenericExerciseResponse = (term: string): ExerciseInfo => {
+    const isHebrew = ['חימום', 'מתיחות', 'מנוחה'].includes(term.toLowerCase());
+    return {
+        primaryVideoId: null,
+        alternativeVideoIds: [],
+        instructions: isHebrew 
+            ? "זוהי פעילות כללית. בצע את התנועות המועדפות עליך למשך הזמן שהוקצב."
+            : "This is a general activity. Perform your preferred movements for the allotted time.",
+        tips: isHebrew
+            ? ["הקשב לגופך.", "התמקד בטכניקה נכונה."]
+            : ["Listen to your body.", "Focus on proper form."],
+        generalInfo: isHebrew
+            ? `אין מידע ספציפי או סרטון עבור "${term}" מכיוון שזוהי קטגוריה רחבה.`
+            : `No specific information or video is available for "${term}" as it is a broad category.`,
+        language: isHebrew ? 'he' : 'en',
+    };
+};
+
+
 // Helper to get the cache object from localStorage
 const getCache = (): Record<string, ExerciseInfo> => {
     try {
@@ -113,6 +141,11 @@ const getGenericErrorResponse = (message: string): ExerciseInfo => ({
 
 export async function getExerciseInfo(exerciseName: string, forceRefresh = false): Promise<ExerciseInfo> {
     const normalizedName = exerciseName.trim().toLowerCase();
+
+    // Short-circuit for generic terms to avoid unnecessary API calls
+    if (GENERIC_TERMS.has(normalizedName)) {
+        return getGenericExerciseResponse(normalizedName);
+    }
     
     if (forceRefresh) {
         // Clear local storage cache before fetching from server
@@ -169,34 +202,47 @@ export async function getExerciseInfo(exerciseName: string, forceRefresh = false
  * Pre-fetches exercise information for a list of exercise names and populates the cache.
  * This function processes requests SEQUENTIALLY to avoid hitting API rate limits.
  * @param exerciseNames - An array of exercise names to prefetch.
- * @returns A promise that resolves when all fetches are complete.
+ * @returns A promise that resolves with the status of the prefetch operation.
  */
-export async function prefetchExercises(exerciseNames: string[]): Promise<void> {
+export async function prefetchExercises(exerciseNames: string[]): Promise<{ successCount: number; failedCount: number; failedNames: string[] }> {
     const cache = getCache();
     // Get unique, normalized, non-empty names
     const uniqueNames = [...new Set(exerciseNames.map(name => name.trim().toLowerCase()))].filter(Boolean);
-    const namesToFetch = uniqueNames.filter(name => !cache[name]);
+    // Exclude exercises that are already cached or are generic terms.
+    const namesToFetch = uniqueNames.filter(name => !cache[name] && !GENERIC_TERMS.has(name));
+
+    const alreadyProcessedCount = uniqueNames.length - namesToFetch.length;
 
     if (namesToFetch.length === 0) {
-        return;
+        return { successCount: uniqueNames.length, failedCount: 0, failedNames: [] };
     }
 
     console.log(`Prefetching info for ${namesToFetch.length} exercises sequentially to respect API rate limits...`);
+
+    let successCount = 0;
+    const failedNames: string[] = [];
 
     // Process sequentially to avoid API rate limits (e.g., 15 RPM).
     for (const name of namesToFetch) {
         try {
             // Force refresh to update both local and server caches.
             await getExerciseInfo(name, true);
+            successCount++;
             // Add a delay to be cautious with the API's rate limit.
             await new Promise(resolve => setTimeout(resolve, 2000)); // 2-second delay
         } catch (e) {
             console.error(`Failed to prefetch exercise "${name}":`, e);
+            failedNames.push(name);
             // Don't let one failure stop the entire process.
         }
     }
     
     console.log("Sequential prefetching session complete.");
+    return {
+        successCount: alreadyProcessedCount + successCount,
+        failedCount: failedNames.length,
+        failedNames,
+    };
 }
 
 

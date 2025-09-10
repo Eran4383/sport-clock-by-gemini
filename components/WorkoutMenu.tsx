@@ -2,6 +2,8 @@
 
 
 
+
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useWorkout } from '../contexts/WorkoutContext';
 import { WorkoutPlan, WorkoutStep } from '../types';
@@ -874,7 +876,8 @@ const PlanList: React.FC<{
   const [isImportTextVisible, setIsImportTextVisible] = useState(false);
   const [sharingPlan, setSharingPlan] = useState<WorkoutPlan | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [refreshStatus, setRefreshStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [refreshStatus, setRefreshStatus] = useState<'idle' | 'loading' | 'success' | 'partial' | 'error'>('idle');
+  const [refreshFeedback, setRefreshFeedback] = useState<string | null>(null);
   const [isWarmupSettingsExpanded, setIsWarmupSettingsExpanded] = useState(false);
   
   const planRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -900,25 +903,40 @@ const PlanList: React.FC<{
 
     setIsRefreshing(true);
     setRefreshStatus('loading');
+    setRefreshFeedback(null);
     const allExerciseNames = plans.flatMap(plan => plan.steps)
                                   .filter(step => step.type === 'exercise')
                                   .map(step => getBaseExerciseName(step.name));
-    const uniqueNames = [...new Set(allExerciseNames)];
     
-    if (uniqueNames.length > 0) {
-        await prefetchExercises(uniqueNames);
-    }
+    const result = await prefetchExercises(allExerciseNames);
     
     setIsRefreshing(false);
-    setRefreshStatus('success');
-    setTimeout(() => setRefreshStatus('idle'), 3000); // Reset icon after a few seconds
+
+    if (result.failedCount === 0) {
+        setRefreshStatus('success');
+        setRefreshFeedback('All exercises up to date!');
+    } else if (result.failedCount > 0 && result.successCount > 0) {
+        setRefreshStatus('partial');
+        setRefreshFeedback(`Failed for: ${result.failedNames.join(', ')}`);
+    } else {
+        setRefreshStatus('error');
+        setRefreshFeedback(`Failed for: ${result.failedNames.join(', ')}`);
+    }
+    
+    setTimeout(() => {
+        setRefreshStatus('idle');
+        setRefreshFeedback(null);
+    }, 8000); // Give more time to read a potential error message
   };
   
   const getRefreshTooltip = () => {
+    if (refreshFeedback) return refreshFeedback;
+
     switch (refreshStatus) {
         case 'loading': return "Refreshing info in background...";
         case 'success': return "All exercise info is up to date!";
-        case 'error': return "Some exercise info is missing. Click to refresh.";
+        case 'partial':
+        case 'error': return "Some exercise info might be missing. Click to refresh.";
         case 'idle':
         default: return "Refresh all exercise info";
     }
@@ -1067,7 +1085,10 @@ const PlanList: React.FC<{
                     </svg>
                 ) : (
                     <svg xmlns="http://www.w3.org/2000/svg" className={`h-6 w-6 ${
-                        refreshStatus === 'success' ? 'text-green-400' : 'text-gray-400'
+                        refreshStatus === 'success' ? 'text-green-400' :
+                        refreshStatus === 'partial' ? 'text-yellow-400' :
+                        refreshStatus === 'error' ? 'text-red-400' :
+                        'text-gray-400'
                     }`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5" />
                       <path strokeLinecap="round" strokeLinejoin="round" d="M4 9a9 9 0 0114.13-5.23M20 15a9 9 0 01-14.13 5.23" />
