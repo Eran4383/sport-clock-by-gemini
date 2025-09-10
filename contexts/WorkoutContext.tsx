@@ -35,7 +35,7 @@ interface WorkoutContextType {
   startWorkout: (planIds: string[]) => void;
   commitStartWorkout: () => void;
   clearPreparingWorkout: () => void;
-  stopWorkout: (options: { completed: boolean; durationMs?: number; planName?: string; steps?: WorkoutStep[]; planIds?: string[] }) => void;
+  stopWorkout: (options: { completed: boolean; durationMs?: number; planName?: string; steps?: WorkoutStep[] }) => void;
   nextStep: () => void;
   previousStep: () => void;
   pauseWorkout: () => void;
@@ -221,7 +221,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
       setPlans(reorderedPlans);
   }, []);
   
-  const logWorkoutCompletion = useCallback((planName: string, durationMs: number, steps: WorkoutStep[], planIds: string[]) => {
+  const logWorkoutCompletion = useCallback((planName: string, durationMs: number, steps: WorkoutStep[]) => {
     const now = new Date();
     const newEntry: WorkoutLogEntry = {
         id: now.toISOString(),
@@ -229,9 +229,8 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         planName: planName,
         durationSeconds: Math.round(durationMs / 1000),
         steps: steps,
-        planIds: planIds,
     };
-    setWorkoutHistory(prev => [newEntry, ...prev]);
+    setWorkoutHistory(prev => [...prev, newEntry]);
   }, []);
   
   const clearWorkoutHistory = useCallback(() => {
@@ -269,13 +268,12 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     
     // Warm-up logic
     if (settings.isWarmupEnabled && settings.warmupSteps.length > 0) {
-        // Filter out disabled steps. A step is enabled if isEnabled is true or undefined.
-        const enabledWarmupSteps = settings.warmupSteps.filter(step => step.isEnabled !== false);
-        const markedWarmupSteps = enabledWarmupSteps.map(step => ({ ...step, isWarmup: true }));
+        // Mark warm-up steps
+        const markedWarmupSteps = settings.warmupSteps.map(step => ({ ...step, isWarmup: true }));
         allSteps.push(...markedWarmupSteps);
 
-        // Add rest after warm-up only if there were active warm-up steps
-        if (enabledWarmupSteps.length > 0 && settings.restAfterWarmupDuration > 0) {
+        // Add rest after warm-up
+        if (settings.restAfterWarmupDuration > 0) {
             const restStep: WorkoutStep = {
                 id: `rest_after_warmup_${Date.now()}`,
                 name: 'מנוחה לפני אימון',
@@ -309,9 +307,9 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     setPlansToStart([]);
   }, [plans, plansToStart, settings]);
 
-  const stopWorkout = useCallback(({ completed, durationMs, planName, steps, planIds }: { completed: boolean; durationMs?: number; planName?: string; steps?: WorkoutStep[]; planIds?: string[] }) => {
-    if (completed && durationMs !== undefined && planName && steps && planIds) {
-        logWorkoutCompletion(planName, durationMs, steps, planIds);
+  const stopWorkout = useCallback(({ completed, durationMs, planName, steps }: { completed: boolean; durationMs?: number; planName?: string; steps?: WorkoutStep[] }) => {
+    if (completed && durationMs !== undefined && planName && steps) {
+        logWorkoutCompletion(planName, durationMs, steps);
     }
     setActiveWorkout(null);
     setIsWorkoutPaused(false);
@@ -344,13 +342,19 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
       if (!prev) return null;
       const nextIndex = prev.currentStepIndex + 1;
       if (nextIndex >= prev.plan.steps.length) {
-        // Workout finished - App.tsx will handle the final logging. This just signals the end.
+        // Workout finished
+        stopWorkout({ 
+            completed: true, 
+            durationMs: -1, // Duration is handled by App.tsx which has the stopwatch
+            planName: prev.plan.name,
+            steps: prev.plan.steps
+        });
         return null;
       }
       return { ...prev, currentStepIndex: nextIndex };
     });
     setIsCountdownPaused(false);
-  }, []);
+  }, [stopWorkout]);
   
   const previousStep = useCallback(() => {
     setActiveWorkout(prev => {
