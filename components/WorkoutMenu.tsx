@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useWorkout } from '../contexts/WorkoutContext';
 import { WorkoutPlan, WorkoutStep } from '../types';
@@ -7,6 +8,8 @@ import { HoverNumberInput } from './HoverNumberInput';
 import { getExerciseInfo, ExerciseInfo, prefetchExercises, generateWorkoutPlan } from '../services/geminiService';
 import { WorkoutLog } from './WorkoutLog';
 import { getBaseExerciseName, generateCircuitSteps } from '../utils/workout';
+
+const EDITOR_STORAGE_KEY = 'sportsClockPlanEditorDraft';
 
 const ExerciseInfoModal: React.FC<{
   exerciseName: string | null;
@@ -447,6 +450,7 @@ const PlanListItem: React.FC<{
       resumeStepCountdown, 
       restartCurrentStep, 
       savePlan,
+      workoutHistory,
   } = useWorkout();
   const [isExpanded, setIsExpanded] = useState(false);
   const exerciseColorMap = useExerciseColorMap(plan.steps);
@@ -458,6 +462,32 @@ const PlanListItem: React.FC<{
   };
 
   const isActive = activeWorkout?.sourcePlanIds.includes(plan.id) ?? false;
+  
+  const lastPerformedText = useMemo(() => {
+    const relevantLogs = workoutHistory
+        .filter(log => log.planIds?.includes(plan.id))
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    
+    if (relevantLogs.length === 0) return null;
+
+    const lastPerformed = new Date(relevantLogs[0].date);
+    
+    const now = new Date();
+    // Reset time part for accurate day difference calculation
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const lastDay = new Date(lastPerformed.getFullYear(), lastPerformed.getMonth(), lastPerformed.getDate());
+
+    const diffTime = today.getTime() - lastDay.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) return "בוצע היום";
+    if (diffDays === 1) return "בוצע אתמול";
+    if (diffDays < 7) return `בוצע לפני ${diffDays} ימים`;
+    if (diffDays < 30) return `בוצע לפני ${Math.floor(diffDays/7)} שבועות`;
+
+    return `בוצע לאחרונה: ${lastPerformed.toLocaleDateString('he-IL')}`;
+  }, [workoutHistory, plan.id]);
+
 
   useEffect(() => {
     // Automatically expand the active workout plan
@@ -594,6 +624,9 @@ const PlanListItem: React.FC<{
                   <p className="text-sm text-gray-400">
                     {plan.steps.length} steps, Total: {getTotalDuration(plan)}
                   </p>
+                  {lastPerformedText && (
+                      <p className="text-xs text-gray-500 mt-1 italic">{lastPerformedText}</p>
+                  )}
               </div>
             </div>
           </div>
@@ -1076,22 +1109,36 @@ const PlanList: React.FC<{
                         <div className="w-11 h-6 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
                     </label>
                 </div>
-                 {isWarmupSettingsExpanded && settings.isWarmupEnabled && (
+                 {isWarmupSettingsExpanded && (
                      <div className="mt-3 pt-3 border-t border-gray-600 animate-fadeIn" style={{ animationDuration: '0.3s'}}>
-                         <label htmlFor="warmup-rest" className="text-sm text-gray-400">Rest after warm-up (seconds)</label>
-                         <HoverNumberInput
-                             id="warmup-rest"
-                             value={settings.restAfterWarmupDuration}
-                             onChange={(val) => updateSettings({ restAfterWarmupDuration: val })}
-                             min={0}
-                             className="w-full mt-1 bg-gray-600 p-2 rounded-md text-center"
-                         />
+                        {settings.isWarmupEnabled && (
+                            <>
+                                <label htmlFor="warmup-rest" className="text-sm text-gray-400">Rest after warm-up (seconds)</label>
+                                <HoverNumberInput
+                                    id="warmup-rest"
+                                    value={settings.restAfterWarmupDuration}
+                                    onChange={(val) => updateSettings({ restAfterWarmupDuration: val })}
+                                    min={0}
+                                    className="w-full mt-1 bg-gray-600 p-2 rounded-md text-center"
+                                />
+                            </>
+                        )}
                          {settings.warmupSteps.length > 0 && (
                             <div className="mt-4">
                                 <h4 className="text-sm font-semibold text-gray-300 mb-2">Steps:</h4>
                                 <ol className="text-gray-300 space-y-1 text-sm">
                                     {settings.warmupSteps.map((step, index) => (
-                                        <li key={index} className="flex items-center gap-2 p-1 -m-1 rounded hover:bg-gray-600/50" title={step.name}>
+                                        <li key={index} 
+                                            className={`flex items-center gap-2 p-1 -m-1 rounded transition-opacity ${step.enabled === false ? 'opacity-50' : ''} ${step.type === 'exercise' ? 'hover:bg-gray-600/50' : ''}`}
+                                            title={step.name}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                if (step.type === 'exercise') {
+                                                    onInspectExercise(`${step.name} warmup`);
+                                                }
+                                            }}
+                                            style={{ cursor: step.type === 'exercise' ? 'pointer' : 'default' }}
+                                        >
                                             <span className={`w-1.5 h-4 rounded ${step.type === 'exercise' ? 'bg-orange-400' : 'bg-transparent'}`}></span>
                                             <span className="truncate">{step.name} - <span className="text-gray-400 font-normal">{step.isRepBased ? `${step.reps} reps` : `${step.duration}s`}</span></span>
                                         </li>
@@ -1216,7 +1263,8 @@ const EditableStepItem: React.FC<{
     color?: string;
     settings: ReturnType<typeof useSettings>['settings'];
     updateSettings: ReturnType<typeof useSettings>['updateSettings'];
-}> = ({ step, index, updateStep, removeStep, isExpanded, onToggleExpand, color, settings, updateSettings }) => {
+    isWarmupEditor?: boolean;
+}> = ({ step, index, updateStep, removeStep, isExpanded, onToggleExpand, color, settings, updateSettings, isWarmupEditor = false }) => {
     
     const PinButton: React.FC<{onClick: () => void; isActive: boolean; title: string}> = ({ onClick, isActive, title }) => (
         <button onClick={onClick} title={title} className={`p-1 rounded-full ${isActive ? 'text-blue-400' : 'text-gray-500 hover:text-white'}`}>
@@ -1241,14 +1289,25 @@ const EditableStepItem: React.FC<{
                 </button>
             )}
             <div className="p-3 flex items-center gap-2 cursor-pointer" onClick={onToggleExpand}>
+                {isWarmupEditor && (
+                    <label onClick={e => e.stopPropagation()} className="relative inline-flex items-center cursor-pointer mr-2 shrink-0">
+                        <input 
+                            type="checkbox" 
+                            className="sr-only peer" 
+                            checked={step.enabled !== false}
+                            onChange={e => updateStep(index, { enabled: e.target.checked })}
+                        />
+                        <div className="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
+                    </label>
+                )}
                 <span className="text-gray-400 font-bold">#{index + 1}</span>
-                <div className="flex-grow">
-                    <p className="font-semibold text-white truncate" title={step.name}>{step.name}</p>
-                    <p className="text-sm text-gray-400">
+                <div className="flex-grow min-w-0">
+                    <p className={`font-semibold text-white truncate transition-opacity ${step.enabled === false ? 'opacity-50' : ''}`} title={step.name}>{step.name}</p>
+                    <p className={`text-sm text-gray-400 transition-opacity ${step.enabled === false ? 'opacity-50' : ''}`}>
                         {step.type === 'rest' ? 'Rest' : (step.isRepBased ? `${step.reps} reps` : `${step.duration}s`)}
                     </p>
                 </div>
-                <button className="p-2 text-gray-400 hover:text-white">
+                <button className="p-2 text-gray-400 hover:text-white shrink-0">
                     <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor">
                       <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
                     </svg>
@@ -1448,8 +1507,6 @@ const PlanEditor: React.FC<{
     // Drag and Drop state
     const [draggedGroupIndex, setDraggedGroupIndex] = useState<number | null>(null);
     const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
-
-    const EDITOR_STORAGE_KEY = 'sportsClockPlanEditorDraft';
 
     useEffect(() => {
         const savedDraft = localStorage.getItem(EDITOR_STORAGE_KEY);
@@ -1863,6 +1920,7 @@ const PlanEditor: React.FC<{
                                        color={color}
                                        settings={settings}
                                        updateSettings={updateSettings}
+                                       isWarmupEditor={isWarmupEditor}
                                    />
                                );
                            }
@@ -2207,11 +2265,13 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
   }, [isOpen]);
   
   const handleCreateNew = () => {
+      localStorage.removeItem(EDITOR_STORAGE_KEY);
       setEditingPlan(null);
       setView('editor');
   };
 
   const handleSelectPlan = (plan: WorkoutPlan | string) => {
+      localStorage.removeItem(EDITOR_STORAGE_KEY);
       setEditingPlan(plan);
       setView('editor');
   };

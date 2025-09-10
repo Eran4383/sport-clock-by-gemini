@@ -333,7 +333,8 @@ const AppContent: React.FC = () => {
             completed: true,
             durationMs: stopwatch.time,
             planName: activeWorkout?.plan.name || 'Unnamed Workout',
-            steps: activeWorkout?.plan.steps
+            steps: activeWorkout?.plan.steps,
+            planIds: activeWorkout?.sourcePlanIds
         });
         setWorkoutCompleted(true);
       }

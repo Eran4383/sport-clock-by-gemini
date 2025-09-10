@@ -35,7 +35,7 @@ interface WorkoutContextType {
   startWorkout: (planIds: string[]) => void;
   commitStartWorkout: () => void;
   clearPreparingWorkout: () => void;
-  stopWorkout: (options: { completed: boolean; durationMs?: number; planName?: string; steps?: WorkoutStep[] }) => void;
+  stopWorkout: (options: { completed: boolean; durationMs?: number; planName?: string; steps?: WorkoutStep[], planIds?: string[] }) => void;
   nextStep: () => void;
   previousStep: () => void;
   pauseWorkout: () => void;
@@ -221,7 +221,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
       setPlans(reorderedPlans);
   }, []);
   
-  const logWorkoutCompletion = useCallback((planName: string, durationMs: number, steps: WorkoutStep[]) => {
+  const logWorkoutCompletion = useCallback((planName: string, durationMs: number, steps: WorkoutStep[], planIds: string[]) => {
     const now = new Date();
     const newEntry: WorkoutLogEntry = {
         id: now.toISOString(),
@@ -229,8 +229,9 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         planName: planName,
         durationSeconds: Math.round(durationMs / 1000),
         steps: steps,
+        planIds: planIds,
     };
-    setWorkoutHistory(prev => [...prev, newEntry]);
+    setWorkoutHistory(prev => [newEntry, ...prev]);
   }, []);
   
   const clearWorkoutHistory = useCallback(() => {
@@ -268,12 +269,13 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     
     // Warm-up logic
     if (settings.isWarmupEnabled && settings.warmupSteps.length > 0) {
+        const enabledWarmupSteps = settings.warmupSteps.filter(step => step.enabled !== false);
         // Mark warm-up steps
-        const markedWarmupSteps = settings.warmupSteps.map(step => ({ ...step, isWarmup: true }));
+        const markedWarmupSteps = enabledWarmupSteps.map(step => ({ ...step, isWarmup: true }));
         allSteps.push(...markedWarmupSteps);
 
         // Add rest after warm-up
-        if (settings.restAfterWarmupDuration > 0) {
+        if (settings.restAfterWarmupDuration > 0 && markedWarmupSteps.length > 0) {
             const restStep: WorkoutStep = {
                 id: `rest_after_warmup_${Date.now()}`,
                 name: 'מנוחה לפני אימון',
@@ -307,9 +309,9 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     setPlansToStart([]);
   }, [plans, plansToStart, settings]);
 
-  const stopWorkout = useCallback(({ completed, durationMs, planName, steps }: { completed: boolean; durationMs?: number; planName?: string; steps?: WorkoutStep[] }) => {
-    if (completed && durationMs !== undefined && planName && steps) {
-        logWorkoutCompletion(planName, durationMs, steps);
+  const stopWorkout = useCallback(({ completed, durationMs, planName, steps, planIds }: { completed: boolean; durationMs?: number; planName?: string; steps?: WorkoutStep[], planIds?: string[] }) => {
+    if (completed && durationMs !== undefined && durationMs > -1 && planName && steps && planIds) {
+        logWorkoutCompletion(planName, durationMs, steps, planIds);
     }
     setActiveWorkout(null);
     setIsWorkoutPaused(false);
@@ -347,7 +349,8 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
             completed: true, 
             durationMs: -1, // Duration is handled by App.tsx which has the stopwatch
             planName: prev.plan.name,
-            steps: prev.plan.steps
+            steps: prev.plan.steps,
+            planIds: prev.sourcePlanIds
         });
         return null;
       }
