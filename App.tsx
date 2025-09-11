@@ -365,8 +365,8 @@ const AppContent: React.FC = () => {
   } as React.CSSProperties;
 
   // Logic for background and text color
-  let bgColor = settings.backgroundColor;
-  let textColor = 'white'; // Default
+  let bgColor: string;
+  let textColor: 'white' | 'black';
 
   // Heuristic to decide text color based on the selected background
   const hexToRgb = (hex: string) => {
@@ -378,21 +378,30 @@ const AppContent: React.FC = () => {
     } : null;
   }
   
-  const rgb = hexToRgb(settings.backgroundColor);
-  if (rgb) {
-      // Formula for perceived brightness
-      const brightness = Math.round(((rgb.r * 299) + (rgb.g * 587) + (rgb.b * 114)) / 1000);
-      if (brightness > 125) {
-          textColor = 'black';
+  const getTextColorForBg = (bgHex: string): 'white' | 'black' => {
+      const rgb = hexToRgb(bgHex);
+      if (rgb) {
+          // Formula for perceived brightness
+          const brightness = Math.round(((rgb.r * 299) + (rgb.g * 587) + (rgb.b * 114)) / 1000);
+          return brightness > 125 ? 'black' : 'white';
       }
-  }
+      return 'white'; // Default for invalid colors
+  };
+  
+  const isResting = (isWorkoutActive && currentStep.type === 'rest') || (!isWorkoutActive && countdown.isResting && settings.showRestTitleOnDefaultCountdown);
 
   if (workoutCompleted) {
-    bgColor = '#6ee7b7'; // A light green color
+    bgColor = '#6ee7b7'; // A light green color for completion
     textColor = 'black';
+  } else if (isResting) {
+    bgColor = settings.restBackgroundColor;
+    textColor = getTextColorForBg(settings.restBackgroundColor);
   } else if (isPastHalfway) {
     bgColor = settings.halfwayColor;
-    textColor = 'white'; // Assume halfway color is intense and needs white text
+    textColor = getTextColorForBg(settings.halfwayColor);
+  } else {
+    bgColor = settings.backgroundColor;
+    textColor = getTextColorForBg(settings.backgroundColor);
   }
   
   dynamicStyles.backgroundColor = bgColor;
@@ -438,17 +447,41 @@ const AppContent: React.FC = () => {
       <main onDoubleClick={toggleFullScreen} className="flex-grow flex flex-col items-center justify-center w-full max-w-4xl mx-auto">
         {/* TOP TITLE CONTAINER - reserves space to prevent layout shift */}
         <div className="text-center mb-2 h-28 flex items-end justify-center">
-            {workoutCompleted && <p className="text-8xl font-bold">סוף האימון</p>}
-            {isWarmupStep && !workoutCompleted && <p className="text-8xl font-bold">חימום</p>}
-            {!isWarmupStep && !workoutCompleted && (
-                ( (isWorkoutActive && currentStep.type === 'rest') || (!isWorkoutActive && countdown.isResting && settings.showRestTitleOnDefaultCountdown) ) && (
-                <p className="text-8xl font-bold">
-                    { (isWorkoutActive && isWorkoutPaused) ? 'PAUSED' 
-                    : (isWorkoutActive && isCountdownPaused) ? 'מנוחה (Paused)' 
-                    : 'מנוחה'}
-                </p>
-                )
-            )}
+            {(() => {
+                if (workoutCompleted) {
+                    return <p className="text-8xl font-bold" dir="rtl">סוף האימון</p>;
+                }
+
+                if (isWorkoutActive && currentStep) {
+                    // Special title for the post-warmup rest
+                    if (currentStep.name === 'מנוחה לפני אימון') {
+                        return <p className="text-8xl font-bold" dir="rtl">האימון מתחיל!</p>;
+                    }
+                    
+                    // For any rest step (during warm-up or main workout)
+                    if (currentStep.type === 'rest') {
+                        return (
+                            <p className="text-8xl font-bold" dir="rtl">
+                                {isWorkoutPaused ? 'PAUSED'
+                                : isCountdownPaused ? 'מנוחה (Paused)'
+                                : 'מנוחה'}
+                            </p>
+                        );
+                    }
+                    
+                    // Title for any warm-up EXERCISE step
+                    if (isWarmupStep) { // at this point, currentStep.type is not 'rest'
+                        return <p className="text-8xl font-bold" dir="rtl">חימום</p>;
+                    }
+                }
+                
+                // Title for the default countdown rest (no workout active)
+                if (!isWorkoutActive && countdown.isResting && settings.showRestTitleOnDefaultCountdown) {
+                    return <p className="text-8xl font-bold" dir="rtl">מנוחה</p>;
+                }
+
+                return null; // No title for other cases (e.g., active exercise)
+            })()}
         </div>
 
         {settings.showCountdown && (

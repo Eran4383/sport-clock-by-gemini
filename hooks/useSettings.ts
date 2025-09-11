@@ -27,6 +27,7 @@ export interface Settings {
   showNextExercise: boolean;
   backgroundColor: string;
   halfwayColor: string;
+  restBackgroundColor: string;
   showRestTitleOnDefaultCountdown: boolean;
   preWorkoutCountdownDuration: number;
   settingsCategoryOrder: string[];
@@ -59,6 +60,7 @@ const defaultSettings: Settings = {
   showNextExercise: true,
   backgroundColor: '#000000',
   halfwayColor: '#FF0000',
+  restBackgroundColor: '#FFFFFF',
   showRestTitleOnDefaultCountdown: true,
   preWorkoutCountdownDuration: 10,
   settingsCategoryOrder: ['sounds', 'countdown', 'stopwatch', 'workoutDisplay', 'displaySizes', 'displayColors'],

@@ -1289,7 +1289,7 @@ const EditableStepItem: React.FC<{
                 </button>
             )}
             <div className="p-3 flex items-center gap-2 cursor-pointer" onClick={onToggleExpand}>
-                {isWarmupEditor && (
+                {isWarmupEditor && step.type === 'exercise' && (
                     <label onClick={e => e.stopPropagation()} className="relative inline-flex items-center cursor-pointer mr-2 shrink-0">
                         <input 
                             type="checkbox" 

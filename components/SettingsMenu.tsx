@@ -422,6 +422,10 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
             <label htmlFor="halfwayColor" className="text-white">Halfway Background</label>
             <input type="color" id="halfwayColor" value={settings.halfwayColor} onChange={(e) => updateSettings({ halfwayColor: e.target.value })} className="w-10 h-10 p-0 bg-transparent border-none rounded-md cursor-pointer" title="Set background color for second half of countdown" />
           </div>
+          <div className="flex items-center justify-between">
+            <label htmlFor="restBackgroundColor" className="text-white">Rest Background</label>
+            <input type="color" id="restBackgroundColor" value={settings.restBackgroundColor} onChange={(e) => updateSettings({ restBackgroundColor: e.target.value })} className="w-10 h-10 p-0 bg-transparent border-none rounded-md cursor-pointer" title="Set background color for rest periods" />
+          </div>
         </div>
       )
     }
