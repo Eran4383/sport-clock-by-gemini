@@ -12,7 +12,7 @@ import { PreWorkoutCountdown } from './components/PreWorkoutCountdown';
 import { useStopwatch } from './hooks/useStopwatch';
 import { useCountdown } from './hooks/useCountdown';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
-import { WorkoutProvider, useWorkout } from './contexts/WorkoutContext';
+import { WorkoutProvider, useWorkout, ActiveWorkout } from './contexts/WorkoutContext';
 import { playNotificationSound } from './utils/sound';
 import { ImportNotification } from './components/ImportNotification';
 
@@ -41,6 +41,7 @@ const AppContent: React.FC = () => {
   
   const stopwatch = useStopwatch();
   const wasWorkoutActive = useRef(false);
+  const lastActiveWorkoutRef = useRef<ActiveWorkout | null>(null);
   const [workoutCompleted, setWorkoutCompleted] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isWorkoutOpen, setIsWorkoutOpen] = useState(false);
@@ -61,6 +62,13 @@ const AppContent: React.FC = () => {
   );
 
   const isPastHalfway = settings.showCountdown && countdown.isRunning && countdown.timeLeft <= countdownDuration / 2 && countdown.timeLeft > 0;
+
+  // This effect will always keep the ref up-to-date with the latest non-null activeWorkout
+  useEffect(() => {
+    if (activeWorkout) {
+        lastActiveWorkoutRef.current = activeWorkout;
+    }
+  }, [activeWorkout]);
 
   useEffect(() => {
     // This just sets the "out of bounds" color for overscroll etc.
@@ -329,14 +337,21 @@ const AppContent: React.FC = () => {
         // On workout end
         stopwatch.stop();
         countdown.stop();
-        contextStopWorkout({
-            completed: true,
-            durationMs: stopwatch.time,
-            planName: activeWorkout?.plan.name || 'Unnamed Workout',
-            steps: activeWorkout?.plan.steps,
-            planIds: activeWorkout?.sourcePlanIds
-        });
-        setWorkoutCompleted(true);
+
+        const finishedWorkout = lastActiveWorkoutRef.current;
+        
+        // BUG FIX: Added a guard to ensure workout data exists before logging.
+        if (finishedWorkout) {
+            contextStopWorkout({
+                completed: true,
+                durationMs: stopwatch.time,
+                planName: finishedWorkout.plan.name || 'Unnamed Workout',
+                steps: finishedWorkout.plan.steps,
+                planIds: finishedWorkout.sourcePlanIds
+            });
+            setWorkoutCompleted(true);
+            lastActiveWorkoutRef.current = null; // Clean up the ref
+        }
       }
       wasWorkoutActive.current = false;
     }

@@ -4,7 +4,7 @@ import { prefetchExercises } from '../services/geminiService';
 import { getBaseExerciseName, generateCircuitSteps, processAndFormatAiSteps } from '../utils/workout';
 import { useSettings } from './SettingsContext';
 
-interface ActiveWorkout {
+export interface ActiveWorkout {
   plan: WorkoutPlan; // This can be a "meta-plan" if multiple plans are selected
   currentStepIndex: number;
   sourcePlanIds: string[];
@@ -344,20 +344,14 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
       if (!prev) return null;
       const nextIndex = prev.currentStepIndex + 1;
       if (nextIndex >= prev.plan.steps.length) {
-        // Workout finished
-        stopWorkout({ 
-            completed: true, 
-            durationMs: -1, // Duration is handled by App.tsx which has the stopwatch
-            planName: prev.plan.name,
-            steps: prev.plan.steps,
-            planIds: prev.sourcePlanIds
-        });
+        // Workout finished. Simply return null. App.tsx will detect this state change
+        // and call stopWorkout with the correct duration.
         return null;
       }
       return { ...prev, currentStepIndex: nextIndex };
     });
     setIsCountdownPaused(false);
-  }, [stopWorkout]);
+  }, []);
   
   const previousStep = useCallback(() => {
     setActiveWorkout(prev => {
