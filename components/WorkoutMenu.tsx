@@ -2,6 +2,8 @@
 
 
 
+
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useWorkout } from '../contexts/WorkoutContext';
 import { WorkoutPlan, WorkoutStep } from '../types';
@@ -625,31 +627,35 @@ const PlanListItem: React.FC<{
                     {plan.isSmartPlan && <span title="AI Generated Plan">✨</span>}
                     <h3 className="text-xl font-semibold text-white break-words" title={plan.name}>{plan.name}</h3>
                   </div>
-                  <p className="text-sm text-gray-400 truncate">
-                    {plan.steps.length} steps, Total: {getTotalDuration(plan)}
+                  <div className="text-sm text-gray-400 flex items-center">
+                    <span className="truncate">
+                        {plan.steps.length} steps, Total: {getTotalDuration(plan)}
+                    </span>
                     {lastPerformedText && (
-                      <>
-                        <span className="mx-2 text-gray-500">|</span>
-                        {lastPerformedText}
-                      </>
+                    <>
+                        <span className="mx-2 text-gray-500 shrink-0">|</span>
+                        <span className="flex items-center gap-1 shrink-0 whitespace-nowrap">
+                            {lastPerformedText}
+                            <button
+                                onClick={(e) => { e.stopPropagation(); onShowInfo(plan); }}
+                                className="text-gray-400 hover:text-white"
+                                aria-label="Show workout statistics"
+                                title="Show Stats"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                                </svg>
+                            </button>
+                        </span>
+                    </>
                     )}
-                  </p>
+                  </div>
               </div>
             </div>
           </div>
           
           <div className="flex gap-1 items-center mt-3 justify-end relative">
                {confirmationMessage && <span className="absolute -top-8 right-0 bg-gray-900 text-white text-xs px-2 py-1 rounded">{confirmationMessage}</span>}
-               <button
-                  onClick={(e) => { e.stopPropagation(); onShowInfo(plan); }}
-                  className="p-2 text-gray-300 hover:text-white hover:bg-gray-600/50 rounded-full"
-                  aria-label="Show workout statistics"
-                  title="Show Stats"
-              >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                  </svg>
-              </button>
                <button
                   onClick={handleToggleLock}
                   className={`p-2 hover:bg-gray-600/50 rounded-full disabled:opacity-50 disabled:cursor-not-allowed ${plan.isLocked ? 'text-yellow-400' : 'text-gray-300'}`}
