@@ -6,7 +6,7 @@ import { useSettings } from './SettingsContext';
 import { getLocalPlans, saveLocalPlans, getLocalHistory, saveLocalHistory } from '../services/storageService';
 import { useAuth } from './AuthContext';
 import { db } from '../services/firebase';
-import { collection, doc, writeBatch, query, orderBy, setDoc, deleteDoc, onSnapshot, Unsubscribe } from 'firebase/firestore';
+import { collection, doc, writeBatch, query, orderBy, setDoc, deleteDoc, onSnapshot, Unsubscribe, getDocs } from 'firebase/firestore';
 
 export interface ActiveWorkout {
   plan: WorkoutPlan; // This can be a "meta-plan" if multiple plans are selected
@@ -60,7 +60,7 @@ const WorkoutContext = createContext<WorkoutContextType | undefined>(undefined);
 export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { settings } = useSettings();
   const { user, authStatus } = useAuth();
-  const [plans, setPlans] = useState<WorkoutPlan[]>(getLocalPlans);
+  const [plans, setPlans] = useState<WorkoutPlan[]>([]);
   const [activeWorkout, setActiveWorkout] = useState<ActiveWorkout | null>(null);
   const [isWorkoutPaused, setIsWorkoutPaused] = useState(false);
   const [isCountdownPaused, setIsCountdownPaused] = useState(false);
@@ -68,12 +68,8 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [workoutHistory, setWorkoutHistory] = useState<WorkoutLogEntry[]>(getLocalHistory);
   const [plansToStart, setPlansToStart] = useState<string[]>([]);
   const [importNotification, setImportNotification] = useState<ImportNotificationData | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const firestoreListener = useRef<Unsubscribe | null>(null);
+  const [isSyncing, setIsSyncing] = useState(true); // Start as true
   
-  // This ref is crucial to distinguish the FIRST data snapshot from subsequent real-time updates.
-  const isInitialSnapshotProcessed = useRef(false);
-
   // State for handling guest data on first login
   const [showGuestMergeModal, setShowGuestMergeModal] = useState(false);
   const guestPlansToMerge = useRef<WorkoutPlan[]>([]);
@@ -81,16 +77,68 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
   const isPreparingWorkout = plansToStart.length > 0;
 
   const clearImportNotification = useCallback(() => setImportNotification(null), []);
-
-  useEffect(() => {
-    if (authStatus === 'unauthenticated') {
-        saveLocalPlans(plans);
-    }
-  }, [plans, authStatus]);
-
+  
+  // Save history to local storage whenever it changes
   useEffect(() => {
     saveLocalHistory(workoutHistory);
   }, [workoutHistory]);
+
+
+  // Core Data Synchronization Logic
+  useEffect(() => {
+    // This function runs when the user's authentication status changes.
+    let unsubscribe: Unsubscribe | undefined;
+
+    const syncData = async () => {
+      // 1. User is logged out.
+      if (authStatus === 'unauthenticated') {
+        setPlans(getLocalPlans());
+        setIsSyncing(false);
+        return;
+      }
+
+      // 2. User is logged in.
+      if (authStatus === 'authenticated' && user) {
+        setIsSyncing(true);
+        const plansCollection = collection(db, 'users', user.uid, 'plans');
+        
+        // Check for guest data merge scenario *before* setting up the listener.
+        const remoteSnapshot = await getDocs(query(plansCollection, orderBy('order', 'asc')));
+        const remotePlans = remoteSnapshot.docs.map(doc => doc.data() as WorkoutPlan);
+
+        if (remotePlans.length === 0) {
+            const localPlans = getLocalPlans();
+            if (localPlans.length > 0) {
+                guestPlansToMerge.current = localPlans;
+                setShowGuestMergeModal(true);
+                // Don't set state yet; wait for user action.
+                setIsSyncing(false); 
+            }
+        }
+        
+        // Set up the real-time listener. This will now be the single source of truth.
+        unsubscribe = onSnapshot(query(plansCollection, orderBy('order', 'asc')), (snapshot) => {
+            const currentRemotePlans = snapshot.docs.map(doc => doc.data() as WorkoutPlan);
+            setPlans(currentRemotePlans);
+            saveLocalPlans(currentRemotePlans); // Keep local storage in sync for offline/logout.
+            setIsSyncing(false);
+        }, (error) => {
+            console.error("Firestore listener error:", error);
+            setIsSyncing(false);
+        });
+      }
+    };
+    
+    syncData();
+
+    // Cleanup: When the component unmounts or auth status changes, kill the listener.
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
+  }, [user, authStatus]);
+
 
   const handleMergeGuestData = useCallback(async () => {
     if (!user || guestPlansToMerge.current.length === 0) return;
@@ -106,113 +154,36 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
             batch.set(planRef, plan);
         });
         await batch.commit();
-        // The onSnapshot listener will automatically pick up this change and update the UI.
+        // The onSnapshot listener will automatically receive the update and set the state.
+        // No need to call setPlans() here.
     } catch (error) {
         console.error("Failed to merge guest data:", error);
-        setIsSyncing(false);
+        // If it fails, the UI will remain as it was.
     } finally {
         guestPlansToMerge.current = [];
+        // No need for setIsSyncing(false) as the listener will do it.
     }
   }, [user]);
 
   const handleDiscardGuestData = useCallback(() => {
     guestPlansToMerge.current = [];
     setShowGuestMergeModal(false);
-    saveLocalPlans([]); // Clear out the old guest data
-    setPlans([]); // Optimistically clear the UI. The listener will confirm with an empty state.
+    // Clear local guest data. The listener for the (empty) remote state is already active
+    // so the UI will correctly show an empty list.
+    saveLocalPlans([]); 
   }, []);
 
-  // This is the core logic for data synchronization.
-  useEffect(() => {
-    // If there's an active listener, tear it down first.
-    if (firestoreListener.current) {
-        firestoreListener.current();
-        firestoreListener.current = null;
-    }
-    // Crucially, reset the processing flag whenever the user's auth state changes.
-    isInitialSnapshotProcessed.current = false;
-
-    // Case 1: User is not logged in.
-    if (authStatus !== 'authenticated' || !user) {
-        // If they are explicitly logged out, load their local (guest) plans.
-        if (authStatus === 'unauthenticated') {
-            setPlans(getLocalPlans());
-        }
-        setIsSyncing(false);
-        return; // Stop here if there's no authenticated user.
-    }
-    
-    // Case 2: User is authenticated. Set up the real-time listener.
-    setIsSyncing(true);
-    const plansCollection = collection(db, 'users', user.uid, 'plans');
-    const q = query(plansCollection, orderBy('order', 'asc'));
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-        const remotePlans = snapshot.docs.map(doc => doc.data() as WorkoutPlan);
-
-        // This block runs only ONCE per login, on the very first data receive.
-        if (!isInitialSnapshotProcessed.current) {
-            isInitialSnapshotProcessed.current = true;
-            
-            if (remotePlans.length === 0) {
-                // Scenario: Firestore is empty for this user (they are new).
-                const localPlans = getLocalPlans();
-                if (localPlans.length > 0) {
-                    // They have "guest" plans on this device. Ask them what to do.
-                    guestPlansToMerge.current = localPlans;
-                    setShowGuestMergeModal(true);
-                } else {
-                    // New user with no guest data. Their state is empty.
-                    setPlans([]);
-                }
-            } else {
-                // Scenario: Existing user with data in the cloud. Cloud is the source of truth.
-                setPlans(remotePlans);
-                saveLocalPlans(remotePlans); // Overwrite local storage to match the cloud.
-            }
-            // The initial sync is now complete.
-            setIsSyncing(false);
-        } else {
-            // This block runs for all subsequent updates (e.g., from another device).
-            // The cloud is always the source of truth. Update the state.
-            setPlans(remotePlans);
-            saveLocalPlans(remotePlans);
-        }
-
-    }, (error) => {
-        console.error("Firestore listener error:", error);
-        setIsSyncing(false);
-    });
-
-    // Store the unsubscribe function to be called on cleanup.
-    firestoreListener.current = unsubscribe;
-
-    // Cleanup function: runs when the component unmounts or user/authStatus changes.
-    return () => {
-        if (firestoreListener.current) {
-            firestoreListener.current();
-            firestoreListener.current = null;
-        }
-        isInitialSnapshotProcessed.current = false;
-    };
-  }, [user, authStatus]);
-
-
   const savePlan = useCallback(async (planToSave: WorkoutPlan) => {
+    // Optimistic UI update for speed, for both guest and logged-in users.
     const isNewPlan = !plans.some(p => p.id === planToSave.id);
-    
-    // Add order property if it's a new plan
-    if (isNewPlan) {
-        const maxOrder = plans.reduce((max, p) => Math.max(max, p.order ?? -1), -1);
-        planToSave.order = maxOrder + 1;
-    }
-
-    // Optimistic UI update
     setPlans(prevPlans => {
+        const plansWithOrder = prevPlans.map((p, i) => ({ ...p, order: i }));
         if (isNewPlan) {
-            return [...prevPlans, planToSave];
+            const maxOrder = plansWithOrder.reduce((max, p) => Math.max(max, p.order ?? -1), -1);
+            planToSave.order = maxOrder + 1;
+            return [...plansWithOrder, planToSave];
         }
-        return prevPlans.map(p => p.id === planToSave.id ? planToSave : p);
+        return plansWithOrder.map(p => p.id === planToSave.id ? planToSave : p);
     });
 
     if (user) {
@@ -221,13 +192,16 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
             await setDoc(planRef, planToSave, { merge: true });
         } catch (error) {
             console.error("Failed to save plan to Firestore:", error);
-            // The onSnapshot listener will eventually correct the state if the write fails.
+            // The onSnapshot listener will eventually correct the state if the write fails,
+            // though this might cause a brief UI flicker.
         }
     } else {
         // For guest users, update local storage directly
         const currentPlans = getLocalPlans();
         let updatedPlans;
         if (isNewPlan) {
+            const maxOrder = currentPlans.reduce((max, p) => Math.max(max, p.order ?? -1), -1);
+            planToSave.order = maxOrder + 1;
             updatedPlans = [...currentPlans, planToSave];
         } else {
             updatedPlans = currentPlans.map(p => (p.id === planToSave.id ? planToSave : p));
@@ -301,6 +275,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
 
 
   const deletePlan = useCallback(async (planId: string) => {
+    // Optimistic UI update
     setPlans(prev => prev.filter(p => p.id !== planId));
     if (user) {
       try {
@@ -316,6 +291,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   const reorderPlans = useCallback(async (reorderedPlans: WorkoutPlan[]) => {
       const plansWithOrder = reorderedPlans.map((p, i) => ({ ...p, order: i }));
+      // Optimistic UI update
       setPlans(plansWithOrder);
 
       if (user) {
@@ -323,7 +299,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
             const batch = writeBatch(db);
             plansWithOrder.forEach((plan) => {
                 const planRef = doc(db, 'users', user.uid, 'plans', plan.id);
-                batch.set(planRef, plan, { merge: true });
+                batch.set(planRef, plan, { merge: true }); // Use set with merge to be safe
             });
             await batch.commit();
         } catch (error) {
