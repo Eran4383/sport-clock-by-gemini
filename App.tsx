@@ -38,6 +38,7 @@ const AppContent: React.FC = () => {
     importNotification,
     clearImportNotification,
     showGuestMergeModal,
+    guestPlansToMerge,
     handleMergeGuestData,
     handleDiscardGuestData,
   } = useWorkout();
@@ -454,7 +455,11 @@ const AppContent: React.FC = () => {
         onTouchEnd={handleTouchEnd}
     >
       {showGuestMergeModal && (
-        <GuestDataMergeModal onMerge={handleMergeGuestData} onDiscard={handleDiscardGuestData} />
+        <GuestDataMergeModal 
+          guestPlans={guestPlansToMerge} 
+          onMerge={handleMergeGuestData} 
+          onDiscard={handleDiscardGuestData} 
+        />
       )}
       {importNotification && (
           <ImportNotification 

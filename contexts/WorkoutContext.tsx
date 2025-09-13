@@ -33,7 +33,8 @@ interface WorkoutContextType {
   isSyncing: boolean;
   importNotification: ImportNotificationData | null;
   showGuestMergeModal: boolean;
-  handleMergeGuestData: () => void;
+  guestPlansToMerge: WorkoutPlan[];
+  handleMergeGuestData: (plansToMerge: WorkoutPlan[]) => void;
   handleDiscardGuestData: () => void;
   clearImportNotification: () => void;
   savePlan: (plan: WorkoutPlan) => void;
@@ -53,6 +54,7 @@ interface WorkoutContextType {
   resumeStepCountdown: () => void;
   restartCurrentStep: () => void;
   clearWorkoutHistory: () => void;
+  forceSync: () => void;
 }
 
 const WorkoutContext = createContext<WorkoutContextType | undefined>(undefined);
@@ -68,113 +70,112 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [workoutHistory, setWorkoutHistory] = useState<WorkoutLogEntry[]>(getLocalHistory);
   const [plansToStart, setPlansToStart] = useState<string[]>([]);
   const [importNotification, setImportNotification] = useState<ImportNotificationData | null>(null);
-  const [isSyncing, setIsSyncing] = useState(true); // Start as true
+  const [isSyncing, setIsSyncing] = useState(true);
   
-  // State for handling guest data on first login
   const [showGuestMergeModal, setShowGuestMergeModal] = useState(false);
-  const guestPlansToMerge = useRef<WorkoutPlan[]>([]);
+  const [guestPlansToMerge, setGuestPlansToMerge] = useState<WorkoutPlan[]>([]);
+  const initialSyncDone = useRef(false);
   
   const isPreparingWorkout = plansToStart.length > 0;
 
   const clearImportNotification = useCallback(() => setImportNotification(null), []);
   
-  // Save history to local storage whenever it changes
   useEffect(() => {
     saveLocalHistory(workoutHistory);
   }, [workoutHistory]);
 
 
-  // Core Data Synchronization Logic
   useEffect(() => {
-    // This function runs when the user's authentication status changes.
     let unsubscribe: Unsubscribe | undefined;
 
-    const syncData = async () => {
-      // 1. User is logged out.
-      if (authStatus === 'unauthenticated') {
-        setPlans(getLocalPlans());
-        setIsSyncing(false);
-        return;
-      }
-
-      // 2. User is logged in.
-      if (authStatus === 'authenticated' && user) {
+    if (authStatus === 'authenticated' && user) {
         setIsSyncing(true);
+        initialSyncDone.current = false; // Reset for new login
         const plansCollection = collection(db, 'users', user.uid, 'plans');
         
-        // Check for guest data merge scenario *before* setting up the listener.
-        const remoteSnapshot = await getDocs(query(plansCollection, orderBy('order', 'asc')));
-        const remotePlans = remoteSnapshot.docs.map(doc => doc.data() as WorkoutPlan);
-
-        if (remotePlans.length === 0) {
-            const localPlans = getLocalPlans();
-            if (localPlans.length > 0) {
-                guestPlansToMerge.current = localPlans;
-                setShowGuestMergeModal(true);
-                // Don't set state yet; wait for user action.
-                setIsSyncing(false); 
-            }
-        }
-        
-        // Set up the real-time listener. This will now be the single source of truth.
         unsubscribe = onSnapshot(query(plansCollection, orderBy('order', 'asc')), (snapshot) => {
-            const currentRemotePlans = snapshot.docs.map(doc => doc.data() as WorkoutPlan);
-            setPlans(currentRemotePlans);
-            saveLocalPlans(currentRemotePlans); // Keep local storage in sync for offline/logout.
+            const remotePlans = snapshot.docs.map(doc => doc.data() as WorkoutPlan);
+
+            if (!initialSyncDone.current) {
+                const localPlans = getLocalPlans();
+                const remotePlanIds = new Set(remotePlans.map(p => p.id));
+                const newGuestPlans = localPlans.filter(p => !remotePlanIds.has(p.id));
+
+                if (newGuestPlans.length > 0) {
+                    setGuestPlansToMerge(newGuestPlans);
+                    setShowGuestMergeModal(true);
+                }
+                initialSyncDone.current = true;
+            }
+            
+            setPlans(remotePlans);
+            saveLocalPlans(remotePlans);
             setIsSyncing(false);
         }, (error) => {
             console.error("Firestore listener error:", error);
             setIsSyncing(false);
         });
-      }
-    };
-    
-    syncData();
 
-    // Cleanup: When the component unmounts or auth status changes, kill the listener.
+    } else if (authStatus === 'unauthenticated') {
+        if (unsubscribe) unsubscribe();
+        setPlans(getLocalPlans());
+        setIsSyncing(false);
+    }
+    
     return () => {
-      if (unsubscribe) {
-        unsubscribe();
-      }
+      if (unsubscribe) unsubscribe();
     };
   }, [user, authStatus]);
 
+  const forceSync = useCallback(async () => {
+    if (!user) return;
+    setIsSyncing(true);
+    try {
+        const plansCollection = collection(db, 'users', user.uid, 'plans');
+        const remoteSnapshot = await getDocs(query(plansCollection, orderBy('order', 'asc')));
+        const remotePlans = remoteSnapshot.docs.map(doc => doc.data() as WorkoutPlan);
+        setPlans(remotePlans);
+        saveLocalPlans(remotePlans);
+    } catch (error) {
+        console.error("Manual sync failed:", error);
+    } finally {
+        setIsSyncing(false);
+    }
+  }, [user]);
 
-  const handleMergeGuestData = useCallback(async () => {
-    if (!user || guestPlansToMerge.current.length === 0) return;
+  const handleMergeGuestData = useCallback(async (plansToMerge: WorkoutPlan[]) => {
+    if (!user || plansToMerge.length === 0) {
+        setShowGuestMergeModal(false);
+        setGuestPlansToMerge([]);
+        return;
+    };
 
     setIsSyncing(true);
     setShowGuestMergeModal(false);
 
     try {
-        const plansToUpload = guestPlansToMerge.current.map((p, i) => ({ ...p, order: i }));
+        const maxOrder = plans.reduce((max, p) => Math.max(max, p.order ?? -1), -1);
+        const plansToUpload = plansToMerge.map((p, i) => ({ ...p, order: maxOrder + 1 + i }));
+        
         const batch = writeBatch(db);
         plansToUpload.forEach((plan) => {
             const planRef = doc(db, 'users', user.uid, 'plans', plan.id);
             batch.set(planRef, plan);
         });
         await batch.commit();
-        // The onSnapshot listener will automatically receive the update and set the state.
-        // No need to call setPlans() here.
     } catch (error) {
         console.error("Failed to merge guest data:", error);
-        // If it fails, the UI will remain as it was.
     } finally {
-        guestPlansToMerge.current = [];
-        // No need for setIsSyncing(false) as the listener will do it.
+        setGuestPlansToMerge([]);
     }
-  }, [user]);
+  }, [user, plans]);
 
   const handleDiscardGuestData = useCallback(() => {
-    guestPlansToMerge.current = [];
     setShowGuestMergeModal(false);
-    // Clear local guest data. The listener for the (empty) remote state is already active
-    // so the UI will correctly show an empty list.
-    saveLocalPlans([]); 
+    setGuestPlansToMerge([]);
   }, []);
 
   const savePlan = useCallback(async (planToSave: WorkoutPlan) => {
-    // Optimistic UI update for speed, for both guest and logged-in users.
     const isNewPlan = !plans.some(p => p.id === planToSave.id);
     setPlans(prevPlans => {
         const plansWithOrder = prevPlans.map((p, i) => ({ ...p, order: i }));
@@ -192,11 +193,8 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
             await setDoc(planRef, planToSave, { merge: true });
         } catch (error) {
             console.error("Failed to save plan to Firestore:", error);
-            // The onSnapshot listener will eventually correct the state if the write fails,
-            // though this might cause a brief UI flicker.
         }
     } else {
-        // For guest users, update local storage directly
         const currentPlans = getLocalPlans();
         let updatedPlans;
         if (isNewPlan) {
@@ -275,7 +273,6 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
 
 
   const deletePlan = useCallback(async (planId: string) => {
-    // Optimistic UI update
     setPlans(prev => prev.filter(p => p.id !== planId));
     if (user) {
       try {
@@ -291,7 +288,6 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   const reorderPlans = useCallback(async (reorderedPlans: WorkoutPlan[]) => {
       const plansWithOrder = reorderedPlans.map((p, i) => ({ ...p, order: i }));
-      // Optimistic UI update
       setPlans(plansWithOrder);
 
       if (user) {
@@ -299,7 +295,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
             const batch = writeBatch(db);
             plansWithOrder.forEach((plan) => {
                 const planRef = doc(db, 'users', user.uid, 'plans', plan.id);
-                batch.set(planRef, plan, { merge: true }); // Use set with merge to be safe
+                batch.set(planRef, plan, { merge: true });
             });
             await batch.commit();
         } catch (error) {
@@ -462,6 +458,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     isSyncing,
     importNotification,
     showGuestMergeModal,
+    guestPlansToMerge,
     handleMergeGuestData,
     handleDiscardGuestData,
     clearImportNotification,
@@ -482,6 +479,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     resumeStepCountdown,
     restartCurrentStep,
     clearWorkoutHistory,
+    forceSync,
   };
 
   return <WorkoutContext.Provider value={value}>{children}</WorkoutContext.Provider>;
