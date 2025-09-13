@@ -70,7 +70,9 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [importNotification, setImportNotification] = useState<ImportNotificationData | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const firestoreListener = useRef<Unsubscribe | null>(null);
-  const initialSnapshotProcessed = useRef(false);
+  
+  // This ref is crucial to distinguish the FIRST data snapshot from subsequent real-time updates.
+  const isInitialSnapshotProcessed = useRef(false);
 
   // State for handling guest data on first login
   const [showGuestMergeModal, setShowGuestMergeModal] = useState(false);
@@ -105,7 +107,6 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         });
         await batch.commit();
         // The onSnapshot listener will automatically pick up this change and update the UI.
-        // isSyncing will be set to false by the listener.
     } catch (error) {
         console.error("Failed to merge guest data:", error);
         setIsSyncing(false);
@@ -121,65 +122,78 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     setPlans([]); // Optimistically clear the UI. The listener will confirm with an empty state.
   }, []);
 
+  // This is the core logic for data synchronization.
   useEffect(() => {
-    // Cleanup previous listener if user changes or logs out
+    // If there's an active listener, tear it down first.
     if (firestoreListener.current) {
         firestoreListener.current();
         firestoreListener.current = null;
     }
+    // Crucially, reset the processing flag whenever the user's auth state changes.
+    isInitialSnapshotProcessed.current = false;
 
-    if (authStatus === 'authenticated' && user) {
-        setIsSyncing(true);
-        initialSnapshotProcessed.current = false; // Reset for new user login
-        const plansCollection = collection(db, 'users', user.uid, 'plans');
-        const q = query(plansCollection, orderBy('order', 'asc'));
+    // Case 1: User is not logged in.
+    if (authStatus !== 'authenticated' || !user) {
+        // If they are explicitly logged out, load their local (guest) plans.
+        if (authStatus === 'unauthenticated') {
+            setPlans(getLocalPlans());
+        }
+        setIsSyncing(false);
+        return; // Stop here if there's no authenticated user.
+    }
+    
+    // Case 2: User is authenticated. Set up the real-time listener.
+    setIsSyncing(true);
+    const plansCollection = collection(db, 'users', user.uid, 'plans');
+    const q = query(plansCollection, orderBy('order', 'asc'));
 
-        firestoreListener.current = onSnapshot(q, (snapshot) => {
-            const remotePlans = snapshot.docs.map(doc => doc.data() as WorkoutPlan);
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+        const remotePlans = snapshot.docs.map(doc => doc.data() as WorkoutPlan);
 
-            if (!initialSnapshotProcessed.current) {
-                initialSnapshotProcessed.current = true; // Mark as processed for this session
-                
-                if (remotePlans.length === 0) {
-                    // New user account in Firestore
-                    const localPlans = getLocalPlans();
-                    if (localPlans.length > 0) {
-                        guestPlansToMerge.current = localPlans;
-                        setShowGuestMergeModal(true);
-                        // Don't setPlans here. Let the user decide.
-                    } else {
-                        setPlans([]); // New user, no local data. State is empty.
-                    }
+        // This block runs only ONCE per login, on the very first data receive.
+        if (!isInitialSnapshotProcessed.current) {
+            isInitialSnapshotProcessed.current = true;
+            
+            if (remotePlans.length === 0) {
+                // Scenario: Firestore is empty for this user (they are new).
+                const localPlans = getLocalPlans();
+                if (localPlans.length > 0) {
+                    // They have "guest" plans on this device. Ask them what to do.
+                    guestPlansToMerge.current = localPlans;
+                    setShowGuestMergeModal(true);
                 } else {
-                    // Existing user. Cloud is the source of truth.
-                    setPlans(remotePlans);
-                    saveLocalPlans(remotePlans);
+                    // New user with no guest data. Their state is empty.
+                    setPlans([]);
                 }
             } else {
-                // This is a subsequent update, not the initial load for this session.
-                // Just update the state with the new data from the cloud.
+                // Scenario: Existing user with data in the cloud. Cloud is the source of truth.
                 setPlans(remotePlans);
-                saveLocalPlans(remotePlans);
+                saveLocalPlans(remotePlans); // Overwrite local storage to match the cloud.
             }
-            
-            setIsSyncing(false); // Sync is complete after the first snapshot is processed.
-
-        }, (error) => {
-            console.error("Firestore listener error:", error);
+            // The initial sync is now complete.
             setIsSyncing(false);
-        });
+        } else {
+            // This block runs for all subsequent updates (e.g., from another device).
+            // The cloud is always the source of truth. Update the state.
+            setPlans(remotePlans);
+            saveLocalPlans(remotePlans);
+        }
 
-    } else if (authStatus === 'unauthenticated') {
-        // User logged out, revert to local storage
-        setPlans(getLocalPlans());
+    }, (error) => {
+        console.error("Firestore listener error:", error);
         setIsSyncing(false);
-    }
+    });
 
-    // Cleanup function for when the component unmounts or deps change
+    // Store the unsubscribe function to be called on cleanup.
+    firestoreListener.current = unsubscribe;
+
+    // Cleanup function: runs when the component unmounts or user/authStatus changes.
     return () => {
         if (firestoreListener.current) {
             firestoreListener.current();
+            firestoreListener.current = null;
         }
+        isInitialSnapshotProcessed.current = false;
     };
   }, [user, authStatus]);
 
@@ -202,18 +216,15 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     });
 
     if (user) {
-        setIsSyncing(true);
         try {
             const planRef = doc(db, 'users', user.uid, 'plans', planToSave.id);
             await setDoc(planRef, planToSave, { merge: true });
         } catch (error) {
             console.error("Failed to save plan to Firestore:", error);
-            // TODO: Add logic to revert optimistic update or notify user
-        } finally {
-            // isSyncing will be turned off by the onSnapshot listener picking up the change
+            // The onSnapshot listener will eventually correct the state if the write fails.
         }
     } else {
-        // For logged-out users, update local storage directly
+        // For guest users, update local storage directly
         const currentPlans = getLocalPlans();
         let updatedPlans;
         if (isNewPlan) {
@@ -292,14 +303,11 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
   const deletePlan = useCallback(async (planId: string) => {
     setPlans(prev => prev.filter(p => p.id !== planId));
     if (user) {
-      setIsSyncing(true);
       try {
         const planRef = doc(db, 'users', user.uid, 'plans', planId);
         await deleteDoc(planRef);
       } catch (error) {
         console.error("Failed to delete plan from Firestore:", error);
-      } finally {
-        // isSyncing will be handled by onSnapshot
       }
     } else {
         saveLocalPlans(plans.filter(p => p.id !== planId));
@@ -311,19 +319,15 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
       setPlans(plansWithOrder);
 
       if (user) {
-        setIsSyncing(true);
         try {
             const batch = writeBatch(db);
             plansWithOrder.forEach((plan) => {
                 const planRef = doc(db, 'users', user.uid, 'plans', plan.id);
-                // Use set with merge to be safe, but update is also fine here
                 batch.set(planRef, plan, { merge: true });
             });
             await batch.commit();
         } catch (error) {
             console.error("Failed to reorder plans in Firestore:", error);
-        } finally {
-            // isSyncing will be handled by onSnapshot
         }
       } else {
           saveLocalPlans(plansWithOrder);
