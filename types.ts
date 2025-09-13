@@ -22,6 +22,8 @@ export interface WorkoutPlan {
   color?: string;
   isLocked?: boolean;
   isSmartPlan?: boolean; // To identify AI-generated plans
+  // FIX: Add optional 'order' property to allow sorting and reordering of workout plans.
+  order?: number;
 }
 
 export interface WorkoutLogEntry {

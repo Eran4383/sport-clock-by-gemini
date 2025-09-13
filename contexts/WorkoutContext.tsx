@@ -1,9 +1,12 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useMemo, useRef } from 'react';
 import { WorkoutPlan, WorkoutStep, WorkoutLogEntry } from '../types';
 import { prefetchExercises } from '../services/geminiService';
 import { getBaseExerciseName, generateCircuitSteps, processAndFormatAiSteps } from '../utils/workout';
 import { useSettings } from './SettingsContext';
 import { getLocalPlans, saveLocalPlans, getLocalHistory, saveLocalHistory } from '../services/storageService';
+import { useAuth } from './AuthContext';
+import { db } from '../services/firebase';
+import { collection, doc, getDocs, writeBatch, query, orderBy, setDoc, deleteDoc } from 'firebase/firestore';
 
 export interface ActiveWorkout {
   plan: WorkoutPlan; // This can be a "meta-plan" if multiple plans are selected
@@ -27,6 +30,7 @@ interface WorkoutContextType {
   recentlyImportedPlanId: string | null;
   workoutHistory: WorkoutLogEntry[];
   isPreparingWorkout: boolean;
+  isSyncing: boolean;
   importNotification: ImportNotificationData | null;
   clearImportNotification: () => void;
   savePlan: (plan: WorkoutPlan) => void;
@@ -60,6 +64,7 @@ const getInitialHistory = (): WorkoutLogEntry[] => {
 
 export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { settings } = useSettings(); // Get settings for warm-up logic
+  const { user, authStatus } = useAuth();
   const [plans, setPlans] = useState<WorkoutPlan[]>(getInitialPlans);
   const [activeWorkout, setActiveWorkout] = useState<ActiveWorkout | null>(null);
   const [isWorkoutPaused, setIsWorkoutPaused] = useState(false);
@@ -68,6 +73,8 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [workoutHistory, setWorkoutHistory] = useState<WorkoutLogEntry[]>(getInitialHistory);
   const [plansToStart, setPlansToStart] = useState<string[]>([]);
   const [importNotification, setImportNotification] = useState<ImportNotificationData | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const initialSyncDone = useRef(false);
   const isPreparingWorkout = plansToStart.length > 0;
 
   const clearImportNotification = useCallback(() => setImportNotification(null), []);
@@ -80,6 +87,68 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     saveLocalHistory(workoutHistory);
   }, [workoutHistory]);
 
+  // This effect handles data synchronization with Firestore on user login/logout.
+  useEffect(() => {
+    if (authStatus === 'authenticated' && user && !initialSyncDone.current) {
+      const syncData = async () => {
+        setIsSyncing(true);
+        initialSyncDone.current = true;
+
+        try {
+          const firestorePlansCollection = collection(db, 'users', user.uid, 'plans');
+          const q = query(firestorePlansCollection, orderBy('order', 'asc'));
+          
+          const [firestoreSnapshot, localPlans] = await Promise.all([
+            getDocs(q),
+            getLocalPlans() // from storageService
+          ]);
+          
+          const remotePlans: WorkoutPlan[] = firestoreSnapshot.docs.map(doc => doc.data() as WorkoutPlan);
+
+          // Merge Logic
+          const mergedPlansMap = new Map<string, WorkoutPlan>();
+          localPlans.forEach(plan => mergedPlansMap.set(plan.id, plan));
+          remotePlans.forEach(plan => mergedPlansMap.set(plan.id, plan));
+
+          const mergedArray = Array.from(mergedPlansMap.values());
+          
+          const finalPlans = mergedArray.sort((a, b) => {
+              const aHasOrder = a.order !== undefined;
+              const bHasOrder = b.order !== undefined;
+              if (aHasOrder && bHasOrder) return a.order! - b.order!;
+              if (aHasOrder) return -1;
+              if (bHasOrder) return 1;
+              return a.name.localeCompare(b.name);
+          });
+          
+          const plansToSave = finalPlans.map((p, i) => ({ ...p, order: i }));
+
+          setPlans(plansToSave);
+          saveLocalPlans(plansToSave);
+
+          const batch = writeBatch(db);
+          plansToSave.forEach((plan) => {
+            const planRef = doc(db, 'users', user.uid, 'plans', plan.id);
+            batch.set(planRef, plan);
+          });
+          await batch.commit();
+
+        } catch (error) {
+            console.error("Firebase sync failed:", error);
+        } finally {
+            setIsSyncing(false);
+        }
+      };
+      
+      syncData();
+
+    } else if (authStatus === 'unauthenticated') {
+      initialSyncDone.current = false; // Reset for next login
+      setPlans(getLocalPlans()); // On sign out, revert to local storage
+    }
+  }, [user, authStatus]);
+
+
   // Prefetch exercise info on initial load
   useEffect(() => {
     if (plans && plans.length > 0) {
@@ -91,23 +160,41 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
   }, [plans]);
 
 
-  const savePlan = useCallback((planToSave: WorkoutPlan) => {
+  const savePlan = useCallback(async (planToSave: WorkoutPlan) => {
+    let finalPlans: WorkoutPlan[] = [];
     setPlans(prevPlans => {
-      const existingIndex = prevPlans.findIndex(p => p.id === planToSave.id);
-      if (existingIndex > -1) {
-        const newPlans = [...prevPlans];
-        newPlans[existingIndex] = planToSave;
-        return newPlans;
-      } else {
-        return [...prevPlans, planToSave];
-      }
+        const existingIndex = prevPlans.findIndex(p => p.id === planToSave.id);
+        let newPlans: WorkoutPlan[];
+        if (existingIndex > -1) {
+            newPlans = [...prevPlans];
+            newPlans[existingIndex] = planToSave;
+        } else {
+            newPlans = [...prevPlans, planToSave];
+        }
+        finalPlans = newPlans.map((p, i) => ({ ...p, order: i }));
+        return finalPlans;
     });
-    // Prefetch data for the saved plan
+
+    if (user) {
+      setIsSyncing(true);
+      try {
+        const planToSync = finalPlans.find(p => p.id === planToSave.id);
+        if (planToSync) {
+            const planRef = doc(db, 'users', user.uid, 'plans', planToSave.id);
+            await setDoc(planRef, planToSync);
+        }
+      } catch (error) {
+        console.error("Failed to save plan to Firestore:", error);
+      } finally {
+        setIsSyncing(false);
+      }
+    }
+
     const exerciseNames = planToSave.steps
         .filter(s => s.type === 'exercise')
         .map(s => getBaseExerciseName(s.name));
     prefetchExercises(exerciseNames);
-  }, []);
+  }, [user]);
   
   const importPlan = useCallback((planToImport: WorkoutPlan, source: string = 'file') => {
     // Sanitize and prepare the imported plan to prevent conflicts
@@ -127,14 +214,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         newPlan.steps = processAndFormatAiSteps(newPlan.steps);
     }
     
-    setPlans(prevPlans => {
-        // AI plans can have generic names, allow them. For others, check.
-        if (!newPlan.isSmartPlan && prevPlans.some(p => p.name === newPlan.name)) {
-          console.warn(`A plan named "${newPlan.name}" already exists. Skipping import.`);
-          return prevPlans;
-        }
-        return [...prevPlans, newPlan];
-    });
+    savePlan(newPlan); // Use savePlan to handle state and Firestore update
 
     setImportNotification({
         message: 'תוכנית אימונים יובאה בהצלחה!',
@@ -150,7 +230,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     // Set the ID for highlighting and clear it after the animation
     setRecentlyImportedPlanId(newPlanId);
     setTimeout(() => setRecentlyImportedPlanId(null), 2500);
-  }, []);
+  }, [savePlan]);
 
   // Effect to handle importing a plan from a URL hash on initial load
   useEffect(() => {
@@ -191,13 +271,42 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
   }, [importPlan]);
 
 
-  const deletePlan = useCallback((planId: string) => {
+  const deletePlan = useCallback(async (planId: string) => {
     setPlans(prevPlans => prevPlans.filter(p => p.id !== planId));
-  }, []);
 
-  const reorderPlans = useCallback((reorderedPlans: WorkoutPlan[]) => {
-      setPlans(reorderedPlans);
-  }, []);
+    if (user) {
+      setIsSyncing(true);
+      try {
+        const planRef = doc(db, 'users', user.uid, 'plans', planId);
+        await deleteDoc(planRef);
+      } catch (error) {
+        console.error("Failed to delete plan from Firestore:", error);
+      } finally {
+        setIsSyncing(false);
+      }
+    }
+  }, [user]);
+
+  const reorderPlans = useCallback(async (reorderedPlans: WorkoutPlan[]) => {
+      const plansWithOrder = reorderedPlans.map((p, i) => ({ ...p, order: i }));
+      setPlans(plansWithOrder);
+
+      if (user) {
+        setIsSyncing(true);
+        try {
+            const batch = writeBatch(db);
+            plansWithOrder.forEach((plan) => {
+                const planRef = doc(db, 'users', user.uid, 'plans', plan.id);
+                batch.set(planRef, plan);
+            });
+            await batch.commit();
+        } catch (error) {
+            console.error("Failed to reorder plans in Firestore:", error);
+        } finally {
+            setIsSyncing(false);
+        }
+      }
+  }, [user]);
   
   const logWorkoutCompletion = useCallback((planName: string, durationMs: number, steps: WorkoutStep[], planIds: string[]) => {
     const now = new Date();
@@ -383,6 +492,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     recentlyImportedPlanId,
     workoutHistory,
     isPreparingWorkout,
+    isSyncing,
     importNotification,
     clearImportNotification,
     savePlan,
