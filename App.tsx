@@ -1,5 +1,6 @@
 
 
+
 import React, { useMemo, useEffect, useRef, useState, useCallback } from 'react';
 import { CountdownDisplay } from './components/CountdownDisplay';
 import { CountdownControls } from './components/CountdownControls';
@@ -15,6 +16,7 @@ import { SettingsProvider, useSettings } from './contexts/SettingsContext';
 import { WorkoutProvider, useWorkout, ActiveWorkout } from './contexts/WorkoutContext';
 import { playNotificationSound } from './utils/sound';
 import { ImportNotification } from './components/ImportNotification';
+import { AuthProvider } from './contexts/AuthContext';
 
 const AppContent: React.FC = () => {
   const { settings, updateSettings } = useSettings();
@@ -563,11 +565,13 @@ const AppContent: React.FC = () => {
 
 const App: React.FC = () => {
   return (
-    <SettingsProvider>
-      <WorkoutProvider>
-        <AppContent />
-      </WorkoutProvider>
-    </SettingsProvider>
+    <AuthProvider>
+      <SettingsProvider>
+        <WorkoutProvider>
+          <AppContent />
+        </WorkoutProvider>
+      </SettingsProvider>
+    </AuthProvider>
   );
 };
 

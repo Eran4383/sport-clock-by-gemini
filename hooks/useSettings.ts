@@ -1,7 +1,9 @@
 
 
+
 import { useState, useEffect, useCallback } from 'react';
 import { WorkoutStep } from '../types';
+import { getLocalSettings, saveLocalSettings } from '../services/storageService';
 
 export interface Settings {
   showTimer: boolean;
@@ -70,24 +72,15 @@ const defaultSettings: Settings = {
 };
 
 const getInitialSettings = (): Settings => {
-  try {
-    const item = window.localStorage.getItem('sportsClockSettings');
-    return item ? { ...defaultSettings, ...JSON.parse(item) } : defaultSettings;
-  } catch (error) {
-    console.error('Error reading settings from localStorage', error);
-    return defaultSettings;
-  }
+  const localSettings = getLocalSettings();
+  return localSettings ? { ...defaultSettings, ...localSettings } : defaultSettings;
 };
 
 export const useSettings = () => {
   const [settings, setSettings] = useState<Settings>(getInitialSettings);
 
   useEffect(() => {
-    try {
-      window.localStorage.setItem('sportsClockSettings', JSON.stringify(settings));
-    } catch (error) {
-      console.error('Error writing settings to localStorage', error);
-    }
+    saveLocalSettings(settings);
   }, [settings]);
 
   const updateSettings = useCallback((newSettings: Partial<Settings>) => {

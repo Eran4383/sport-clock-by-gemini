@@ -1,5 +1,7 @@
 
+
 import { getBaseExerciseName } from '../utils/workout';
+import { getLocalCache, saveToLocalCache, clearExerciseFromLocalCache } from './storageService';
 
 export interface ExerciseInfo {
     primaryVideoId: string | null;
@@ -9,8 +11,6 @@ export interface ExerciseInfo {
     generalInfo: string;
     language: 'en' | 'he' | string;
 }
-
-const CACHE_KEY = 'geminiExerciseCache_v3';
 
 // A set of generic terms that don't need specific AI/video lookup.
 const GENERIC_TERMS = new Set(['warmup', 'stretches', 'cooldown', 'rest', 'חימום', 'מתיחות', 'מנוחה']);
@@ -39,32 +39,6 @@ const getGenericExerciseResponse = (term: string): ExerciseInfo => {
     };
 };
 
-
-// Helper to get the cache object from localStorage
-const getCache = (): Record<string, ExerciseInfo> => {
-    try {
-        const cachedData = localStorage.getItem(CACHE_KEY);
-        return cachedData ? JSON.parse(cachedData) : {};
-    } catch (error) {
-        console.error("Failed to read from cache", error);
-        // If cache is corrupted, clear it and return an empty object
-        localStorage.removeItem(CACHE_KEY);
-        return {};
-    }
-};
-
-// Helper to save data to the cache in localStorage
-const saveToCache = (key: string, data: ExerciseInfo) => {
-    try {
-        const cache = getCache();
-        cache[key] = data;
-        localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
-    } catch (error)
-    {
-        console.error("Failed to save to cache", error);
-    }
-};
-
 /**
  * Checks if all provided exercise names are present in the local storage cache.
  * @param exerciseNames - An array of exercise names to check.
@@ -72,7 +46,7 @@ const saveToCache = (key: string, data: ExerciseInfo) => {
  */
 export const checkCacheStatus = (exerciseNames: string[]): { allCached: boolean; uncachedCount: number } => {
     if (exerciseNames.length === 0) return { allCached: true, uncachedCount: 0 };
-    const cache = getCache();
+    const cache = getLocalCache();
     const uniqueNames = [...new Set(exerciseNames.map(name => name.trim().toLowerCase()))].filter(Boolean);
     if (uniqueNames.length === 0) return { allCached: true, uncachedCount: 0 };
     
@@ -86,7 +60,7 @@ export const checkCacheStatus = (exerciseNames: string[]): { allCached: boolean;
  * @returns A Map where keys are normalized exercise names and values are booleans (true if cached).
  */
 export const getCacheStatusForExercises = (exerciseNames: string[]): Map<string, boolean> => {
-    const cache = getCache();
+    const cache = getLocalCache();
     const statusMap = new Map<string, boolean>();
     const uniqueNames = [...new Set(exerciseNames.map(name => getBaseExerciseName(name).trim().toLowerCase()))].filter(Boolean);
     uniqueNames.forEach(name => {
@@ -101,17 +75,7 @@ export const getCacheStatusForExercises = (exerciseNames: string[]): Map<string,
  * @param exerciseName - The name of the exercise to clear.
  */
 export const clearExerciseFromCache = (exerciseName: string) => {
-    const normalizedName = getBaseExerciseName(exerciseName).trim().toLowerCase();
-    try {
-        const cache = getCache();
-        if (cache[normalizedName]) {
-            delete cache[normalizedName];
-            localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
-            console.log(`Cleared "${normalizedName}" from local cache.`);
-        }
-    } catch (error) {
-        console.error("Failed to clear exercise from cache", error);
-    }
+    clearExerciseFromLocalCache(exerciseName);
 };
 
 
@@ -151,7 +115,7 @@ export async function getExerciseInfo(exerciseName: string, forceRefresh = false
         // Clear local storage cache before fetching from server to ensure it gets updated
         clearExerciseFromCache(normalizedName);
     } else {
-        const cache = getCache();
+        const cache = getLocalCache();
         // 1. Check local cache first for speed
         if (cache[normalizedName]) {
             return cache[normalizedName];
@@ -181,7 +145,7 @@ export async function getExerciseInfo(exerciseName: string, forceRefresh = false
         }
 
         // 3. Save successful response to local cache before returning
-        saveToCache(normalizedName, data);
+        saveToLocalCache(normalizedName, data);
 
         return data as ExerciseInfo;
 
@@ -263,7 +227,7 @@ export async function prefetchExercises(exerciseNames: string[]): Promise<{ succ
     for (const name of namesToFetch) {
         try {
             // Force refresh is true to ensure it fetches from Gemini/YT and populates the KV cache.
-            // It will also populate the local cache via the saveToCache call inside getExerciseInfo.
+            // It will also populate the local cache via the saveToLocalCache call inside getExerciseInfo.
             await getExerciseInfo(name, true);
             successCount++;
             // Add a delay to be cautious with the API's rate limit.

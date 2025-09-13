@@ -3,6 +3,7 @@ import { WorkoutPlan, WorkoutStep, WorkoutLogEntry } from '../types';
 import { prefetchExercises } from '../services/geminiService';
 import { getBaseExerciseName, generateCircuitSteps, processAndFormatAiSteps } from '../utils/workout';
 import { useSettings } from './SettingsContext';
+import { getLocalPlans, saveLocalPlans, getLocalHistory, saveLocalHistory } from '../services/storageService';
 
 export interface ActiveWorkout {
   plan: WorkoutPlan; // This can be a "meta-plan" if multiple plans are selected
@@ -49,27 +50,12 @@ interface WorkoutContextType {
 
 const WorkoutContext = createContext<WorkoutContextType | undefined>(undefined);
 
-const WORKOUT_PLANS_KEY = 'sportsClockWorkoutPlans';
-const WORKOUT_HISTORY_KEY = 'sportsClockWorkoutHistory';
-
 const getInitialPlans = (): WorkoutPlan[] => {
-  try {
-    const item = window.localStorage.getItem(WORKOUT_PLANS_KEY);
-    return item ? JSON.parse(item) : [];
-  } catch (error) {
-    console.error('Error reading workout plans from localStorage', error);
-    return [];
-  }
+  return getLocalPlans();
 };
 
 const getInitialHistory = (): WorkoutLogEntry[] => {
-  try {
-    const item = window.localStorage.getItem(WORKOUT_HISTORY_KEY);
-    return item ? JSON.parse(item) : [];
-  } catch (error) {
-    console.error('Error reading workout history from localStorage', error);
-    return [];
-  }
+  return getLocalHistory();
 };
 
 export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -87,19 +73,11 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
   const clearImportNotification = useCallback(() => setImportNotification(null), []);
 
   useEffect(() => {
-    try {
-      window.localStorage.setItem(WORKOUT_PLANS_KEY, JSON.stringify(plans));
-    } catch (error) {
-      console.error('Error writing workout plans to localStorage', error);
-    }
+    saveLocalPlans(plans);
   }, [plans]);
 
   useEffect(() => {
-    try {
-        window.localStorage.setItem(WORKOUT_HISTORY_KEY, JSON.stringify(workoutHistory));
-    } catch(error) {
-        console.error("Failed to save workout history", error);
-    }
+    saveLocalHistory(workoutHistory);
   }, [workoutHistory]);
 
   // Prefetch exercise info on initial load

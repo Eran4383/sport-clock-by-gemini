@@ -1,5 +1,3 @@
-
-
 import React from 'react';
 
 interface PreWorkoutCountdownProps {
@@ -14,7 +12,7 @@ export const PreWorkoutCountdown: React.FC<PreWorkoutCountdownProps> = ({ timeLe
       onDoubleClick={onDoubleClick}
     >
       <h1 className="text-4xl md:text-6xl font-bold mb-8" dir="rtl">
-        מתחילים בעוד
+        מתחילים בעוד...
       </h1>
       <div 
         key={timeLeft}

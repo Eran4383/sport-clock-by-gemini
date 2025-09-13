@@ -1,10 +1,4 @@
-
-
-
-
-
-
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useLayoutEffect } from 'react';
 import { useWorkout } from '../contexts/WorkoutContext';
 import { WorkoutPlan, WorkoutStep } from '../types';
 import { useSettings } from '../contexts/SettingsContext';
@@ -13,6 +7,7 @@ import { getExerciseInfo, ExerciseInfo, prefetchExercises, generateWorkoutPlan }
 import { WorkoutInfoModal } from './WorkoutInfoModal';
 import { WorkoutLog } from './WorkoutLog';
 import { getBaseExerciseName, generateCircuitSteps } from '../utils/workout';
+import { useAuth } from '../contexts/AuthContext';
 
 const EDITOR_STORAGE_KEY = 'sportsClockPlanEditorDraft';
 
@@ -831,6 +826,8 @@ const PlanList: React.FC<{
 }> = ({ onSelectPlan, onCreateNew, onInitiateDelete, onShowLog, onInspectExercise, onShowInfo, isPinned, onTogglePin, onOpenAiPlanner }) => {
   const { plans, reorderPlans, startWorkout, importPlan, activeWorkout, recentlyImportedPlanId } = useWorkout();
   const { settings, updateSettings } = useSettings();
+  const { user, authStatus, signIn, signOut } = useAuth();
+  
   const [selectedPlanIds, setSelectedPlanIds] = useState<string[]>([]);
   const dragItemIndex = useRef<number | null>(null);
   const [dragTargetIndex, setDragTargetIndex] = useState<number | null>(null);
@@ -840,9 +837,21 @@ const PlanList: React.FC<{
   const [refreshStatus, setRefreshStatus] = useState<'idle' | 'loading' | 'success' | 'partial' | 'error'>('idle');
   const [refreshFeedback, setRefreshFeedback] = useState<string | null>(null);
   const [isWarmupSettingsExpanded, setIsWarmupSettingsExpanded] = useState(false);
+  const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
+  const userDropdownRef = useRef<HTMLDivElement>(null);
   
   const planRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const lastScrolledPlanId = useRef<string | null>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (userDropdownRef.current && !userDropdownRef.current.contains(event.target as Node)) {
+        setIsUserDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Effect to scroll to a newly imported plan
   useEffect(() => {
@@ -1021,11 +1030,54 @@ const PlanList: React.FC<{
   return (
     <div>
       {sharingPlan && <ShareModal plan={sharingPlan} onClose={() => setSharingPlan(null)} />}
-      <div className="flex justify-between items-center mb-2">
-        <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-          Workout Plans
-        </h2>
+      <div className="flex justify-between items-center mb-4">
+        {/* Left Side: Auth display (Guest only) */}
+        <div>
+           {authStatus !== 'authenticated' && (
+             <button
+                onClick={signIn}
+                className="bg-white text-gray-700 font-medium py-2 px-4 rounded-full border border-gray-200 shadow-sm hover:shadow-md transition-shadow flex items-center gap-3"
+                aria-label="התחברות עם גוגל"
+            >
+                <svg version="1.1" xmlns="http://www.w3.org/2000/svg" width="18px" height="18px" viewBox="0 0 48 48">
+                  <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
+                  <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
+                  <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
+                  <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
+                  <path fill="none" d="M0 0h48v48H0z"></path>
+                </svg>
+                <span className="whitespace-nowrap">התחברות עם גוגל</span>
+            </button>
+           )}
+        </div>
+
+        {/* Right Side: Action buttons & logged-in user display */}
         <div className="flex items-center gap-2">
+            {user && (
+              <div className="relative" ref={userDropdownRef}>
+                <button onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)} className="flex items-center">
+                    <img
+                        src={user.photoURL!}
+                        alt="User profile"
+                        className="w-10 h-10 rounded-full border-2 border-gray-600 hover:border-blue-500 transition-colors"
+                    />
+                </button>
+                {isUserDropdownOpen && (
+                    <div className="absolute right-0 mt-2 w-48 bg-gray-700 rounded-md shadow-lg py-1 z-10 animate-fadeIn">
+                        <div className="px-4 py-2 text-sm text-gray-300 border-b border-gray-600">
+                            <p className="font-semibold text-white">{user.displayName}</p>
+                            <p className="truncate">{user.email}</p>
+                        </div>
+                        <button
+                            onClick={signOut}
+                            className="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-500/20"
+                        >
+                            Sign Out
+                        </button>
+                    </div>
+                )}
+              </div>
+            )}
             <button
                 onClick={handleRefreshAll}
                 className={`p-2 rounded-full hover:bg-gray-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors`}
