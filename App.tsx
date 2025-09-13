@@ -1,6 +1,3 @@
-
-
-
 import React, { useMemo, useEffect, useRef, useState, useCallback } from 'react';
 import { CountdownDisplay } from './components/CountdownDisplay';
 import { CountdownControls } from './components/CountdownControls';
@@ -10,6 +7,7 @@ import { SettingsMenu } from './components/SettingsMenu';
 import { WorkoutMenu } from './components/WorkoutMenu';
 import { RepDisplay } from './components/RepDisplay';
 import { PreWorkoutCountdown } from './components/PreWorkoutCountdown';
+import { GuestDataMergeModal } from './components/GuestDataMergeModal';
 import { useStopwatch } from './hooks/useStopwatch';
 import { useCountdown } from './hooks/useCountdown';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
@@ -39,6 +37,9 @@ const AppContent: React.FC = () => {
     clearPreparingWorkout,
     importNotification,
     clearImportNotification,
+    showGuestMergeModal,
+    handleMergeGuestData,
+    handleDiscardGuestData,
   } = useWorkout();
   
   const stopwatch = useStopwatch();
@@ -452,6 +453,9 @@ const AppContent: React.FC = () => {
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
     >
+      {showGuestMergeModal && (
+        <GuestDataMergeModal onMerge={handleMergeGuestData} onDiscard={handleDiscardGuestData} />
+      )}
       {importNotification && (
           <ImportNotification 
               message={importNotification.message} 
