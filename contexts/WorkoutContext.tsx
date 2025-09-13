@@ -80,8 +80,12 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
   const clearImportNotification = useCallback(() => setImportNotification(null), []);
 
   useEffect(() => {
-    saveLocalPlans(plans);
-  }, [plans]);
+    // Only save to local storage if user is not logged in.
+    // When logged in, Firestore is the source of truth, and local is just a cache.
+    if (!user) {
+        saveLocalPlans(plans);
+    }
+  }, [plans, user]);
 
   useEffect(() => {
     saveLocalHistory(workoutHistory);
@@ -92,49 +96,52 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     if (authStatus === 'authenticated' && user && !initialSyncDone.current) {
       const syncData = async () => {
         setIsSyncing(true);
-        initialSyncDone.current = true;
+        initialSyncDone.current = true; // Mark that sync has started
 
         try {
           const firestorePlansCollection = collection(db, 'users', user.uid, 'plans');
           const q = query(firestorePlansCollection, orderBy('order', 'asc'));
           
-          const [firestoreSnapshot, localPlans] = await Promise.all([
-            getDocs(q),
-            getLocalPlans() // from storageService
-          ]);
-          
+          const firestoreSnapshot = await getDocs(q);
           const remotePlans: WorkoutPlan[] = firestoreSnapshot.docs.map(doc => doc.data() as WorkoutPlan);
 
-          // Merge Logic
-          const mergedPlansMap = new Map<string, WorkoutPlan>();
-          localPlans.forEach(plan => mergedPlansMap.set(plan.id, plan));
-          remotePlans.forEach(plan => mergedPlansMap.set(plan.id, plan));
+          if (remotePlans.length > 0) {
+            // User has data in the cloud. Cloud is the source of truth.
+            console.log("Cloud data found. Overwriting local data.");
+            const sortedRemotePlans = remotePlans.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+            setPlans(sortedRemotePlans);
+            saveLocalPlans(sortedRemotePlans); // Replace local storage with cloud data
+          } else {
+            // No data in the cloud. This is a first-time sync for this user.
+            // Check if there are local "guest" plans to upload.
+            const localPlans = getLocalPlans();
+            if (localPlans.length > 0) {
+              console.log("No cloud data found. Uploading local data.");
+              // The user has local data, let's upload it for them.
+              const plansToUpload = localPlans.map((p, i) => ({ ...p, order: i }));
+              
+              const batch = writeBatch(db);
+              plansToUpload.forEach((plan) => {
+                const planRef = doc(db, 'users', user.uid, 'plans', plan.id);
+                batch.set(planRef, plan);
+              });
+              await batch.commit();
 
-          const mergedArray = Array.from(mergedPlansMap.values());
-          
-          const finalPlans = mergedArray.sort((a, b) => {
-              const aHasOrder = a.order !== undefined;
-              const bHasOrder = b.order !== undefined;
-              if (aHasOrder && bHasOrder) return a.order! - b.order!;
-              if (aHasOrder) return -1;
-              if (bHasOrder) return 1;
-              return a.name.localeCompare(b.name);
-          });
-          
-          const plansToSave = finalPlans.map((p, i) => ({ ...p, order: i }));
-
-          setPlans(plansToSave);
-          saveLocalPlans(plansToSave);
-
-          const batch = writeBatch(db);
-          plansToSave.forEach((plan) => {
-            const planRef = doc(db, 'users', user.uid, 'plans', plan.id);
-            batch.set(planRef, plan);
-          });
-          await batch.commit();
-
+              // Set the app state to these newly uploaded plans.
+              setPlans(plansToUpload);
+              // saveLocalPlans is already implicitly correct here, but let's be explicit.
+              saveLocalPlans(plansToUpload); 
+            } else {
+              // No cloud data and no local data. User is fresh.
+              console.log("No cloud or local data found for new user.");
+              setPlans([]);
+              saveLocalPlans([]);
+            }
+          }
         } catch (error) {
             console.error("Firebase sync failed:", error);
+            // Fallback: if sync fails, just load local plans to not break the app
+            setPlans(getLocalPlans());
         } finally {
             setIsSyncing(false);
         }
@@ -169,11 +176,16 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
             newPlans = [...prevPlans];
             newPlans[existingIndex] = planToSave;
         } else {
+            // Ensure new plans get the next order number
+            const maxOrder = prevPlans.reduce((max, p) => Math.max(max, p.order ?? 0), 0);
+            planToSave.order = prevPlans.length > 0 ? maxOrder + 1 : 0;
             newPlans = [...prevPlans, planToSave];
         }
-        finalPlans = newPlans.map((p, i) => ({ ...p, order: i }));
+        finalPlans = newPlans;
         return finalPlans;
     });
+    
+    saveLocalPlans(finalPlans); // Optimistically update local storage
 
     if (user) {
       setIsSyncing(true);
@@ -185,6 +197,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         }
       } catch (error) {
         console.error("Failed to save plan to Firestore:", error);
+        // Here you might want to add logic to revert the optimistic update or notify the user
       } finally {
         setIsSyncing(false);
       }
@@ -272,7 +285,9 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
 
 
   const deletePlan = useCallback(async (planId: string) => {
-    setPlans(prevPlans => prevPlans.filter(p => p.id !== planId));
+    const newPlans = plans.filter(p => p.id !== planId);
+    setPlans(newPlans);
+    saveLocalPlans(newPlans);
 
     if (user) {
       setIsSyncing(true);
@@ -285,11 +300,12 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         setIsSyncing(false);
       }
     }
-  }, [user]);
+  }, [user, plans]);
 
   const reorderPlans = useCallback(async (reorderedPlans: WorkoutPlan[]) => {
       const plansWithOrder = reorderedPlans.map((p, i) => ({ ...p, order: i }));
       setPlans(plansWithOrder);
+      saveLocalPlans(plansWithOrder);
 
       if (user) {
         setIsSyncing(true);
