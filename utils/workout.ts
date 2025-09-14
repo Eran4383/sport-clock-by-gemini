@@ -1,5 +1,4 @@
-
-import { WorkoutStep } from '../types';
+import { WorkoutStep, WorkoutPlan } from '../types';
 
 /**
  * Extracts the base name of an exercise, stripping set/rep counts.
@@ -126,4 +125,43 @@ export const processAndFormatAiSteps = (steps: WorkoutStep[]): WorkoutStep[] => 
     }
 
     return formattedSteps;
+};
+
+/**
+ * Compares two workout steps for deep equality, ignoring their IDs.
+ * @param step1 The first workout step.
+ * @param step2 The second workout step.
+ * @returns True if the steps are functionally identical.
+ */
+const areStepsEqual = (step1: Omit<WorkoutStep, 'id'>, step2: Omit<WorkoutStep, 'id'>): boolean => {
+    return (
+        step1.name === step2.name &&
+        step1.type === step2.type &&
+        step1.isRepBased === step2.isRepBased &&
+        step1.duration === step2.duration &&
+        step1.reps === step2.reps
+    );
+};
+
+/**
+ * Compares two workout plans for deep equality, ignoring properties like id, color, order.
+ * It focuses on the functional content of the plan: name, mode, and steps.
+ * @param plan1 The first workout plan.
+ * @param plan2 The second workout plan.
+ * @returns True if the plans are functionally identical.
+ */
+export const arePlansDeeplyEqual = (plan1: WorkoutPlan, plan2: WorkoutPlan): boolean => {
+    if (plan1.name.trim() !== plan2.name.trim()) return false;
+    
+    if ((plan1.executionMode || 'linear') !== (plan2.executionMode || 'linear')) return false;
+
+    if (plan1.steps.length !== plan2.steps.length) return false;
+
+    for (let i = 0; i < plan1.steps.length; i++) {
+        if (!areStepsEqual(plan1.steps[i], plan2.steps[i])) {
+            return false;
+        }
+    }
+
+    return true;
 };

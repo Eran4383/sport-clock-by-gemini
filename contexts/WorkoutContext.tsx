@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useMemo, useRef } from 'react';
 import { WorkoutPlan, WorkoutStep, WorkoutLogEntry } from '../types';
 import { prefetchExercises } from '../services/geminiService';
-import { getBaseExerciseName, generateCircuitSteps, processAndFormatAiSteps } from '../utils/workout';
+import { getBaseExerciseName, generateCircuitSteps, processAndFormatAiSteps, arePlansDeeplyEqual } from '../utils/workout';
 import { useSettings } from './SettingsContext';
 import { getLocalPlans, saveLocalPlans, getLocalHistory, saveLocalHistory } from '../services/storageService';
 import { useAuth } from './AuthContext';
@@ -18,6 +18,7 @@ export interface ActiveWorkout {
 interface ImportNotificationData {
     message: string;
     planName: string;
+    type: 'success' | 'warning';
 }
 
 interface WorkoutContextType {
@@ -209,6 +210,17 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
   }, [user, plans]);
   
   const importPlan = useCallback((planToImport: WorkoutPlan, source: string = 'file') => {
+    const isDuplicate = plans.some(existingPlan => arePlansDeeplyEqual(planToImport, existingPlan));
+
+    if (isDuplicate) {
+        setImportNotification({
+            message: 'האימון כבר קיים',
+            planName: `"${planToImport.name}" לא יובא שוב.`,
+            type: 'warning',
+        });
+        return;
+    }
+
     const newPlanId = `${Date.now()}_imported_from_${source}`;
     const newPlan: WorkoutPlan = {
       ...planToImport,
@@ -229,6 +241,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     setImportNotification({
         message: 'תוכנית אימונים יובאה בהצלחה!',
         planName: newPlan.name,
+        type: 'success',
     });
 
     const exerciseNames = newPlan.steps
@@ -238,7 +251,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     setRecentlyImportedPlanId(newPlanId);
     setTimeout(() => setRecentlyImportedPlanId(null), 2500);
-  }, [savePlan]);
+  }, [savePlan, plans]);
 
   useEffect(() => {
     const handleImportFromUrl = () => {

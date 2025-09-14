@@ -466,6 +466,7 @@ const AppContent: React.FC = () => {
               message={importNotification.message} 
               planName={importNotification.planName} 
               onClose={clearImportNotification} 
+              type={importNotification.type}
           />
       )}
       <SettingsMenu isOpen={isSettingsOpen} setIsOpen={setIsSettingsOpen} />
