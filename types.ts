@@ -1,17 +1,17 @@
 export interface WorkoutStep {
   id: string;
-  name: string;
+  name: string; // Now the base name, e.g., "Push-ups"
   type: 'exercise' | 'rest';
-  // If true, this is a rep-based exercise. Otherwise, it's time-based.
   isRepBased: boolean;
-  // Duration in seconds for time-based steps.
   duration: number;
-  // Number of repetitions for rep-based steps.
   reps: number;
-  // Internal property to mark a step as part of the warm-up
   isWarmup?: boolean;
-  // Used for warm-up steps to enable/disable them
   enabled?: boolean;
+  // New structured data for sets, replacing "(Set X/Y)" in the name
+  set?: {
+    current: number;
+    total: number;
+  };
 }
 
 export interface WorkoutPlan {
@@ -21,9 +21,10 @@ export interface WorkoutPlan {
   executionMode?: 'linear' | 'circuit';
   color?: string;
   isLocked?: boolean;
-  isSmartPlan?: boolean; // To identify AI-generated plans
-  // FIX: Add optional 'order' property to allow sorting and reordering of workout plans.
+  isSmartPlan?: boolean;
   order?: number;
+  // Internal schema version to help with migrations
+  version?: number;
 }
 
 export interface WorkoutLogEntry {

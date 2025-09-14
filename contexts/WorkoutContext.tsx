@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useMemo, useRef } from 'react';
 import { WorkoutPlan, WorkoutStep, WorkoutLogEntry } from '../types';
 import { prefetchExercises } from '../services/geminiService';
-import { getBaseExerciseName, generateCircuitSteps, processAndFormatAiSteps, arePlansDeeplyEqual } from '../utils/workout';
+import { getBaseExerciseName, generateCircuitSteps, processAndFormatAiSteps, arePlansDeeplyEqual, migratePlanToV2 } from '../utils/workout';
 import { useSettings } from './SettingsContext';
 import { getLocalPlans, saveLocalPlans, getLocalHistory, saveLocalHistory } from '../services/storageService';
 import { useAuth } from './AuthContext';
@@ -95,10 +95,10 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         const plansCollection = collection(db, 'users', user.uid, 'plans');
         
         unsubscribe = onSnapshot(query(plansCollection, orderBy('order', 'asc')), (snapshot) => {
-            const remotePlans = snapshot.docs.map(doc => doc.data() as WorkoutPlan);
+            const remotePlans = snapshot.docs.map(doc => migratePlanToV2(doc.data()));
 
             if (!initialSyncDone.current) {
-                const localPlans = getLocalPlans();
+                const localPlans = getLocalPlans().map(migratePlanToV2);
                 const remotePlanIds = new Set(remotePlans.map(p => p.id));
                 const newGuestPlans = localPlans.filter(p => !remotePlanIds.has(p.id));
 
@@ -119,7 +119,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     } else if (authStatus === 'unauthenticated') {
         if (unsubscribe) unsubscribe();
-        setPlans(getLocalPlans());
+        setPlans(getLocalPlans().map(migratePlanToV2));
         setIsSyncing(false);
     }
     
@@ -134,7 +134,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     try {
         const plansCollection = collection(db, 'users', user.uid, 'plans');
         const remoteSnapshot = await getDocs(query(plansCollection, orderBy('order', 'asc')));
-        const remotePlans = remoteSnapshot.docs.map(doc => doc.data() as WorkoutPlan);
+        const remotePlans = remoteSnapshot.docs.map(doc => migratePlanToV2(doc.data()));
         setPlans(remotePlans);
         saveLocalPlans(remotePlans);
     } catch (error) {
@@ -177,45 +177,48 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
   }, []);
 
   const savePlan = useCallback(async (planToSave: WorkoutPlan) => {
-    const isNewPlan = !plans.some(p => p.id === planToSave.id);
+    const migratedPlan = migratePlanToV2(planToSave);
+    const isNewPlan = !plans.some(p => p.id === migratedPlan.id);
+    
     setPlans(prevPlans => {
         const plansWithOrder = prevPlans.map((p, i) => ({ ...p, order: i }));
         if (isNewPlan) {
             const maxOrder = plansWithOrder.reduce((max, p) => Math.max(max, p.order ?? -1), -1);
-            planToSave.order = maxOrder + 1;
-            return [...plansWithOrder, planToSave];
+            migratedPlan.order = maxOrder + 1;
+            return [...plansWithOrder, migratedPlan];
         }
-        return plansWithOrder.map(p => p.id === planToSave.id ? planToSave : p);
+        return plansWithOrder.map(p => p.id === migratedPlan.id ? migratedPlan : p);
     });
 
     if (user) {
         try {
-            const planRef = doc(db, 'users', user.uid, 'plans', planToSave.id);
-            await setDoc(planRef, planToSave, { merge: true });
+            const planRef = doc(db, 'users', user.uid, 'plans', migratedPlan.id);
+            await setDoc(planRef, migratedPlan, { merge: true });
         } catch (error) {
             console.error("Failed to save plan to Firestore:", error);
         }
     } else {
-        const currentPlans = getLocalPlans();
+        const currentPlans = getLocalPlans().map(migratePlanToV2);
         let updatedPlans;
         if (isNewPlan) {
             const maxOrder = currentPlans.reduce((max, p) => Math.max(max, p.order ?? -1), -1);
-            planToSave.order = maxOrder + 1;
-            updatedPlans = [...currentPlans, planToSave];
+            migratedPlan.order = maxOrder + 1;
+            updatedPlans = [...currentPlans, migratedPlan];
         } else {
-            updatedPlans = currentPlans.map(p => (p.id === planToSave.id ? planToSave : p));
+            updatedPlans = currentPlans.map(p => (p.id === migratedPlan.id ? migratedPlan : p));
         }
         saveLocalPlans(updatedPlans);
     }
   }, [user, plans]);
   
   const importPlan = useCallback((planToImport: WorkoutPlan, source: string = 'file') => {
-    const isDuplicate = plans.some(existingPlan => arePlansDeeplyEqual(planToImport, existingPlan));
+    const migratedPlan = migratePlanToV2(planToImport);
+    const isDuplicate = plans.some(existingPlan => arePlansDeeplyEqual(migratedPlan, existingPlan));
 
     if (isDuplicate) {
         setImportNotification({
             message: 'האימון כבר קיים',
-            planName: `"${planToImport.name}" לא יובא שוב.`,
+            planName: `"${migratedPlan.name}" לא יובא שוב.`,
             type: 'warning',
         });
         return;
@@ -223,10 +226,10 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     const newPlanId = `${Date.now()}_imported_from_${source}`;
     const newPlan: WorkoutPlan = {
-      ...planToImport,
+      ...migratedPlan,
       id: newPlanId,
-      name: planToImport.name,
-      steps: planToImport.steps.map((step, index) => ({
+      name: migratedPlan.name,
+      steps: migratedPlan.steps.map((step, index) => ({
         ...step,
         id: `${Date.now()}_imported_step_${index}`
       }))
@@ -246,7 +249,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     const exerciseNames = newPlan.steps
         .filter(s => s.type === 'exercise')
-        .map(s => getBaseExerciseName(s.name));
+        .map(s => s.name); // Already base name
     prefetchExercises(exerciseNames);
 
     setRecentlyImportedPlanId(newPlanId);
@@ -395,6 +398,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
       name: plansToRun.map(p => p.name).join(' & '),
       steps: allSteps,
       executionMode: executionMode,
+      version: 2,
     };
     
     setActiveWorkout({ plan: metaPlan, currentStepIndex: 0, sourcePlanIds: plansToStart, stepRestartKey: 0 });

@@ -13,6 +13,7 @@ import { useCountdown } from './hooks/useCountdown';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
 import { WorkoutProvider, useWorkout, ActiveWorkout } from './contexts/WorkoutContext';
 import { playNotificationSound } from './utils/sound';
+import { getStepDisplayName } from './utils/workout';
 import { ImportNotification } from './components/ImportNotification';
 import { AuthProvider } from './contexts/AuthContext';
 
@@ -291,7 +292,7 @@ const AppContent: React.FC = () => {
     } else if (settings.showCountdown && (countdown.isRunning || countdown.isResting || isWorkoutActive) && !isWorkoutPaused) {
         const timeLeftFormatted = Math.ceil(countdown.timeLeft);
         if (isWorkoutActive && currentStep) {
-            document.title = `${mutePrefix}${timeLeftFormatted}s - ${currentStep.name}`;
+            document.title = `${mutePrefix}${timeLeftFormatted}s - ${getStepDisplayName(currentStep)}`;
         } else {
             document.title = `${mutePrefix}${timeLeftFormatted}s`;
         }
@@ -535,7 +536,7 @@ const AppContent: React.FC = () => {
         <div className="text-center mt-4 h-16 flex items-start justify-center">
           {isWorkoutActive && currentStep.type === 'exercise' && (
             <p className="text-2xl">
-              {isWorkoutPaused ? 'PAUSED' : (isCountdownPaused ? `${currentStep.name} (Paused)` : currentStep.name)}
+              {isWorkoutPaused ? 'PAUSED' : (isCountdownPaused ? `${getStepDisplayName(currentStep)} (Paused)` : getStepDisplayName(currentStep))}
             </p>
           )}
         </div>
@@ -547,7 +548,7 @@ const AppContent: React.FC = () => {
             <div className="text-center mb-2 h-7 flex items-center justify-center">
               {isWorkoutActive && settings.showNextExercise && nextUpcomingStep && (
                   <p className="text-xl text-gray-400">
-                      Next Up: <span className="font-bold text-gray-300">{nextUpcomingStep.name}</span>
+                      Next Up: <span className="font-bold text-gray-300">{getStepDisplayName(nextUpcomingStep)}</span>
                   </p>
               )}
             </div>

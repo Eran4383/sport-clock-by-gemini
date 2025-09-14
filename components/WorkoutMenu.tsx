@@ -6,7 +6,7 @@ import { HoverNumberInput } from './HoverNumberInput';
 import { getExerciseInfo, ExerciseInfo, prefetchExercises, generateWorkoutPlan } from '../services/geminiService';
 import { WorkoutInfoModal } from './WorkoutInfoModal';
 import { WorkoutLog } from './WorkoutLog';
-import { getBaseExerciseName, generateCircuitSteps } from '../utils/workout';
+import { getBaseExerciseName, generateCircuitSteps, getStepDisplayName } from '../utils/workout';
 import { useAuth } from '../contexts/AuthContext';
 
 const EDITOR_STORAGE_KEY = 'sportsClockPlanEditorDraft';
@@ -406,7 +406,7 @@ const useExerciseColorMap = (steps: WorkoutStep[]): Map<string, string> => {
     
     steps.forEach(step => {
       if (step.type === 'exercise') {
-        const baseName = getBaseExerciseName(step.name);
+        const baseName = step.name; // Already the base name
         if (!uniqueExercises.includes(baseName)) {
           uniqueExercises.push(baseName);
         }
@@ -420,6 +420,7 @@ const useExerciseColorMap = (steps: WorkoutStep[]): Map<string, string> => {
     return map;
   }, [steps]);
 };
+
 
 const PlanListItem: React.FC<{
   plan: WorkoutPlan;
@@ -751,22 +752,22 @@ const PlanListItem: React.FC<{
               <ol className="text-gray-300 space-y-1">
                   {displayedSteps.map((step, index) => {
                       const isCurrent = isActive && step.id === currentStep?.id;
-                      const color = step.type === 'exercise' ? exerciseColorMap.get(getBaseExerciseName(step.name)) : 'transparent';
+                      const color = step.type === 'exercise' ? exerciseColorMap.get(step.name) : 'transparent';
                       
                       return (
                           <li 
                             key={`${step.id}-${index}`} 
                             className={`flex items-center gap-2 transition-all duration-200 rounded p-1 -m-1 ${isCurrent ? 'bg-blue-500/20 font-bold' : 'hover:bg-gray-600/50'}`}
-                            title={step.name}
+                            title={getStepDisplayName(step)}
                             onClick={(e) => {
                               e.stopPropagation();
                               if (step.type === 'exercise') {
-                                  onInspectExercise(getBaseExerciseName(step.name));
+                                  onInspectExercise(step.name);
                               }
                             }}
                           >
                               <span className="w-1.5 h-4 rounded" style={{ backgroundColor: color }}></span>
-                              <span className="truncate flex-1">{step.name} - <span className="text-gray-400 font-normal">{step.isRepBased ? `${step.reps} reps` : `${step.duration}s`}</span></span>
+                              <span className="truncate flex-1">{getStepDisplayName(step)} - <span className="text-gray-400 font-normal">{step.isRepBased ? `${step.reps} חזרות` : `${step.duration} שניות`}</span></span>
                           </li>
                       )
                   })}
@@ -875,7 +876,7 @@ const PlanList: React.FC<{
     setRefreshFeedback('Checking server for missing exercises...');
     const allExerciseNames = plans.flatMap(plan => plan.steps)
                                   .filter(step => step.type === 'exercise')
-                                  .map(step => getBaseExerciseName(step.name));
+                                  .map(step => step.name); // Already base name
     
     const result = await prefetchExercises(allExerciseNames);
     
@@ -1230,17 +1231,17 @@ const PlanList: React.FC<{
                                     {settings.warmupSteps.map((step, index) => (
                                         <li key={index} 
                                             className={`flex items-center gap-2 p-1 -m-1 rounded transition-opacity ${step.enabled === false ? 'opacity-50' : ''} ${step.type === 'exercise' ? 'hover:bg-gray-600/50' : ''}`}
-                                            title={step.name}
+                                            title={getStepDisplayName(step)}
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 if (step.type === 'exercise') {
-                                                    onInspectExercise(`${step.name} warmup`);
+                                                    onInspectExercise(step.name);
                                                 }
                                             }}
                                             style={{ cursor: step.type === 'exercise' ? 'pointer' : 'default' }}
                                         >
                                             <span className={`w-1.5 h-4 rounded ${step.type === 'exercise' ? 'bg-orange-400' : 'bg-transparent'}`}></span>
-                                            <span className="truncate">{step.name} - <span className="text-gray-400 font-normal">{step.isRepBased ? `${step.reps} reps` : `${step.duration}s`}</span></span>
+                                            <span className="truncate">{getStepDisplayName(step)} - <span className="text-gray-400 font-normal">{step.isRepBased ? `${step.reps} חזרות` : `${step.duration} שניות`}</span></span>
                                         </li>
                                     ))}
                                 </ol>
@@ -1307,22 +1308,24 @@ const SetBuilder: React.FC<{ onAddSets: (steps: WorkoutStep[]) => void }> = ({ o
         for (let i = 0; i < sets; i++) {
             const exerciseStep: WorkoutStep = {
                 id: `${Date.now()}-set-${i}-ex`,
-                name: `${name} (Set ${i + 1}/${sets})`,
+                name: name,
                 type: 'exercise',
                 isRepBased,
                 duration: isRepBased ? 0 : duration,
                 reps: isRepBased ? reps : 0,
+                set: { current: i + 1, total: sets },
             };
             newSteps.push(exerciseStep);
             
             if (rest > 0 && i < sets - 1) { // No rest after the last set
                 const restStep: WorkoutStep = {
                     id: `${Date.now()}-set-${i}-rest`,
-                    name: `Rest (סט ${i + 1}/${sets})`,
+                    name: 'Rest',
                     type: 'rest',
                     isRepBased: false,
                     duration: rest,
                     reps: 0,
+                    set: { current: i + 1, total: sets }, // Associate rest with the preceding set
                 };
                 newSteps.push(restStep);
             }
@@ -1374,6 +1377,7 @@ const EditableStepItem: React.FC<{
     );
 
     const stepBgClass = step.type === 'rest' ? 'bg-gray-700/80' : 'bg-gray-700/50';
+    const displayName = getStepDisplayName(step);
 
     return (
         <div className={`${stepBgClass} rounded-lg relative`} style={{ borderLeft: `3px solid ${color || 'transparent'}` }}>
@@ -1403,9 +1407,9 @@ const EditableStepItem: React.FC<{
                 )}
                 <span className="text-gray-400 font-bold">#{index + 1}</span>
                 <div className="flex-grow min-w-0">
-                    <p className={`font-semibold text-white truncate transition-opacity ${step.enabled === false ? 'opacity-50' : ''}`} title={step.name}>{step.name}</p>
+                    <p className={`font-semibold text-white truncate transition-opacity ${step.enabled === false ? 'opacity-50' : ''}`} title={displayName}>{displayName}</p>
                     <p className={`text-sm text-gray-400 transition-opacity ${step.enabled === false ? 'opacity-50' : ''}`}>
-                        {step.type === 'rest' ? 'Rest' : (step.isRepBased ? `${step.reps} reps` : `${step.duration}s`)}
+                        {step.type === 'rest' ? 'מנוחה' : (step.isRepBased ? `${step.reps} חזרות` : `${step.duration} שניות`)}
                     </p>
                 </div>
                 <button className="p-2 text-gray-400 hover:text-white shrink-0">
@@ -1487,7 +1491,7 @@ const EditableSetGroup: React.FC<{
     
     if (steps.length === 0) return null;
 
-    const baseName = getBaseExerciseName(steps[0].name);
+    const baseName = steps[0].name;
     const numSets = steps.filter(s => s.type === 'exercise').length;
     
     return (
@@ -1543,50 +1547,48 @@ const EditableSetGroup: React.FC<{
     );
 };
 
-// This function groups steps into individual steps or sets of steps.
-const groupSteps = (steps: WorkoutStep[]): (WorkoutStep | WorkoutStep[])[] => {
+// This function groups steps into individual steps or sets of steps for rendering in the editor.
+const groupStepsForEditor = (steps: WorkoutStep[]): (WorkoutStep | WorkoutStep[])[] => {
     const grouped: (WorkoutStep | WorkoutStep[])[] = [];
     let i = 0;
     while (i < steps.length) {
         const step = steps[i];
-        const match = step.name.match(/(.+?)\s*\((Set|סט)\s*(\d+)\/(\d+)\)/i);
         
-        if (match && parseInt(match[3], 10) === 1) {
-            // This looks like the start of a set
-            const baseName = match[1].trim();
-            const totalSets = parseInt(match[4], 10);
-            
+        // Check if this step is the start of a set
+        if (step.set && step.set.current === 1) {
+            const baseName = step.name;
+            const totalSets = step.set.total;
             const potentialSet: WorkoutStep[] = [];
-            let currentSetNumber = 1;
             let j = i;
+            let currentSetNumber = 1;
 
-            while (j < steps.length && currentSetNumber <= totalSets) {
-                const exerciseStep = steps[j];
-                const exerciseMatch = exerciseStep.name.match(new RegExp(`^${baseName}\\s*\\((Set|סט)\\s*(\\d+)\\/(\\d+)\\)$`, 'i'));
-
-                if (exerciseStep.type === 'exercise' && exerciseMatch && parseInt(exerciseMatch[2], 10) === currentSetNumber && parseInt(exerciseMatch[3], 10) === totalSets) {
-                    potentialSet.push(exerciseStep);
-                    j++;
-
-                    if (j < steps.length && steps[j].type === 'rest' && currentSetNumber < totalSets) {
-                        potentialSet.push(steps[j]);
-                        j++;
-                    }
-                    currentSetNumber++;
+            // Try to gather all steps belonging to this set
+            while(j < steps.length && currentSetNumber <= totalSets) {
+                const currentExercise = steps[j];
+                // Check if the current step is the correct exercise for the set
+                if(currentExercise.name === baseName && currentExercise.set?.current === currentSetNumber) {
+                     potentialSet.push(currentExercise);
+                     j++;
+                     // Check for an associated rest step
+                     if (j < steps.length && steps[j].type === 'rest' && currentSetNumber < totalSets) {
+                         potentialSet.push(steps[j]);
+                         j++;
+                     }
+                     currentSetNumber++;
                 } else {
                     break; // Pattern broken
                 }
             }
-
+            
+            // Validate that we found all sets for this exercise group
             if (potentialSet.filter(s => s.type === 'exercise').length === totalSets) {
-                // The pattern is valid, we found a full set
                 grouped.push(potentialSet);
-                i = j; // Move the main index past the processed set
+                i = j; // Move index past the processed group
                 continue;
             }
         }
 
-        // If it's not a set or the pattern broke, add the step individually
+        // If not a set or pattern was broken, add step individually
         grouped.push(step);
         i++;
     }
@@ -1622,6 +1624,7 @@ const PlanEditor: React.FC<{
                 steps: [],
                 executionMode: 'linear',
                 color: '#808080',
+                version: 2,
             });
         }
         setExpandedGroups({}); // Collapse all on load
@@ -1641,7 +1644,7 @@ const PlanEditor: React.FC<{
         const handler = setTimeout(() => {
             const exerciseNames = editedPlan.steps
                 .filter(s => s.type === 'exercise')
-                .map(s => getBaseExerciseName(s.name));
+                .map(s => s.name);
             
             if (exerciseNames.length > 0) {
                 prefetchExercises(exerciseNames);
@@ -1660,7 +1663,7 @@ const PlanEditor: React.FC<{
             return;
         }
         
-        const planToSave = { ...editedPlan };
+        const planToSave = { ...editedPlan, version: 2 };
 
         if (isWarmupEditor) {
             updateSettings({ warmupSteps: planToSave.steps });
@@ -1668,7 +1671,7 @@ const PlanEditor: React.FC<{
              if (planToSave.name.trim() === '') {
                 const uniqueExercises = [...new Set(planToSave.steps
                     .filter(s => s.type === 'exercise')
-                    .map(s => getBaseExerciseName(s.name))
+                    .map(s => s.name)
                 )];
                 
                 if (uniqueExercises.length > 0) {
@@ -1746,38 +1749,19 @@ const PlanEditor: React.FC<{
     const renumberAllSets = (steps: WorkoutStep[]): WorkoutStep[] => {
         const setCounts = new Map<string, number>();
         steps.forEach(step => {
-            if (step.type === 'exercise') {
-                const baseName = getBaseExerciseName(step.name);
-                if (baseName !== step.name) {
-                    setCounts.set(baseName, (setCounts.get(baseName) || 0) + 1);
-                }
+            if (step.type === 'exercise' && step.set) {
+                setCounts.set(step.name, (setCounts.get(step.name) || 0) + 1);
             }
         });
 
         const setCounters = new Map<string, number>();
-        return steps.map((step, idx) => {
-            if (step.type === 'exercise') {
-                const baseName = getBaseExerciseName(step.name);
-                const total = setCounts.get(baseName);
+        return steps.map(step => {
+            if (step.type === 'exercise' && step.set) {
+                const total = setCounts.get(step.name);
                 if (total) {
-                    const currentCount = (setCounters.get(baseName) || 0) + 1;
-                    setCounters.set(baseName, currentCount);
-                    return { ...step, name: `${baseName} (Set ${currentCount}/${total})` };
-                }
-            }
-            
-            const restMatch = step.name.match(/^(Rest|מנוחה)\s*\((Set|סט)\s*\d+\/\d+\)/i);
-            if (step.type === 'rest' && restMatch) {
-                if (idx > 0) {
-                    const prevStep = steps[idx - 1];
-                    if (prevStep.type === 'exercise') {
-                        const baseName = getBaseExerciseName(prevStep.name);
-                        const total = setCounts.get(baseName);
-                        const currentCount = setCounters.get(baseName);
-                        if (total && currentCount) {
-                             return { ...step, name: `Rest (סט ${currentCount}/${total})` };
-                        }
-                    }
+                    const currentCount = (setCounters.get(step.name) || 0) + 1;
+                    setCounters.set(step.name, currentCount);
+                    return { ...step, set: { current: currentCount, total } };
                 }
             }
             return step;
@@ -1790,9 +1774,7 @@ const PlanEditor: React.FC<{
         const stepToRemove = editedPlan.steps[index];
         let numToRemove = 1;
 
-        const isExerciseInSet = stepToRemove.type === 'exercise' && /\((Set|סט)\s*\d+\/\d+\)/i.test(stepToRemove.name);
-
-        if (isExerciseInSet && index + 1 < editedPlan.steps.length) {
+        if (stepToRemove.type === 'exercise' && stepToRemove.set && index + 1 < editedPlan.steps.length) {
             const nextStep = editedPlan.steps[index + 1];
             if (nextStep.type === 'rest') {
                 numToRemove = 2;
@@ -1847,41 +1829,31 @@ const PlanEditor: React.FC<{
     const handleAddSet = (startIndex: number, groupItem: WorkoutStep[]) => {
         if (!editedPlan) return;
 
-        // Find the last exercise in the set to use as a template
         const lastExerciseStep = [...groupItem].reverse().find(s => s.type === 'exercise');
         if (!lastExerciseStep) return;
 
-        // Find an existing rest step in the set to use as a template
         const restStepTemplate = groupItem.find(s => s.type === 'rest');
-
         const newStepsToAdd: WorkoutStep[] = [];
 
-        // 1. Add a rest step if the set has rests. This adds the rest before the new exercise, which is correct for inter-set rest.
         if (restStepTemplate) {
              const newRestStep: WorkoutStep = {
                 id: `${Date.now()}-rest-from-set`,
-                type: 'rest',
-                name: restStepTemplate.name, // Placeholder, will be renumbered
-                isRepBased: false,
-                duration: restStepTemplate.duration,
-                reps: 0,
+                type: 'rest', name: 'Rest', isRepBased: false,
+                duration: restStepTemplate.duration, reps: 0,
             };
             newStepsToAdd.push(newRestStep);
         }
 
-        // 2. Add the new exercise step.
         const newExerciseStep: WorkoutStep = {
             id: `${Date.now()}-ex-from-set`,
-            type: 'exercise',
-            name: lastExerciseStep.name, // Placeholder, will be renumbered
+            type: 'exercise', name: lastExerciseStep.name,
             isRepBased: lastExerciseStep.isRepBased,
-            duration: lastExerciseStep.duration,
-            reps: lastExerciseStep.reps,
+            duration: lastExerciseStep.duration, reps: lastExerciseStep.reps,
+            set: { current: 0, total: 0 } // Placeholder, will be renumbered
         };
         newStepsToAdd.push(newExerciseStep);
 
         const currentSteps = [...editedPlan.steps];
-        // Insert the new steps right after the current set group in the main array
         currentSteps.splice(startIndex + groupItem.length, 0, ...newStepsToAdd);
         
         const finalSteps = renumberAllSets(currentSteps);
@@ -1908,7 +1880,7 @@ const PlanEditor: React.FC<{
     const handleDrop = () => {
         if (draggedGroupIndex === null || dropTargetIndex === null || !editedPlan) return;
         
-        const grouped = groupSteps(editedPlan.steps);
+        const grouped = groupStepsForEditor(editedPlan.steps);
         const draggedGroup = grouped.splice(draggedGroupIndex, 1)[0];
         grouped.splice(dropTargetIndex, 0, draggedGroup);
 
@@ -1917,7 +1889,6 @@ const PlanEditor: React.FC<{
         
         setEditedPlan(p => p ? { ...p, steps: finalSteps } : null);
 
-        // Reset state
         setDraggedGroupIndex(null);
         setDropTargetIndex(null);
     };
@@ -1931,7 +1902,7 @@ const PlanEditor: React.FC<{
         return null;
     }
     
-    const groupedRenderItems = groupSteps(editedPlan.steps);
+    const groupedRenderItems = groupStepsForEditor(editedPlan.steps);
     let stepIndexCounter = 0;
 
     const editorTitle = isWarmupEditor ? 'Edit Warm-up' : (plan ? 'Edit Plan' : 'Create Plan');
@@ -1983,7 +1954,7 @@ const PlanEditor: React.FC<{
                                const startIndex = stepIndexCounter;
                                stepIndexCounter += item.length;
                                const groupId = `group-${item[0].id}`;
-                               const color = exerciseColorMap.get(getBaseExerciseName(item[0].name));
+                               const color = exerciseColorMap.get(item[0].name);
 
                                return (
                                    <EditableSetGroup
@@ -2007,7 +1978,7 @@ const PlanEditor: React.FC<{
                                const step = item;
                                const stepIndex = stepIndexCounter;
                                stepIndexCounter++;
-                               const color = step.type === 'exercise' ? exerciseColorMap.get(getBaseExerciseName(step.name)) : undefined;
+                               const color = step.type === 'exercise' ? exerciseColorMap.get(step.name) : undefined;
                                
                                return (
                                    <EditableStepItem
@@ -2327,7 +2298,8 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
             id: '_warmup_',
             name: 'Warm-up Routine',
             steps: settings.warmupSteps,
-            color: '#f97316' // Orange for warm-up
+            color: '#f97316', // Orange for warm-up
+            version: 2,
         } as WorkoutPlan
     }
     return editingPlan as WorkoutPlan;
