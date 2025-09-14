@@ -135,7 +135,7 @@ export const processAndFormatAiSteps = (steps: WorkoutStep[]): WorkoutStep[] => 
  */
 const areStepsEqual = (step1: Omit<WorkoutStep, 'id'>, step2: Omit<WorkoutStep, 'id'>): boolean => {
     return (
-        step1.name === step2.name &&
+        step1.name.trim() === step2.name.trim() &&
         step1.type === step2.type &&
         step1.isRepBased === step2.isRepBased &&
         step1.duration === step2.duration &&
