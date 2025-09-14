@@ -77,6 +77,8 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [guestPlansToMerge, setGuestPlansToMerge] = useState<WorkoutPlan[]>([]);
   const initialSyncDone = useRef(false);
   
+  const guestPlansBackup = useRef<WorkoutPlan[] | null>(null);
+
   const isPreparingWorkout = plansToStart.length > 0;
 
   const clearImportNotification = useCallback(() => setImportNotification(null), []);
@@ -90,6 +92,12 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     let unsubscribe: Unsubscribe | undefined;
 
     if (authStatus === 'authenticated' && user) {
+        // When a user signs in, back up the current local (guest) plans into memory.
+        // This only happens once per login session.
+        if (guestPlansBackup.current === null) {
+            guestPlansBackup.current = getLocalPlans().map(migratePlanToV2);
+        }
+
         setIsSyncing(true);
         initialSyncDone.current = false; // Reset for new login
         const plansCollection = collection(db, 'users', user.uid, 'plans');
@@ -97,8 +105,10 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         unsubscribe = onSnapshot(query(plansCollection, orderBy('order', 'asc')), (snapshot) => {
             const remotePlans = snapshot.docs.map(doc => migratePlanToV2(doc.data()));
 
+            // On the first data load after login, check if there are guest plans to merge.
             if (!initialSyncDone.current) {
-                const localPlans = getLocalPlans().map(migratePlanToV2);
+                // Compare remote plans with the in-memory backup of guest plans.
+                const localPlans = guestPlansBackup.current || [];
                 const remotePlanIds = new Set(remotePlans.map(p => p.id));
                 const newGuestPlans = localPlans.filter(p => !remotePlanIds.has(p.id));
 
@@ -109,6 +119,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
                 initialSyncDone.current = true;
             }
             
+            // Set the active plans to the user's remote data and save it locally for offline access.
             setPlans(remotePlans);
             saveLocalPlans(remotePlans);
             setIsSyncing(false);
@@ -119,7 +130,17 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     } else if (authStatus === 'unauthenticated') {
         if (unsubscribe) unsubscribe();
-        setPlans(getLocalPlans().map(migratePlanToV2));
+
+        // If a backup exists, it means a user just logged out. Restore the guest plans.
+        if (guestPlansBackup.current !== null) {
+            const restoredGuestPlans = guestPlansBackup.current;
+            setPlans(restoredGuestPlans);
+            saveLocalPlans(restoredGuestPlans); // Save restored plans back to local storage.
+            guestPlansBackup.current = null; // Clear the backup for the next session.
+        } else {
+            // Otherwise, this is a fresh app start in guest mode, so load from local storage.
+            setPlans(getLocalPlans().map(migratePlanToV2));
+        }
         setIsSyncing(false);
     }
     
