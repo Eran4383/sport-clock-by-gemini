@@ -134,13 +134,22 @@ export const processAndFormatAiSteps = (steps: WorkoutStep[]): WorkoutStep[] => 
  * @returns True if the steps are functionally identical.
  */
 const areStepsEqual = (step1: Omit<WorkoutStep, 'id'>, step2: Omit<WorkoutStep, 'id'>): boolean => {
-    return (
-        step1.name.trim() === step2.name.trim() &&
-        step1.type === step2.type &&
-        step1.isRepBased === step2.isRepBased &&
-        step1.duration === step2.duration &&
-        step1.reps === step2.reps
-    );
+    // First, check the properties that must always be the same.
+    if (
+        step1.name.trim() !== step2.name.trim() ||
+        step1.type !== step2.type ||
+        step1.isRepBased !== step2.isRepBased
+    ) {
+        return false;
+    }
+
+    // If the step is rep-based, only compare reps. Duration is irrelevant.
+    if (step1.isRepBased) {
+        return step1.reps === step2.reps;
+    }
+    
+    // If the step is time-based, only compare duration. Reps are irrelevant.
+    return step1.duration === step2.duration;
 };
 
 /**
