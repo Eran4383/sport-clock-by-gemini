@@ -1,6 +1,7 @@
 
 
 
+
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Settings } from './useSettings';
 import { playNotificationSound, playEndSound } from '../utils/sound';
@@ -99,23 +100,33 @@ export const useCountdown = (initialDuration: number, restDuration: number, sett
   }, []);
 
   const start = useCallback(() => {
-    setPhase(currentPhase => {
-        if (currentPhase !== 'stopped') return currentPhase;
+    // FIX: Use the state setter from useState (_setPhase) which accepts a function,
+    // and manually update the ref inside the callback to keep it in sync.
+    _setPhase(currentPhase => {
+        if (currentPhase !== 'stopped') {
+            return currentPhase;
+        }
         const startTime = performance.now();
         endTimeRef.current = startTime + timeLeftOnPauseRef.current;
         if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = requestAnimationFrame(animate);
+        phaseRef.current = 'running';
         return 'running';
     });
   }, [animate]);
 
   const stop = useCallback(() => {
-    setPhase(currentPhase => {
-        if (currentPhase === 'stopped') return 'stopped';
+    // FIX: Use the state setter from useState (_setPhase) which accepts a function,
+    // and manually update the ref inside the callback to keep it in sync.
+    _setPhase(currentPhase => {
+        if (currentPhase === 'stopped') {
+            return 'stopped';
+        }
         if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = undefined;
         const remaining = endTimeRef.current - performance.now();
         timeLeftOnPauseRef.current = remaining > 0 ? remaining : 0;
+        phaseRef.current = 'stopped';
         return 'stopped';
     });
   }, []);
