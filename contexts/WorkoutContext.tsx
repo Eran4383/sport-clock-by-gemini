@@ -3,10 +3,11 @@ import { WorkoutPlan, WorkoutStep, WorkoutLogEntry } from '../types';
 import { prefetchExercises } from '../services/geminiService';
 import { getBaseExerciseName, generateCircuitSteps, processAndFormatAiSteps, arePlansDeeplyEqual, migratePlanToV2 } from '../utils/workout';
 import { useSettings } from './SettingsContext';
-import { getLocalPlans, saveLocalPlans, getLocalHistory, saveLocalHistory } from '../services/storageService';
+import { getLocalPlans, saveLocalPlans, getLocalHistory, saveLocalHistory, clearAiChatHistory } from '../services/storageService';
 import { useAuth } from './AuthContext';
 import { db } from '../services/firebase';
-import { collection, doc, writeBatch, query, orderBy, setDoc, deleteDoc, onSnapshot, Unsubscribe, getDocs } from 'firebase/firestore';
+// FIX: Switched to Firebase v9 compat syntax, which doesn't use these modular imports.
+// The db object imported from firebase.ts is now a compat instance.
 
 export interface ActiveWorkout {
   plan: WorkoutPlan; // This can be a "meta-plan" if multiple plans are selected
@@ -89,7 +90,8 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
 
 
   useEffect(() => {
-    let unsubscribe: Unsubscribe | undefined;
+    // FIX: Using compat syntax, Unsubscribe is just a function that returns void.
+    let unsubscribe: (() => void) | undefined;
 
     if (authStatus === 'authenticated' && user) {
         // When a user signs in, back up the current local (guest) plans into memory.
@@ -100,10 +102,13 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
 
         setIsSyncing(true);
         initialSyncDone.current = false; // Reset for new login
-        const plansCollection = collection(db, 'users', user.uid, 'plans');
+        // FIX: Use compat syntax for collection and query
+        const plansCollection = db.collection('users').doc(user.uid).collection('plans');
+        const plansQuery = plansCollection.orderBy('order', 'asc');
         
-        unsubscribe = onSnapshot(query(plansCollection, orderBy('order', 'asc')), (snapshot) => {
-            const remotePlans = snapshot.docs.map(doc => migratePlanToV2(doc.data()));
+        // FIX: Use compat syntax for onSnapshot
+        unsubscribe = plansQuery.onSnapshot((snapshot) => {
+            const remotePlans = snapshot.docs.map(doc => migratePlanToV2(doc.data() as WorkoutPlan));
 
             // On the first data load after login, check if there are guest plans to merge.
             if (!initialSyncDone.current) {
@@ -133,6 +138,10 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
 
         // If a backup exists, it means a user just logged out. Restore the guest plans.
         if (guestPlansBackup.current !== null) {
+            // A user has just signed out. Clear their session-specific data.
+            clearAiChatHistory();
+            setWorkoutHistory([]); // This will clear state and local storage via its useEffect
+
             const restoredGuestPlans = guestPlansBackup.current;
             setPlans(restoredGuestPlans);
             saveLocalPlans(restoredGuestPlans); // Save restored plans back to local storage.
@@ -153,9 +162,10 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     if (!user) return;
     setIsSyncing(true);
     try {
-        const plansCollection = collection(db, 'users', user.uid, 'plans');
-        const remoteSnapshot = await getDocs(query(plansCollection, orderBy('order', 'asc')));
-        const remotePlans = remoteSnapshot.docs.map(doc => migratePlanToV2(doc.data()));
+        // FIX: Use compat syntax for collection, query, and get
+        const plansCollection = db.collection('users').doc(user.uid).collection('plans');
+        const remoteSnapshot = await plansCollection.orderBy('order', 'asc').get();
+        const remotePlans = remoteSnapshot.docs.map(doc => migratePlanToV2(doc.data() as WorkoutPlan));
         setPlans(remotePlans);
         saveLocalPlans(remotePlans);
     } catch (error) {
@@ -179,9 +189,10 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         const maxOrder = plans.reduce((max, p) => Math.max(max, p.order ?? -1), -1);
         const plansToUpload = plansToMerge.map((p, i) => ({ ...p, order: maxOrder + 1 + i }));
         
-        const batch = writeBatch(db);
+        // FIX: Use compat syntax for batch and doc reference
+        const batch = db.batch();
         plansToUpload.forEach((plan) => {
-            const planRef = doc(db, 'users', user.uid, 'plans', plan.id);
+            const planRef = db.collection('users').doc(user.uid).collection('plans').doc(plan.id);
             batch.set(planRef, plan);
         });
         await batch.commit();
@@ -213,8 +224,9 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     if (user) {
         try {
-            const planRef = doc(db, 'users', user.uid, 'plans', migratedPlan.id);
-            await setDoc(planRef, migratedPlan, { merge: true });
+            // FIX: Use compat syntax for doc reference and set
+            const planRef = db.collection('users').doc(user.uid).collection('plans').doc(migratedPlan.id);
+            await planRef.set(migratedPlan, { merge: true });
         } catch (error) {
             console.error("Failed to save plan to Firestore:", error);
         }
@@ -313,8 +325,9 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     setPlans(prev => prev.filter(p => p.id !== planId));
     if (user) {
       try {
-        const planRef = doc(db, 'users', user.uid, 'plans', planId);
-        await deleteDoc(planRef);
+        // FIX: Use compat syntax for doc reference and delete
+        const planRef = db.collection('users').doc(user.uid).collection('plans').doc(planId);
+        await planRef.delete();
       } catch (error) {
         console.error("Failed to delete plan from Firestore:", error);
       }
@@ -329,9 +342,10 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
 
       if (user) {
         try {
-            const batch = writeBatch(db);
+            // FIX: Use compat syntax for batch and doc reference
+            const batch = db.batch();
             plansWithOrder.forEach((plan) => {
-                const planRef = doc(db, 'users', user.uid, 'plans', plan.id);
+                const planRef = db.collection('users').doc(user.uid).collection('plans').doc(plan.id);
                 batch.set(planRef, plan, { merge: true });
             });
             await batch.commit();

@@ -1,4 +1,6 @@
 
+
+
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Settings } from './useSettings';
 import { playNotificationSound, playEndSound } from '../utils/sound';
@@ -52,177 +54,114 @@ export const useCountdown = (initialDuration: number, restDuration: number, sett
         if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = undefined;
 
-        // Use a timeout to allow the '0' to render for a full second before transitioning.
+        // Use a timeout to allow the '0' to render for a moment before transitioning
         setTimeout(() => {
-            if (currentPhase === 'running') {
-                setCycleCount(c => c + 1);
+            if (phaseRef.current === 'running') {
                 if (canPlaySound && currentSettings.playSoundAtEnd) {
                     playEndSound(volume);
                 }
-
+                setCycleCount(c => c + 1);
                 if (onCycleCompleteRef.current) {
-                    setPhase('stopped');
                     onCycleCompleteRef.current();
-                    return; // The component will re-trigger the hook for the next step.
                 }
-
                 if (restDurationMsRef.current > 0) {
                     setPhase('resting');
                     endTimeRef.current = performance.now() + restDurationMsRef.current;
-                } else {
-                    // No rest, restart immediately
-                    if (canPlaySound && currentSettings.playSoundOnRestart) {
-                        playNotificationSound(volume);
-                    }
-                    setPhase('running');
+                    setTimeLeft(restDurationMsRef.current);
                     halfwaySoundPlayedRef.current = false;
+                    animationFrameRef.current = requestAnimationFrame(animate);
+                } else {
+                    setPhase('stopped');
                     setTimeLeft(durationMsRef.current);
-                    endTimeRef.current = performance.now() + durationMsRef.current;
+                    timeLeftOnPauseRef.current = durationMsRef.current;
+                    halfwaySoundPlayedRef.current = false;
                 }
-            } else if (currentPhase === 'resting') {
-                if (canPlaySound && currentSettings.playSoundOnRestart) {
-                    playNotificationSound(volume);
-                }
-                setPhase('running');
-                halfwaySoundPlayedRef.current = false;
+            } else if (phaseRef.current === 'resting') {
+                setPhase('stopped');
                 setTimeLeft(durationMsRef.current);
-                endTimeRef.current = performance.now() + durationMsRef.current;
+                timeLeftOnPauseRef.current = durationMsRef.current;
+                halfwaySoundPlayedRef.current = false;
             }
-
-            // After transitioning, restart the animation loop
-            if (phaseRef.current !== 'stopped') {
-                animationFrameRef.current = requestAnimationFrame(animate);
-            }
-        }, 1000);
-
-        return; // End this frame's execution
+        }, 100);
+        return;
     }
 
-    // Default case: update time left and continue animation
     setTimeLeft(remaining);
-    
-    // Halfway sound logic for the running phase
-    if (currentPhase === 'running' && canPlaySound && currentSettings.playSoundAtHalfway && !halfwaySoundPlayedRef.current && remaining <= durationMsRef.current / 2) {
+
+    // Play halfway sound
+    const totalDuration = currentPhase === 'running' ? durationMsRef.current : restDurationMsRef.current;
+    if (canPlaySound && currentSettings.playSoundAtHalfway && !halfwaySoundPlayedRef.current && remaining <= totalDuration / 2) {
         playNotificationSound(volume);
         halfwaySoundPlayedRef.current = true;
     }
-
+    
     animationFrameRef.current = requestAnimationFrame(animate);
-}, []);
+  }, []);
 
   const start = useCallback(() => {
-    // Check phaseRef directly as state update might be async
-    if (phaseRef.current === 'stopped') {
-      endTimeRef.current = performance.now() + timeLeftOnPauseRef.current;
-      setPhase('running');
-      const { allSoundsEnabled, isMuted, volume, playSoundOnRestart, stealthModeEnabled } = settingsRef.current;
-      if (allSoundsEnabled && !isMuted && !stealthModeEnabled && playSoundOnRestart && timeLeftOnPauseRef.current >= durationMsRef.current) {
-         playNotificationSound(volume);
-      }
-      if (!animationFrameRef.current) {
-          animationFrameRef.current = requestAnimationFrame(animate);
-      }
-    }
+    setPhase(currentPhase => {
+        if (currentPhase !== 'stopped') return currentPhase;
+        const startTime = performance.now();
+        endTimeRef.current = startTime + timeLeftOnPauseRef.current;
+        if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = requestAnimationFrame(animate);
+        return 'running';
+    });
   }, [animate]);
 
   const stop = useCallback(() => {
-    if (phaseRef.current !== 'stopped') {
-      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = undefined;
-
-      const remaining = endTimeRef.current - performance.now();
-      const newTimeLeft = Math.max(0, remaining);
-      setTimeLeft(newTimeLeft);
-      timeLeftOnPauseRef.current = newTimeLeft;
-      
-      setPhase('stopped');
-    }
+    setPhase(currentPhase => {
+        if (currentPhase === 'stopped') return 'stopped';
+        if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = undefined;
+        const remaining = endTimeRef.current - performance.now();
+        timeLeftOnPauseRef.current = remaining > 0 ? remaining : 0;
+        return 'stopped';
+    });
   }, []);
 
   const reset = useCallback(() => {
-    if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
-    animationFrameRef.current = undefined;
-    
-    // During a workout, reset shouldn't reset the cycle count
-    if (!onCycleCompleteRef.current) {
-        setCycleCount(0);
-    }
-    
-    halfwaySoundPlayedRef.current = false;
-    setTimeLeft(durationMsRef.current);
-    timeLeftOnPauseRef.current = durationMsRef.current;
-    endTimeRef.current = performance.now() + durationMsRef.current;
-    
-    const { allSoundsEnabled, isMuted, volume, playSoundOnRestart, stealthModeEnabled } = settingsRef.current;
-    if (allSoundsEnabled && !isMuted && !stealthModeEnabled && playSoundOnRestart) {
-        playNotificationSound(volume);
-    }
-    
-    setPhase('running');
-    animationFrameRef.current = requestAnimationFrame(animate);
-  }, [animate]);
-  
-  const resetCycleCount = useCallback(() => {
-    setCycleCount(0);
-  }, []);
-
-  useEffect(() => {
-    const newDurationMs = initialDuration * 1000;
-    const wasActive = phaseRef.current !== 'stopped' || onCycleCompleteRef.current !== undefined;
-    
-    durationMsRef.current = newDurationMs;
-    
-    setTimeLeft(newDurationMs);
-    timeLeftOnPauseRef.current = newDurationMs;
-    halfwaySoundPlayedRef.current = false;
-    
-    // Only reset cycles if not in a workout context
-    if (!onCycleCompleteRef.current) {
-        setCycleCount(0); 
-    }
-
-    if (wasActive) {
-      const { allSoundsEnabled, isMuted, volume, playSoundOnRestart, stealthModeEnabled } = settingsRef.current;
-      if (allSoundsEnabled && !isMuted && !stealthModeEnabled && playSoundOnRestart) {
-        playNotificationSound(volume);
-      }
-      endTimeRef.current = performance.now() + newDurationMs;
-      setPhase('running');
-      if (!animationFrameRef.current) {
-        animationFrameRef.current = requestAnimationFrame(animate);
-      }
-    } else {
-      // If it wasn't active, ensure it stays stopped.
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = undefined;
       setPhase('stopped');
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = undefined;
+      const newDurationMs = durationMsRef.current;
+      setTimeLeft(newDurationMs);
+      timeLeftOnPauseRef.current = newDurationMs;
+      setCycleCount(0);
+      halfwaySoundPlayedRef.current = false;
+      const currentSettings = settingsRef.current;
+      if (currentSettings.allSoundsEnabled && !currentSettings.isMuted && !currentSettings.stealthModeEnabled && currentSettings.playSoundOnRestart) {
+          playNotificationSound(currentSettings.volume);
       }
-    }
-    // The stepKey is crucial. It ensures this effect re-runs when the step changes,
-    // even if the new step has the same duration as the old one.
-  }, [initialDuration, stepKey, animate]);
-  
-  useEffect(() => {
-    restDurationMsRef.current = restDuration * 1000;
-  }, [restDuration]);
+  }, []);
+
+  const resetCycleCount = useCallback(() => {
+      setCycleCount(0);
+  }, []);
 
   useEffect(() => {
-    return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
+      const newDurationMs = initialDuration * 1000;
+      const newRestDurationMs = restDuration * 1000;
+      durationMsRef.current = newDurationMs;
+      restDurationMsRef.current = newRestDurationMs;
+      if (phaseRef.current === 'stopped') {
+          setTimeLeft(newDurationMs);
+          timeLeftOnPauseRef.current = newDurationMs;
       }
-    }
-  }, []);
+  }, [initialDuration, restDuration]);
+
+  useEffect(() => {
+      reset();
+  }, [stepKey, reset]);
 
   return {
-    timeLeft: timeLeft > 0 ? timeLeft / 1000 : 0,
-    cycleCount,
-    isRunning: phase === 'running',
-    isResting: phase === 'resting',
-    start,
-    stop,
-    reset,
-    resetCycleCount,
+      timeLeft: timeLeft / 1000, // convert to seconds for display
+      isRunning: phase === 'running',
+      isResting: phase === 'resting',
+      cycleCount,
+      start,
+      stop,
+      reset,
+      resetCycleCount,
   };
 };

@@ -65,7 +65,7 @@ const defaultSettings: Settings = {
   restBackgroundColor: '#FFFFFF',
   showRestTitleOnDefaultCountdown: true,
   preWorkoutCountdownDuration: 10,
-  settingsCategoryOrder: ['sounds', 'countdown', 'stopwatch', 'workoutDisplay', 'displaySizes', 'displayColors'],
+  settingsCategoryOrder: ['sounds', 'countdown', 'stopwatch', 'cycles', 'workoutDisplay', 'displaySizes', 'displayColors'],
   isWarmupEnabled: false,
   warmupSteps: [],
   restAfterWarmupDuration: 15,

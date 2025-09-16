@@ -8,6 +8,7 @@ import { WorkoutInfoModal } from './WorkoutInfoModal';
 import { WorkoutLog } from './WorkoutLog';
 import { getBaseExerciseName, generateCircuitSteps, getStepDisplayName } from '../utils/workout';
 import { useAuth } from '../contexts/AuthContext';
+import { AI_CHAT_HISTORY_KEY } from '../services/storageService';
 
 const EDITOR_STORAGE_KEY = 'sportsClockPlanEditorDraft';
 
@@ -2075,7 +2076,6 @@ const AiPlannerModal: React.FC<{
     type ChatMessage = { role: 'user' | 'model'; parts: ChatPart[] };
     
     const { importPlan } = useWorkout();
-    const AI_CHAT_HISTORY_KEY = 'sportsClockAiChatHistory_v2';
 
     const [messages, setMessages] = useState<ChatMessage[]>(() => {
         try {

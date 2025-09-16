@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 interface ControlsProps {
@@ -69,50 +70,41 @@ export const Controls: React.FC<ControlsProps> = ({
     return <div className="w-28"></div>; // Placeholder for alignment
   };
 
-  const StopwatchControls = () => {
-    if (showTimer && showStopwatchControls) {
-      return (
-        <>
-          <Button 
-            onMouseDown={reset} 
-            ariaLabel={'Reset Timer'}
-            className={buttonColor}
-            disabled={isRunning}
-          >
-            Reset
-          </Button>
-          <CycleDisplay />
-          <Button 
-            onMouseDown={isRunning ? stop : start} 
-            ariaLabel={isRunning ? 'Pause Timer' : 'Start Timer'}
-            className={buttonColor}
-          >
-            {isRunning ? 'Pause' : 'Start'}
-          </Button>
-        </>
-      );
-    }
-    // If controls are hidden but we need the cycle counter
-    return <CycleDisplay />;
-  }
-
   return (
     <div 
       className="flex justify-center items-center gap-4 w-full"
       style={{ transform: 'scale(var(--stopwatch-controls-scale))' }}
     >
-      {isWorkoutActive && (
+      {isWorkoutActive ? (
+        // Workout layout: PREV | STEP | SKIP
+        <>
           <Button onMouseDown={previousStep} ariaLabel="Previous Step" className={buttonColor}>
             Previous
           </Button>
-      )}
-
-      <StopwatchControls />
-
-      {isWorkoutActive && (
+          <CycleDisplay />
           <Button onMouseDown={nextStep} ariaLabel="Skip Step" className={buttonColor}>
             Skip
           </Button>
+        </>
+      ) : (
+        // Default layout: RESET | CYCLES | START
+        <>
+          { showTimer && showStopwatchControls ?
+            <Button onMouseDown={reset} ariaLabel={'Reset Timer'} className={buttonColor} disabled={isRunning}>
+              Reset
+            </Button>
+            : <div className="w-28"></div> /* Placeholder for alignment */
+          }
+
+          <CycleDisplay />
+
+          { showTimer && showStopwatchControls ?
+            <Button onMouseDown={isRunning ? stop : start} ariaLabel={isRunning ? 'Pause Timer' : 'Start Timer'} className={buttonColor}>
+              {isRunning ? 'Pause' : 'Start'}
+            </Button>
+            : <div className="w-28"></div> /* Placeholder for alignment */
+          }
+        </>
       )}
     </div>
   );
