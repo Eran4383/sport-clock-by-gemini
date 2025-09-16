@@ -36,8 +36,12 @@ interface WorkoutContextType {
   importNotification: ImportNotificationData | null;
   showGuestMergeModal: boolean;
   guestPlansToMerge: WorkoutPlan[];
+  showGuestHistoryMergeModal: boolean;
+  guestHistoryToMerge: WorkoutLogEntry[];
   handleMergeGuestData: (plansToMerge: WorkoutPlan[]) => void;
   handleDiscardGuestData: () => void;
+  handleMergeGuestHistory: (historyToMerge: WorkoutLogEntry[]) => void;
+  handleDiscardGuestHistory: () => void;
   clearImportNotification: () => void;
   savePlan: (plan: WorkoutPlan) => void;
   importPlan: (plan: WorkoutPlan, source?: string) => void;
@@ -69,92 +73,133 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [isWorkoutPaused, setIsWorkoutPaused] = useState(false);
   const [isCountdownPaused, setIsCountdownPaused] = useState(false);
   const [recentlyImportedPlanId, setRecentlyImportedPlanId] = useState<string | null>(null);
-  const [workoutHistory, setWorkoutHistory] = useState<WorkoutLogEntry[]>(getLocalHistory);
+  const [workoutHistory, setWorkoutHistory] = useState<WorkoutLogEntry[]>([]);
   const [plansToStart, setPlansToStart] = useState<string[]>([]);
   const [importNotification, setImportNotification] = useState<ImportNotificationData | null>(null);
   const [isSyncing, setIsSyncing] = useState(true);
   
   const [showGuestMergeModal, setShowGuestMergeModal] = useState(false);
   const [guestPlansToMerge, setGuestPlansToMerge] = useState<WorkoutPlan[]>([]);
+  const [showGuestHistoryMergeModal, setShowGuestHistoryMergeModal] = useState(false);
+  const [guestHistoryToMerge, setGuestHistoryToMerge] = useState<WorkoutLogEntry[]>([]);
+
   const initialSyncDone = useRef(false);
-  
   const guestPlansBackup = useRef<WorkoutPlan[] | null>(null);
+  const guestHistoryBackup = useRef<WorkoutLogEntry[] | null>(null);
 
   const isPreparingWorkout = plansToStart.length > 0;
 
   const clearImportNotification = useCallback(() => setImportNotification(null), []);
-  
+
   useEffect(() => {
-    saveLocalHistory(workoutHistory);
-  }, [workoutHistory]);
+    // This effect is now only for guests.
+    // For logged-in users, persistence is handled by the Firestore listener.
+    if (!user) {
+        saveLocalHistory(workoutHistory);
+    }
+  }, [workoutHistory, user]);
 
 
   useEffect(() => {
     // FIX: Using compat syntax, Unsubscribe is just a function that returns void.
-    let unsubscribe: (() => void) | undefined;
+    let plansUnsubscribe: (() => void) | undefined;
+    let historyUnsubscribe: (() => void) | undefined;
 
     if (authStatus === 'authenticated' && user) {
-        // When a user signs in, back up the current local (guest) plans into memory.
-        // This only happens once per login session.
+        // Backup local data only once when the user signs in.
         if (guestPlansBackup.current === null) {
             guestPlansBackup.current = getLocalPlans().map(migratePlanToV2);
+        }
+        if (guestHistoryBackup.current === null) {
+            guestHistoryBackup.current = getLocalHistory();
         }
 
         setIsSyncing(true);
         initialSyncDone.current = false; // Reset for new login
-        // FIX: Use compat syntax for collection and query
+        
+        // --- Plans Listener ---
         const plansCollection = db.collection('users').doc(user.uid).collection('plans');
         const plansQuery = plansCollection.orderBy('order', 'asc');
-        
-        // FIX: Use compat syntax for onSnapshot
-        unsubscribe = plansQuery.onSnapshot((snapshot) => {
+        plansUnsubscribe = plansQuery.onSnapshot((snapshot) => {
             const remotePlans = snapshot.docs.map(doc => migratePlanToV2(doc.data() as WorkoutPlan));
+            setPlans(remotePlans);
+            saveLocalPlans(remotePlans); // Keep local storage synced for offline access
+        }, (error) => console.error("Firestore plans listener error:", error));
 
-            // On the first data load after login, check if there are guest plans to merge.
+        // --- History Listener ---
+        const historyCollection = db.collection('users').doc(user.uid).collection('history');
+        const historyQuery = historyCollection.orderBy('date', 'desc');
+        historyUnsubscribe = historyQuery.onSnapshot(snapshot => {
+            const remoteHistory = snapshot.docs.map(doc => doc.data() as WorkoutLogEntry);
+            setWorkoutHistory(remoteHistory);
+            saveLocalHistory(remoteHistory); // Keep local storage synced
+        }, (error) => console.error("Firestore history listener error:", error));
+
+
+        // --- Data Merge Logic (run once after initial data load) ---
+        const checkDataToMerge = async () => {
+             // Wait for both collections to give us their first result
+            const [plansSnapshot, historySnapshot] = await Promise.all([
+                plansQuery.get(),
+                historyQuery.get()
+            ]);
+
             if (!initialSyncDone.current) {
-                // Compare remote plans with the in-memory backup of guest plans.
+                // Merge Plans
+                const remotePlans = plansSnapshot.docs.map(doc => migratePlanToV2(doc.data() as WorkoutPlan));
                 const localPlans = guestPlansBackup.current || [];
                 const remotePlanIds = new Set(remotePlans.map(p => p.id));
                 const newGuestPlans = localPlans.filter(p => !remotePlanIds.has(p.id));
-
                 if (newGuestPlans.length > 0) {
                     setGuestPlansToMerge(newGuestPlans);
                     setShowGuestMergeModal(true);
                 }
+                
+                // Merge History
+                const remoteHistory = historySnapshot.docs.map(doc => doc.data() as WorkoutLogEntry);
+                const localHistory = guestHistoryBackup.current || [];
+                const remoteHistoryIds = new Set(remoteHistory.map(h => h.id));
+                const newGuestHistory = localHistory.filter(h => !remoteHistoryIds.has(h.id));
+                if (newGuestHistory.length > 0) {
+                    setGuestHistoryToMerge(newGuestHistory);
+                    setShowGuestHistoryMergeModal(true);
+                }
+
                 initialSyncDone.current = true;
             }
-            
-            // Set the active plans to the user's remote data and save it locally for offline access.
-            setPlans(remotePlans);
-            saveLocalPlans(remotePlans);
-            setIsSyncing(false);
-        }, (error) => {
-            console.error("Firestore listener error:", error);
-            setIsSyncing(false);
-        });
+             setIsSyncing(false);
+        };
+        checkDataToMerge();
 
     } else if (authStatus === 'unauthenticated') {
-        if (unsubscribe) unsubscribe();
+        if (plansUnsubscribe) plansUnsubscribe();
+        if (historyUnsubscribe) historyUnsubscribe();
 
-        // If a backup exists, it means a user just logged out. Restore the guest plans.
-        if (guestPlansBackup.current !== null) {
-            // A user has just signed out. Clear their session-specific data.
+        // A user has just signed out.
+        if (guestPlansBackup.current !== null || guestHistoryBackup.current !== null) {
             clearAiChatHistory();
-            setWorkoutHistory([]); // This will clear state and local storage via its useEffect
 
-            const restoredGuestPlans = guestPlansBackup.current;
+            const restoredGuestPlans = guestPlansBackup.current || [];
             setPlans(restoredGuestPlans);
-            saveLocalPlans(restoredGuestPlans); // Save restored plans back to local storage.
-            guestPlansBackup.current = null; // Clear the backup for the next session.
+            saveLocalPlans(restoredGuestPlans);
+            
+            const restoredGuestHistory = guestHistoryBackup.current || [];
+            setWorkoutHistory(restoredGuestHistory);
+            saveLocalHistory(restoredGuestHistory);
+
+            guestPlansBackup.current = null;
+            guestHistoryBackup.current = null;
         } else {
-            // Otherwise, this is a fresh app start in guest mode, so load from local storage.
+            // Fresh app start in guest mode.
             setPlans(getLocalPlans().map(migratePlanToV2));
+            setWorkoutHistory(getLocalHistory());
         }
         setIsSyncing(false);
     }
     
     return () => {
-      if (unsubscribe) unsubscribe();
+      if (plansUnsubscribe) plansUnsubscribe();
+      if (historyUnsubscribe) historyUnsubscribe();
     };
   }, [user, authStatus]);
 
@@ -162,12 +207,20 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     if (!user) return;
     setIsSyncing(true);
     try {
-        // FIX: Use compat syntax for collection, query, and get
+        // Plans
         const plansCollection = db.collection('users').doc(user.uid).collection('plans');
-        const remoteSnapshot = await plansCollection.orderBy('order', 'asc').get();
-        const remotePlans = remoteSnapshot.docs.map(doc => migratePlanToV2(doc.data() as WorkoutPlan));
+        const remotePlansSnapshot = await plansCollection.orderBy('order', 'asc').get();
+        const remotePlans = remotePlansSnapshot.docs.map(doc => migratePlanToV2(doc.data() as WorkoutPlan));
         setPlans(remotePlans);
         saveLocalPlans(remotePlans);
+        
+        // History
+        const historyCollection = db.collection('users').doc(user.uid).collection('history');
+        const remoteHistorySnapshot = await historyCollection.orderBy('date', 'desc').get();
+        const remoteHistory = remoteHistorySnapshot.docs.map(doc => doc.data() as WorkoutLogEntry);
+        setWorkoutHistory(remoteHistory);
+        saveLocalHistory(remoteHistory);
+
     } catch (error) {
         console.error("Manual sync failed:", error);
     } finally {
@@ -189,7 +242,6 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         const maxOrder = plans.reduce((max, p) => Math.max(max, p.order ?? -1), -1);
         const plansToUpload = plansToMerge.map((p, i) => ({ ...p, order: maxOrder + 1 + i }));
         
-        // FIX: Use compat syntax for batch and doc reference
         const batch = db.batch();
         plansToUpload.forEach((plan) => {
             const planRef = db.collection('users').doc(user.uid).collection('plans').doc(plan.id);
@@ -208,6 +260,34 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     setGuestPlansToMerge([]);
   }, []);
 
+  const handleMergeGuestHistory = useCallback(async (historyToMerge: WorkoutLogEntry[]) => {
+    if (!user || historyToMerge.length === 0) {
+        setShowGuestHistoryMergeModal(false);
+        setGuestHistoryToMerge([]);
+        return;
+    }
+    setIsSyncing(true);
+    setShowGuestHistoryMergeModal(false);
+    try {
+        const batch = db.batch();
+        const historyCollection = db.collection('users').doc(user.uid).collection('history');
+        historyToMerge.forEach(entry => {
+            const docRef = historyCollection.doc(entry.id); // Use ISO date string as ID
+            batch.set(docRef, entry);
+        });
+        await batch.commit();
+    } catch (error) {
+        console.error("Failed to merge guest history:", error);
+    } finally {
+        setGuestHistoryToMerge([]);
+    }
+  }, [user]);
+
+  const handleDiscardGuestHistory = useCallback(() => {
+    setShowGuestHistoryMergeModal(false);
+    setGuestHistoryToMerge([]);
+  }, []);
+
   const savePlan = useCallback(async (planToSave: WorkoutPlan) => {
     const migratedPlan = migratePlanToV2(planToSave);
     const isNewPlan = !plans.some(p => p.id === migratedPlan.id);
@@ -224,7 +304,6 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     if (user) {
         try {
-            // FIX: Use compat syntax for doc reference and set
             const planRef = db.collection('users').doc(user.uid).collection('plans').doc(migratedPlan.id);
             await planRef.set(migratedPlan, { merge: true });
         } catch (error) {
@@ -325,7 +404,6 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     setPlans(prev => prev.filter(p => p.id !== planId));
     if (user) {
       try {
-        // FIX: Use compat syntax for doc reference and delete
         const planRef = db.collection('users').doc(user.uid).collection('plans').doc(planId);
         await planRef.delete();
       } catch (error) {
@@ -342,7 +420,6 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
 
       if (user) {
         try {
-            // FIX: Use compat syntax for batch and doc reference
             const batch = db.batch();
             plansWithOrder.forEach((plan) => {
                 const planRef = db.collection('users').doc(user.uid).collection('plans').doc(plan.id);
@@ -368,13 +445,32 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         planIds: planIds,
     };
     setWorkoutHistory(prev => [newEntry, ...prev]);
-  }, []);
-  
-  const clearWorkoutHistory = useCallback(() => {
-    if (window.confirm("Are you sure you want to delete your entire workout history? This action cannot be undone.")) {
-        setWorkoutHistory([]);
+
+    if (user) {
+        db.collection('users').doc(user.uid).collection('history').doc(newEntry.id).set(newEntry)
+          .catch(error => console.error("Failed to save workout log to Firestore:", error));
     }
-  }, []);
+  }, [user]);
+  
+  const clearWorkoutHistory = useCallback(async () => {
+    if (window.confirm("Are you sure you want to delete your entire workout history? This action cannot be undone.")) {
+        setWorkoutHistory([]); // Optimistic update for UI
+        if (user) {
+            try {
+                const historyCollection = db.collection('users').doc(user.uid).collection('history');
+                const snapshot = await historyCollection.get();
+                if (snapshot.empty) return;
+                
+                const batch = db.batch();
+                snapshot.docs.forEach(doc => batch.delete(doc.ref));
+                await batch.commit();
+            } catch (error) {
+                console.error("Failed to clear remote history:", error);
+                // Consider reverting the optimistic update or showing an error
+            }
+        }
+    }
+  }, [user]);
 
   const startWorkout = useCallback((planIds: string[]) => {
     if (planIds.length === 0) return;
@@ -511,8 +607,12 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     importNotification,
     showGuestMergeModal,
     guestPlansToMerge,
+    showGuestHistoryMergeModal,
+    guestHistoryToMerge,
     handleMergeGuestData,
     handleDiscardGuestData,
+    handleMergeGuestHistory,
+    handleDiscardGuestHistory,
     clearImportNotification,
     savePlan,
     importPlan,

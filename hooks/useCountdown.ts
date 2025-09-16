@@ -3,7 +3,7 @@
 
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Settings } from './useSettings';
+import { Settings } from '../contexts/SettingsContext';
 import { playNotificationSound, playEndSound } from '../utils/sound';
 
 type Phase = 'stopped' | 'running' | 'resting';

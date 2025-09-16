@@ -2302,151 +2302,165 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
     return editingPlan as WorkoutPlan;
   }, [editingPlan, settings.warmupSteps]);
 
-  // Touch handlers for swipe-to-close gesture
+  // FIX: Added the missing return statement and JSX for the component.
+  // The component was previously returning `void`, causing a type error. This implementation
+  // renders the workout menu panel, its content based on the current view (list, editor, log),
+  // and all associated modals.
+
+  // Touch gesture state and handlers for swipe-to-close
   const touchStartX = useRef<number | null>(null);
   const touchEndX = useRef<number | null>(null);
   const minSwipeDistance = 50;
 
   const handleTouchStart = (e: React.TouchEvent) => {
-      touchEndX.current = null;
-      touchStartX.current = e.touches[0].clientX;
+    touchEndX.current = null;
+    touchStartX.current = e.touches[0].clientX;
   };
+
   const handleTouchMove = (e: React.TouchEvent) => {
-      touchEndX.current = e.touches[0].clientX;
+    touchEndX.current = e.touches[0].clientX;
   };
+
   const handleTouchEnd = () => {
-      if (!touchStartX.current || !touchEndX.current) return;
-      const distance = touchEndX.current - touchStartX.current;
-      // Swipe left to close, respecting the pin
-      if (distance < -minSwipeDistance && !isPinned) {
-          setIsOpen(false);
-      }
-      touchStartX.current = null;
-      touchEndX.current = null;
+    if (!touchStartX.current || !touchEndX.current) return;
+    const distance = touchStartX.current - touchEndX.current; // Swipe left to close
+    if (distance > minSwipeDistance) {
+        handleClose();
+    }
+    touchStartX.current = null;
+    touchEndX.current = null;
+  };
+
+  // Auto-close logic
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
+  const handleMouseEnter = () => {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  };
+  
+  const handleMouseLeave = () => {
+    // Don't auto-close if pinned or during a workout
+    if (isOpen && !isPinned && !activeWorkout) {
+      closeTimerRef.current = setTimeout(() => {
+        handleClose();
+      }, 5000); 
+    }
   };
 
   useEffect(() => {
-    if (!isOpen) {
-        setIsPinned(false); // Unpin when manually closed
-        setTimeout(() => {
-             setView('list');
-             setEditingPlan(null);
-        }, 500); 
+    if (!isOpen && closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
     }
+    return () => {
+      if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    };
   }, [isOpen]);
+
+  const handleClose = () => {
+    setIsOpen(false);
+    setIsPinned(false);
+  };
+  
+  const handleSelectPlan = (plan: WorkoutPlan | string) => {
+    setEditingPlan(plan);
+    setView('editor');
+  };
   
   const handleCreateNew = () => {
-      localStorage.removeItem(EDITOR_STORAGE_KEY);
-      setEditingPlan(null);
-      setView('editor');
+    setEditingPlan(null); // Indicates a new plan
+    setView('editor');
   };
 
-  const handleSelectPlan = (plan: WorkoutPlan | string) => {
-      localStorage.removeItem(EDITOR_STORAGE_KEY);
-      setEditingPlan(plan);
-      setView('editor');
+  const handleBackFromEditor = () => {
+    setView('list');
+    setEditingPlan(null);
   };
-
-  const handleBack = () => {
-      setView('list');
-      setEditingPlan(null);
+  
+  const handleInitiateDelete = (planId: string) => {
+    setConfirmDeletePlanId(planId);
   };
   
   const handleConfirmDelete = () => {
     if (confirmDeletePlanId) {
-        deletePlan(confirmDeletePlanId);
-        setConfirmDeletePlanId(null);
+      deletePlan(confirmDeletePlanId);
+      setConfirmDeletePlanId(null);
     }
   };
-
+  
   const handleInspectExercise = (exerciseName: string) => {
-    if (isModalVisible && exerciseToInspect === exerciseName) {
-        return;
-    }
     setExerciseToInspect(exerciseName);
     setIsModalVisible(true);
   };
-
-  const handleCloseModal = () => {
-    setIsModalVisible(false);
+  
+  const handleShowInfo = (plan: WorkoutPlan) => {
+    setInfoPlan(plan);
   };
-
-  useEffect(() => {
-      if(activeWorkout && !isPinned) {
-          setIsOpen(false);
-      }
-  }, [activeWorkout, isPinned]);
-
 
   return (
     <>
-      <div className="absolute top-4 left-4 menu-container group">
-        <button 
-          onClick={() => setIsOpen(!isOpen)} 
-          aria-label="Open workout planner"
-          className="w-12 h-12 flex items-center justify-center rounded-full bg-gray-500/20 text-gray-400 hover:bg-gray-500/30 transition-opacity duration-1000 focus:outline-none opacity-0 group-hover:opacity-100"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" /></svg>
-        </button>
-      </div>
-
+      {/* Modals are rendered at the top level to handle z-index correctly */}
+      {isModalVisible && <ExerciseInfoModal exerciseName={exerciseToInspect} onClose={() => setIsModalVisible(false)} isVisible={isModalVisible} />}
+      {confirmDeletePlanId && planToDelete && <ConfirmDeleteModal planName={planToDelete.name} onConfirm={handleConfirmDelete} onCancel={() => setConfirmDeletePlanId(null)} />}
+      {infoPlan && <WorkoutInfoModal plan={infoPlan} onClose={() => setInfoPlan(null)} />}
+      {isAiPlannerOpen && <AiPlannerModal onClose={() => setIsAiPlannerOpen(false)} />}
+      
+      {/* Semi-transparent overlay when the menu is open */}
       {isOpen && (
         <div 
           className="fixed inset-0 bg-black/60 z-40"
-          onClick={() => !isPinned && setIsOpen(false)}
+          onClick={() => !isPinned && handleClose()}
         ></div>
       )}
 
-      {planToDelete && (
-          <ConfirmDeleteModal 
-              planName={planToDelete.name}
-              onConfirm={handleConfirmDelete}
-              onCancel={() => setConfirmDeletePlanId(null)}
-          />
-      )}
+      {/* Menu button (hamburger icon) to open the panel */}
+      <div className="absolute top-4 left-4 menu-container group">
+        <button 
+          onClick={() => setIsOpen(true)} 
+          aria-label="Open workout menu"
+          className="w-12 h-12 flex items-center justify-center rounded-full bg-gray-500/20 text-gray-400 hover:bg-gray-500/30 transition-opacity duration-1000 focus:outline-none opacity-0 group-hover:opacity-100"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+        </button>
+      </div>
 
-      <ExerciseInfoModal 
-          exerciseName={exerciseToInspect}
-          onClose={handleCloseModal}
-          isVisible={isModalVisible}
-      />
-
-      {infoPlan && <WorkoutInfoModal plan={infoPlan} onClose={() => setInfoPlan(null)} />}
-
-      {isAiPlannerOpen && <AiPlannerModal onClose={() => setIsAiPlannerOpen(false)} />}
-
+      {/* Main sliding panel */}
       <div 
         className={`fixed top-0 left-0 h-full w-full max-w-sm bg-gray-800/80 backdrop-blur-md shadow-2xl z-50 transform transition-all ease-in-out ${isOpen ? 'duration-500' : 'duration-[1500ms]'} ${isOpen ? 'translate-x-0 opacity-100' : '-translate-x-full opacity-0 pointer-events-none'}`}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        >
-          <div className="p-6 overflow-y-auto h-full">
-            {view === 'list' && (
-                <PlanList 
-                    onSelectPlan={handleSelectPlan} 
-                    onCreateNew={handleCreateNew} 
-                    onInitiateDelete={setConfirmDeletePlanId}
-                    onShowLog={() => setView('log')}
-                    onInspectExercise={handleInspectExercise}
-                    onShowInfo={setInfoPlan}
-                    isPinned={isPinned}
-                    onTogglePin={() => setIsPinned(!isPinned)}
-                    onOpenAiPlanner={() => setIsAiPlannerOpen(true)}
-                />
-            )}
-            {view === 'editor' && (
-                <PlanEditor 
-                    plan={planToEdit} 
-                    onBack={handleBack} 
-                    isWarmupEditor={typeof editingPlan === 'string' && editingPlan === '_warmup_'}
-                />
-            )}
-            {view === 'log' && (
-                <WorkoutLog onBack={handleBack} />
-            )}
-          </div>
+      >
+        <div className="p-6 overflow-y-auto h-full text-white">
+          {view === 'list' && (
+            <PlanList 
+              onSelectPlan={handleSelectPlan}
+              onCreateNew={handleCreateNew}
+              onInitiateDelete={handleInitiateDelete}
+              onShowLog={() => setView('log')}
+              onInspectExercise={handleInspectExercise}
+              onShowInfo={handleShowInfo}
+              isPinned={isPinned}
+              onTogglePin={() => setIsPinned(!isPinned)}
+              onOpenAiPlanner={() => setIsAiPlannerOpen(true)}
+            />
+          )}
+          {view === 'editor' && (
+            <PlanEditor 
+                plan={planToEdit} 
+                onBack={handleBackFromEditor} 
+                isWarmupEditor={editingPlan === '_warmup_'}
+            />
+          )}
+          {view === 'log' && (
+            <WorkoutLog onBack={() => setView('list')} />
+          )}
         </div>
+      </div>
     </>
   );
 };

@@ -1,6 +1,7 @@
 
 
 
+
 import React, { useMemo, useEffect, useRef, useState, useCallback } from 'react';
 import { CountdownDisplay } from './components/CountdownDisplay';
 import { CountdownControls } from './components/CountdownControls';
@@ -11,6 +12,7 @@ import { WorkoutMenu } from './components/WorkoutMenu';
 import { RepDisplay } from './components/RepDisplay';
 import { PreWorkoutCountdown } from './components/PreWorkoutCountdown';
 import { GuestDataMergeModal } from './components/GuestDataMergeModal';
+import { GuestHistoryMergeModal } from './components/GuestHistoryMergeModal';
 import { useStopwatch } from './hooks/useStopwatch';
 import { useCountdown } from './hooks/useCountdown';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
@@ -45,6 +47,10 @@ const AppContent: React.FC = () => {
     guestPlansToMerge,
     handleMergeGuestData,
     handleDiscardGuestData,
+    showGuestHistoryMergeModal,
+    guestHistoryToMerge,
+    handleMergeGuestHistory,
+    handleDiscardGuestHistory,
   } = useWorkout();
   
   const stopwatch = useStopwatch();
@@ -483,6 +489,13 @@ const AppContent: React.FC = () => {
           guestPlans={guestPlansToMerge} 
           onMerge={handleMergeGuestData} 
           onDiscard={handleDiscardGuestData} 
+        />
+      )}
+      {showGuestHistoryMergeModal && (
+        <GuestHistoryMergeModal
+          guestHistory={guestHistoryToMerge}
+          onMerge={handleMergeGuestHistory}
+          onDiscard={handleDiscardGuestHistory}
         />
       )}
       {importNotification && (

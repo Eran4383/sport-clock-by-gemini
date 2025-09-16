@@ -1,5 +1,9 @@
 
 
+
+
+
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useSettings } from '../contexts/SettingsContext';
 import { playNotificationSound } from '../utils/sound';
@@ -319,6 +323,19 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
 
 
   const categories: Record<string, { title: string, content: JSX.Element }> = {
+    account: {
+        title: "Account",
+        content: (
+            <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
+                <Toggle 
+                    id="syncSettings" 
+                    label="Sync Settings Across Devices" 
+                    checked={settings.syncSettingsAcrossDevices} 
+                    onChange={(e) => updateSettings({ syncSettingsAcrossDevices: e.target.checked })} 
+                />
+            </div>
+        )
+    },
     sounds: {
       title: "Sounds",
       content: (

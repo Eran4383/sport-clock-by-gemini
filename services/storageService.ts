@@ -1,4 +1,5 @@
-import { Settings } from '../hooks/useSettings';
+// FIX: The Settings interface was moved to SettingsContext.ts. Updated the import path.
+import { Settings } from '../contexts/SettingsContext';
 import { WorkoutPlan, WorkoutLogEntry } from '../types';
 import { ExerciseInfo } from './geminiService';
 import { getBaseExerciseName } from '../utils/workout';
