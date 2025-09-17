@@ -61,6 +61,13 @@ const AppContent: React.FC = () => {
   const [isWorkoutOpen, setIsWorkoutOpen] = useState(false);
   const [preWorkoutTimeLeft, setPreWorkoutTimeLeft] = useState<number | null>(null);
 
+  // Automatically close the workout menu when the pre-workout countdown starts.
+  // This prevents it from re-appearing after the countdown finishes.
+  useEffect(() => {
+    if (isPreparingWorkout) {
+      setIsWorkoutOpen(false);
+    }
+  }, [isPreparingWorkout]);
 
   const isWorkoutActive = !!(activeWorkout && currentStep);
   const isRepStep = isWorkoutActive && currentStep.isRepBased;
