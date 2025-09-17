@@ -491,6 +491,40 @@ const PlanListItem: React.FC<{
     return `בוצע לאחרונה: ${lastPerformed.toLocaleDateString('he-IL')}`;
   }, [workoutHistory, plan.id]);
 
+  const lastPerformedTooltip = useMemo(() => {
+    const relevantLogs = workoutHistory
+        .filter(log => log.planIds?.includes(plan.id))
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    if (relevantLogs.length === 0) return undefined;
+
+    const lastLogDate = new Date(relevantLogs[0].date);
+    const lastLogDayStart = new Date(lastLogDate.getFullYear(), lastLogDate.getMonth(), lastLogDate.getDate()).getTime();
+    const lastLogDayEnd = lastLogDayStart + 24 * 60 * 60 * 1000;
+
+    const logsOnLastDay = relevantLogs.filter(log => {
+        const logTime = new Date(log.date).getTime();
+        return logTime >= lastLogDayStart && logTime < lastLogDayEnd;
+    });
+
+    if (logsOnLastDay.length === 0) return undefined;
+
+    const dateString = new Date(logsOnLastDay[0].date).toLocaleDateString('he-IL', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+    });
+    
+    const times = logsOnLastDay
+        .map(log => new Date(log.date).toLocaleTimeString('he-IL', {
+            hour: '2-digit',
+            minute: '2-digit'
+        }))
+        .join('\n');
+
+    return `${dateString}\n${times}`;
+  }, [workoutHistory, plan.id]);
+
 
   useEffect(() => {
     // Automatically expand the active workout plan
@@ -631,8 +665,16 @@ const PlanListItem: React.FC<{
                     {lastPerformedText && (
                     <>
                         <span className="mx-2 text-gray-500 shrink-0">|</span>
-                        <span className="flex items-center gap-1 shrink-0 whitespace-nowrap">
-                            {lastPerformedText}
+                        <span 
+                            className="flex items-center gap-1 shrink-0 whitespace-nowrap"
+                            title={lastPerformedTooltip}
+                        >
+                            <span 
+                                className="cursor-pointer hover:underline"
+                                onClick={(e) => { e.stopPropagation(); onShowInfo(plan); }}
+                            >
+                                {lastPerformedText}
+                            </span>
                             <button
                                 onClick={(e) => { e.stopPropagation(); onShowInfo(plan); }}
                                 className="text-gray-400 hover:text-white"
