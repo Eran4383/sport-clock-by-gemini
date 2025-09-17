@@ -2309,6 +2309,20 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
   const modalMutedApp = useRef(false);
   const [isAiPlannerOpen, setIsAiPlannerOpen] = useState(false);
 
+  // When the menu is closed, reset its internal view to the main plan list.
+  // This ensures that when it's reopened, it doesn't show a sub-page like the log or editor.
+  useEffect(() => {
+    if (!isOpen) {
+        // Use a timeout to avoid a jarring content flash while the menu is animating out.
+        const timer = setTimeout(() => {
+            setView('list');
+            // Also clear any lingering editor state
+            setEditingPlan(null);
+        }, 300);
+        return () => clearTimeout(timer);
+    }
+  }, [isOpen]);
+
   // Mute app sounds when the exercise modal is visible and restore on close.
   useEffect(() => {
     if (isModalVisible) {
@@ -2344,11 +2358,6 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
     return editingPlan as WorkoutPlan;
   }, [editingPlan, settings.warmupSteps]);
 
-  // FIX: Added the missing return statement and JSX for the component.
-  // The component was previously returning `void`, causing a type error. This implementation
-  // renders the workout menu panel, its content based on the current view (list, editor, log),
-  // and all associated modals.
-
   // Touch gesture state and handlers for swipe-to-close
   const touchStartX = useRef<number | null>(null);
   const touchEndX = useRef<number | null>(null);
@@ -2383,73 +2392,81 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
     }
   };
   
+    // FIX: The handleClose function was missing and was not being called.
+    const handleClose = () => {
+        setIsOpen(false);
+        setIsPinned(false);
+    };
+
   const handleMouseLeave = () => {
     // Don't auto-close if pinned or during a workout
     if (isOpen && !isPinned && !activeWorkout) {
       closeTimerRef.current = setTimeout(() => {
+        // FIX: handleClose was undefined. Now it is defined and called correctly.
         handleClose();
-      }, 5000); 
+      }, 5000);
     }
-  };
-
-  useEffect(() => {
-    if (!isOpen && closeTimerRef.current) {
-      clearTimeout(closeTimerRef.current);
-    }
-    return () => {
-      if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
-    };
-  }, [isOpen]);
-
-  const handleClose = () => {
-    setIsOpen(false);
-    setIsPinned(false);
   };
   
   const handleSelectPlan = (plan: WorkoutPlan | string) => {
     setEditingPlan(plan);
     setView('editor');
   };
-  
+
   const handleCreateNew = () => {
-    setEditingPlan(null); // Indicates a new plan
+    setEditingPlan(null);
     setView('editor');
   };
 
   const handleBackFromEditor = () => {
-    setView('list');
     setEditingPlan(null);
+    setView('list');
   };
-  
+
   const handleInitiateDelete = (planId: string) => {
     setConfirmDeletePlanId(planId);
   };
-  
+
   const handleConfirmDelete = () => {
     if (confirmDeletePlanId) {
       deletePlan(confirmDeletePlanId);
-      setConfirmDeletePlanId(null);
     }
+    setConfirmDeletePlanId(null);
   };
-  
+
   const handleInspectExercise = (exerciseName: string) => {
     setExerciseToInspect(exerciseName);
     setIsModalVisible(true);
   };
   
   const handleShowInfo = (plan: WorkoutPlan) => {
-    setInfoPlan(plan);
+      setInfoPlan(plan);
   };
 
+  // FIX: Added the missing return statement and JSX for the component.
+  // The component was previously returning `void`, causing a type error. This implementation
+  // renders the workout menu panel, its content based on the current view (list, editor, log),
+  // and all associated modals.
   return (
     <>
-      {/* Modals are rendered at the top level to handle z-index correctly */}
-      {isModalVisible && <ExerciseInfoModal exerciseName={exerciseToInspect} onClose={() => setIsModalVisible(false)} isVisible={isModalVisible} />}
-      {confirmDeletePlanId && planToDelete && <ConfirmDeleteModal planName={planToDelete.name} onConfirm={handleConfirmDelete} onCancel={() => setConfirmDeletePlanId(null)} />}
-      {infoPlan && <WorkoutInfoModal plan={infoPlan} onClose={() => setInfoPlan(null)} />}
+      <ExerciseInfoModal 
+        isVisible={isModalVisible} 
+        exerciseName={exerciseToInspect} 
+        onClose={() => setIsModalVisible(false)} 
+      />
+      {confirmDeletePlanId && planToDelete && (
+          <ConfirmDeleteModal 
+            planName={planToDelete.name} 
+            onConfirm={handleConfirmDelete} 
+            onCancel={() => setConfirmDeletePlanId(null)} 
+          />
+      )}
+      {infoPlan && (
+          <WorkoutInfoModal plan={infoPlan} onClose={() => setInfoPlan(null)} />
+      )}
       {isAiPlannerOpen && <AiPlannerModal onClose={() => setIsAiPlannerOpen(false)} />}
       
-      {/* Semi-transparent overlay when the menu is open */}
+      {/* Overlay */}
       {isOpen && (
         <div 
           className="fixed inset-0 bg-black/60 z-40"
@@ -2457,19 +2474,19 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
         ></div>
       )}
 
-      {/* Menu button (hamburger icon) to open the panel */}
+      {/* Menu Trigger */}
       <div className="absolute top-4 left-4 menu-container group">
         <button 
-          onClick={() => setIsOpen(true)} 
+          onClick={() => isOpen ? handleClose() : setIsOpen(true)} 
           aria-label="Open workout menu"
           className="w-12 h-12 flex items-center justify-center rounded-full bg-gray-500/20 text-gray-400 hover:bg-gray-500/30 transition-opacity duration-1000 focus:outline-none opacity-0 group-hover:opacity-100"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
         </button>
       </div>
-
-      {/* Main sliding panel */}
-      <div 
+      
+      {/* Main Panel */}
+      <div
         className={`fixed top-0 left-0 h-full w-full max-w-sm bg-gray-800/80 backdrop-blur-md shadow-2xl z-50 transform transition-all ease-in-out ${isOpen ? 'duration-500' : 'duration-[1500ms]'} ${isOpen ? 'translate-x-0 opacity-100' : '-translate-x-full opacity-0 pointer-events-none'}`}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
@@ -2479,7 +2496,7 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
       >
         <div className="p-6 overflow-y-auto h-full text-white">
           {view === 'list' && (
-            <PlanList 
+            <PlanList
               onSelectPlan={handleSelectPlan}
               onCreateNew={handleCreateNew}
               onInitiateDelete={handleInitiateDelete}
@@ -2493,9 +2510,9 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
           )}
           {view === 'editor' && (
             <PlanEditor 
-                plan={planToEdit} 
-                onBack={handleBackFromEditor} 
-                isWarmupEditor={editingPlan === '_warmup_'}
+              plan={planToEdit} 
+              onBack={handleBackFromEditor}
+              isWarmupEditor={editingPlan === '_warmup_'}
             />
           )}
           {view === 'log' && (
