@@ -1052,7 +1052,7 @@ const PlanList: React.FC<{
                       <path fill="none" d="M0 0h48v48H0z"></path>
                     </svg>
                 </button>
-                <p className="text-white font-bold text-xs mt-1">התחברו</p>
+                <p className="text-white font-bold text-xs mt-1">התחברות</p>
               </div>
             )}
             {isSyncing && (
