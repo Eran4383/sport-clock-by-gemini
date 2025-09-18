@@ -1,9 +1,3 @@
-
-
-
-
-
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useSettings } from '../contexts/SettingsContext';
 import { playNotificationSound } from '../utils/sound';
@@ -110,16 +104,13 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
       min: number
     ) => {
       e.preventDefault();
-      const input = e.currentTarget as HTMLInputElement;
-      if (document.activeElement === input) {
-        input.blur();
-      }
+      
       const delta = e.deltaY > 0 ? -1 : 1;
       stateUpdater(prev => {
           const currentVal = parseInt(prev, 10) || 0;
           const nextVal = currentVal + delta;
-          if (nextVal < min) return min.toString();
-          return nextVal.toString();
+          const finalVal = Math.max(min, nextVal);
+          return finalVal.toString();
       });
     };
 
@@ -148,6 +139,11 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
       closeTimerRef.current = null;
     }
   };
+
+  const handleDurationChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setLocalCountdownDurationStr(value);
+  };
   
   const handleDurationBlur = () => {
      const num = parseInt(localCountdownDurationStr, 10);
@@ -156,6 +152,11 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
      updateSettings({ countdownDuration: finalValue });
   };
   
+  const handleRestChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const value = e.target.value;
+      setLocalRestDurationStr(value);
+  };
+
   const handleRestBlur = () => {
      const num = parseInt(localRestDurationStr, 10);
      const finalValue = !isNaN(num) && num >= 0 ? num : 0;
@@ -163,6 +164,11 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
      updateSettings({ countdownRestDuration: finalValue });
   };
   
+  const handlePreWorkoutChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const value = e.target.value;
+      setLocalPreWorkoutCountdownStr(value);
+  };
+
   const handlePreWorkoutBlur = () => {
      const num = parseInt(localPreWorkoutCountdownStr, 10);
      const finalValue = !isNaN(num) && num >= 1 ? num : 1;
@@ -390,15 +396,15 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
         <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
           <div className="flex items-center justify-between">
               <label htmlFor="countdownDuration" className="text-white">Duration (s)</label>
-              <input ref={durationInputRef} type="number" id="countdownDuration" min="1" className="w-20 bg-gray-600 text-white text-center rounded-md p-1 focus:ring-2 focus:outline-none ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" value={localCountdownDurationStr} onChange={(e) => setLocalCountdownDurationStr(e.target.value)} onBlur={handleDurationBlur} />
+              <input ref={durationInputRef} type="number" id="countdownDuration" min="1" className="w-20 bg-gray-600 text-white text-center rounded-md p-1 focus:ring-2 focus:outline-none ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" value={localCountdownDurationStr} onChange={handleDurationChange} onBlur={handleDurationBlur} />
           </div>
           <div className="flex items-center justify-between">
             <label htmlFor="countdownRestDuration" className="text-white">Rest Duration (s)</label>
-            <input ref={restInputRef} type="number" id="countdownRestDuration" min="0" className="w-20 bg-gray-600 text-white text-center rounded-md p-1 focus:ring-2 focus:outline-none ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" value={localRestDurationStr} onChange={(e) => setLocalRestDurationStr(e.target.value)} onBlur={handleRestBlur} />
+            <input ref={restInputRef} type="number" id="countdownRestDuration" min="0" className="w-20 bg-gray-600 text-white text-center rounded-md p-1 focus:ring-2 focus:outline-none ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" value={localRestDurationStr} onChange={handleRestChange} onBlur={handleRestBlur} />
           </div>
           <div className="flex items-center justify-between">
               <label htmlFor="preWorkoutDuration" className="text-white">Pre-Workout Time (s)</label>
-              <input ref={preWorkoutInputRef} type="number" id="preWorkoutDuration" min="1" className="w-20 bg-gray-600 text-white text-center rounded-md p-1 focus:ring-2 focus:outline-none ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" value={localPreWorkoutCountdownStr} onChange={(e) => setLocalPreWorkoutCountdownStr(e.target.value)} onBlur={handlePreWorkoutBlur} />
+              <input ref={preWorkoutInputRef} type="number" id="preWorkoutDuration" min="1" className="w-20 bg-gray-600 text-white text-center rounded-md p-1 focus:ring-2 focus:outline-none ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" value={localPreWorkoutCountdownStr} onChange={handlePreWorkoutChange} onBlur={handlePreWorkoutBlur} />
           </div>
           <hr className="border-gray-600" />
           <Toggle id="showCountdownToggle" label="Show Countdown" checked={settings.showCountdown} onChange={(e) => updateSettings({ showCountdown: e.target.checked })} />

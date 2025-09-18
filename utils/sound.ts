@@ -22,7 +22,7 @@ const getAudioContext = (): AudioContext | null => {
   return audioContext;
 };
 
-const playTone = (frequency: number, duration: number, volume: number, type: OscillatorType = 'sine') => {
+const playTone = (frequency: number, duration: number, volume: number, type: OscillatorType = 'sine', startTimeOffset: number = 0) => {
   const context = getAudioContext();
   if (!context || volume <= 0) return;
   
@@ -38,27 +38,39 @@ const playTone = (frequency: number, duration: number, volume: number, type: Osc
   gainNode.connect(context.destination);
 
   oscillator.type = type;
-  oscillator.frequency.setValueAtTime(frequency, context.currentTime);
+  const startTime = context.currentTime + startTimeOffset;
+  oscillator.frequency.setValueAtTime(frequency, startTime);
   
   // Set volume and fade out to prevent clicks
   const clampedVolume = Math.max(0, Math.min(1, volume)); // ensure volume is between 0 and 1
-  gainNode.gain.setValueAtTime(clampedVolume, context.currentTime);
-  gainNode.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + duration / 1000);
+  gainNode.gain.setValueAtTime(clampedVolume, startTime);
+  gainNode.gain.exponentialRampToValueAtTime(0.0001, startTime + duration / 1000);
 
-  oscillator.start(context.currentTime);
-  oscillator.stop(context.currentTime + duration / 1000);
+  oscillator.start(startTime);
+  oscillator.stop(startTime + duration / 1000);
 };
 
 /**
- * A short, higher-pitched beep for general notifications like halfway point or restart.
+ * A clear beep for the start of a countdown cycle.
+ */
+export const playStartSound = (volume: number) => {
+    playTone(659.25, 150, volume, 'sine'); // E5 note
+};
+
+
+/**
+ * A short, higher-pitched beep for general notifications like halfway point.
  */
 export const playNotificationSound = (volume: number) => {
     playTone(880, 100, volume, 'triangle'); // A5 note
 };
 
 /**
- * A slightly longer, lower-pitched beep for final events like countdown end.
+ * A longer, two-tone "ding-dong" sound for final events like countdown end.
  */
 export const playEndSound = (volume: number) => {
-    playTone(523.25, 200, volume, 'sine'); // C5 note
+    // A high, short "ding"
+    playTone(880, 150, volume, 'sine', 0); // A5 note
+    // A lower, longer "dong"
+    playTone(659.25, 400, volume, 'sine', 150 / 1000); // E5 note, starts after the first one
 };

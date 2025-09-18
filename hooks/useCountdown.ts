@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Settings } from '../contexts/SettingsContext';
-import { playNotificationSound, playEndSound } from '../utils/sound';
+import { playStartSound, playNotificationSound, playEndSound } from '../utils/sound';
 
 type Phase = 'stopped' | 'running' | 'resting';
 
@@ -8,8 +8,6 @@ export const useCountdown = (initialDuration: number, restDuration: number, sett
   const animationFrameRef = useRef<number | undefined>(undefined);
   const endTimeRef = useRef<number>(0);
   const phaseRef = useRef<Phase>('stopped');
-  const durationMsRef = useRef(initialDuration * 1000);
-  const restDurationMsRef = useRef(restDuration * 1000);
   const halfwaySoundPlayedRef = useRef(false);
   
   const settingsRef = useRef(settings);
@@ -26,6 +24,7 @@ export const useCountdown = (initialDuration: number, restDuration: number, sett
   const [cycleCount, setCycleCount] = useState(0);
   const [phase, _setPhase] = useState<Phase>('stopped');
   const timeLeftOnPauseRef = useRef(initialDuration * 1000);
+  const durationRef = useRef(initialDuration); // Ref to hold the most up-to-date duration.
 
   const setPhase = (newPhase: Phase) => {
     phaseRef.current = newPhase;
@@ -43,6 +42,8 @@ export const useCountdown = (initialDuration: number, restDuration: number, sett
     const currentSettings = settingsRef.current;
     const { allSoundsEnabled, isMuted, volume, stealthModeEnabled } = currentSettings;
     const canPlaySound = allSoundsEnabled && !isMuted && !stealthModeEnabled;
+    const durationMs = durationRef.current * 1000; // Use ref for current duration
+    const restDurationMs = restDuration * 1000;
 
     if (remaining <= 0) {
         const endedPhase = phaseRef.current;
@@ -53,15 +54,18 @@ export const useCountdown = (initialDuration: number, restDuration: number, sett
             animationFrameRef.current = undefined;
         }
 
+        // Play sound immediately when countdown hits zero for the 'running' phase.
+        if (endedPhase === 'running' && canPlaySound && currentSettings.playSoundAtEnd) {
+            playEndSound(volume);
+        }
+
         setTimeout(() => {
             if (phaseRef.current === 'stopped') {
                 return;
             }
 
             if (onCycleCompleteRef.current) {
-                if (endedPhase === 'running' && canPlaySound && currentSettings.playSoundAtEnd) {
-                    playEndSound(volume);
-                }
+                // Sound already played, just call the workout handler
                 onCycleCompleteRef.current();
                 return;
             }
@@ -72,24 +76,22 @@ export const useCountdown = (initialDuration: number, restDuration: number, sett
                 setTimeLeft(duration);
                 halfwaySoundPlayedRef.current = false;
                 if (canPlaySound && currentSettings.playSoundOnRestart) {
-                    playNotificationSound(volume);
+                    playStartSound(volume);
                 }
                 animationFrameRef.current = requestAnimationFrame(animate);
             };
 
             if (endedPhase === 'running') {
                 setCycleCount(c => c + 1);
-                if (canPlaySound && currentSettings.playSoundAtEnd) {
-                    playEndSound(volume);
-                }
+                // Sound is already played.
                 
-                if (restDurationMsRef.current > 0) {
-                    startNewPhase('resting', restDurationMsRef.current);
+                if (restDurationMs > 0) {
+                    startNewPhase('resting', restDurationMs);
                 } else {
-                    startNewPhase('running', durationMsRef.current);
+                    startNewPhase('running', durationMs);
                 }
             } else if (endedPhase === 'resting') {
-                startNewPhase('running', durationMsRef.current);
+                startNewPhase('running', durationMs);
             }
 
         }, 1000);
@@ -99,14 +101,14 @@ export const useCountdown = (initialDuration: number, restDuration: number, sett
 
     setTimeLeft(remaining);
 
-    const totalDuration = phaseRef.current === 'running' ? durationMsRef.current : restDurationMsRef.current;
+    const totalDuration = phaseRef.current === 'running' ? durationMs : restDurationMs;
     if (canPlaySound && currentSettings.playSoundAtHalfway && !halfwaySoundPlayedRef.current && remaining <= totalDuration / 2) {
         playNotificationSound(volume);
         halfwaySoundPlayedRef.current = true;
     }
     
     animationFrameRef.current = requestAnimationFrame(animate);
-  }, []);
+  }, [restDuration]);
 
   const start = useCallback(() => {
     _setPhase(currentPhase => {
@@ -136,39 +138,65 @@ export const useCountdown = (initialDuration: number, restDuration: number, sett
     });
   }, []);
 
+  const resetCycleCount = useCallback(() => {
+      setCycleCount(0);
+  }, []);
+  
   const reset = useCallback(() => {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = undefined;
       setPhase('stopped');
-      const newDurationMs = durationMsRef.current;
+      // FIX: Use the ref to get the current duration, preventing stale closures.
+      const newDurationMs = durationRef.current * 1000;
       setTimeLeft(newDurationMs);
       timeLeftOnPauseRef.current = newDurationMs;
-      setCycleCount(0);
+      resetCycleCount();
       halfwaySoundPlayedRef.current = false;
       const currentSettings = settingsRef.current;
       if (currentSettings.allSoundsEnabled && !currentSettings.isMuted && !currentSettings.stealthModeEnabled && currentSettings.playSoundOnRestart) {
-          playNotificationSound(currentSettings.volume);
+          playStartSound(currentSettings.volume);
       }
-  }, []);
+  }, [resetCycleCount]);
 
-  const resetCycleCount = useCallback(() => {
-      setCycleCount(0);
-  }, []);
 
+  // This is the CRITICAL effect that handles external changes to duration (from settings) or workout steps.
   useEffect(() => {
+      const wasRunning = phaseRef.current !== 'stopped';
+
+      // 1. Stop any currently running timer.
+      if (animationFrameRef.current) {
+          cancelAnimationFrame(animationFrameRef.current);
+          animationFrameRef.current = undefined;
+      }
+
+      // 2. Update the ref and reset internal state to reflect the new duration.
+      // This will cause the UI to update immediately.
+      durationRef.current = initialDuration;
       const newDurationMs = initialDuration * 1000;
-      const newRestDurationMs = restDuration * 1000;
-      durationMsRef.current = newDurationMs;
-      restDurationMsRef.current = newRestDurationMs;
-      if (phaseRef.current === 'stopped') {
-          setTimeLeft(newDurationMs);
-          timeLeftOnPauseRef.current = newDurationMs;
+      setTimeLeft(newDurationMs);
+      timeLeftOnPauseRef.current = newDurationMs;
+      halfwaySoundPlayedRef.current = false;
+      
+      // For workout step changes, always reset cycle count and stop.
+      // The workout context is responsible for starting the timer for the new step.
+      if (stepKey) {
+          setCycleCount(0);
+          setPhase('stopped');
+          return;
       }
-  }, [initialDuration, restDuration]);
+      
+      // For duration changes from settings, auto-start if it was running before.
+      if (wasRunning) {
+          setPhase('running');
+          endTimeRef.current = performance.now() + newDurationMs;
+          animationFrameRef.current = requestAnimationFrame(animate);
+      } else {
+          setPhase('stopped');
+      }
+  // The `animate` dependency is included because it's used inside the effect.
+  // The effect logic correctly handles restarts based on the `wasRunning` flag.
+  }, [initialDuration, stepKey, animate]);
 
-  useEffect(() => {
-      reset();
-  }, [stepKey, reset]);
 
   return {
       timeLeft: timeLeft / 1000, // convert to seconds for display
