@@ -1,9 +1,3 @@
-
-
-
-
-
-
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Settings } from '../contexts/SettingsContext';
 import { playNotificationSound, playEndSound } from '../utils/sound';
@@ -57,42 +51,63 @@ export const useCountdown = (initialDuration: number, restDuration: number, sett
         if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = undefined;
 
-        // Use a timeout to allow the '0' to render for a moment before transitioning
+        // Use a timeout to allow the '0' to render for a full second before transitioning
         setTimeout(() => {
+            // Guard against the component unmounting or state changing during the timeout
+            if (phaseRef.current === 'stopped') {
+                return;
+            }
+
+            // --- WORKOUT MODE LOGIC ---
+            if (onCycleCompleteRef.current) {
+                if (phaseRef.current === 'running') {
+                    if (canPlaySound && currentSettings.playSoundAtEnd) {
+                        playEndSound(volume);
+                    }
+                    onCycleCompleteRef.current(); // This triggers next step & hook reset
+                }
+                // In workout mode, a rest step is just another 'running' phase.
+                // The parent context handles the sequence.
+                return;
+            }
+
+            // --- DEFAULT TIMER (LOOPING) LOGIC ---
             if (phaseRef.current === 'running') {
                 if (canPlaySound && currentSettings.playSoundAtEnd) {
                     playEndSound(volume);
                 }
                 setCycleCount(c => c + 1);
-                if (onCycleCompleteRef.current) {
-                    onCycleCompleteRef.current();
-                }
+                
                 if (restDurationMsRef.current > 0) {
+                    // Start resting phase
                     setPhase('resting');
                     endTimeRef.current = performance.now() + restDurationMsRef.current;
                     setTimeLeft(restDurationMsRef.current);
                     halfwaySoundPlayedRef.current = false;
                     animationFrameRef.current = requestAnimationFrame(animate);
                 } else {
-                    setPhase('stopped');
+                    // No rest, loop directly to running again
+                    setPhase('running');
+                    endTimeRef.current = performance.now() + durationMsRef.current;
                     setTimeLeft(durationMsRef.current);
-                    timeLeftOnPauseRef.current = durationMsRef.current;
                     halfwaySoundPlayedRef.current = false;
+                    if (canPlaySound && currentSettings.playSoundOnRestart) {
+                        playNotificationSound(volume);
+                    }
+                    animationFrameRef.current = requestAnimationFrame(animate);
                 }
             } else if (phaseRef.current === 'resting') {
-                // For the default timer (which is the only case that reaches here),
-                // loop back to the running phase instead of stopping.
+                // End of rest, loop back to running
                 setPhase('running');
                 endTimeRef.current = performance.now() + durationMsRef.current;
                 setTimeLeft(durationMsRef.current);
-                halfwaySoundPlayedRef.current = false; // Reset for the next run
+                halfwaySoundPlayedRef.current = false;
                 if (canPlaySound && currentSettings.playSoundOnRestart) {
-                    // Play a sound to signify the start of the next cycle
                     playNotificationSound(volume);
                 }
                 animationFrameRef.current = requestAnimationFrame(animate);
             }
-        }, 100);
+        }, 1000); // Wait for a full second on '0'
         return;
     }
 
