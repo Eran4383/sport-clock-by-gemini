@@ -8,7 +8,7 @@ interface ControlsProps {
   reset: () => void;
   cycleCount: number | null;
   resetCycleCount: () => void;
-  showTimer: boolean;
+  showSessionTimer: boolean;
   showStopwatchControls: boolean;
   isWorkoutActive: boolean;
   nextStep: () => void;
@@ -31,7 +31,7 @@ const Button: React.FC<{ onMouseDown: () => void; className?: string; children: 
 );
 
 export const Controls: React.FC<ControlsProps> = ({ 
-  isRunning, start, stop, reset, cycleCount, resetCycleCount, showTimer, showStopwatchControls,
+  isRunning, start, stop, reset, cycleCount, resetCycleCount, showSessionTimer, showStopwatchControls,
   isWorkoutActive, nextStep, previousStep, workoutStepInfo 
 }) => {
   const buttonColor = 'bg-gray-500/30 hover:bg-gray-500/40 text-white';
@@ -89,7 +89,7 @@ export const Controls: React.FC<ControlsProps> = ({
       ) : (
         // Default layout: RESET | CYCLES | START
         <>
-          { showTimer && showStopwatchControls ?
+          { showSessionTimer && showStopwatchControls ?
             <Button onMouseDown={reset} ariaLabel={'Reset Timer'} className={buttonColor} disabled={isRunning}>
               Reset
             </Button>
@@ -98,7 +98,7 @@ export const Controls: React.FC<ControlsProps> = ({
 
           <CycleDisplay />
 
-          { showTimer && showStopwatchControls ?
+          { showSessionTimer && showStopwatchControls ?
             <Button onMouseDown={isRunning ? stop : start} ariaLabel={isRunning ? 'Pause Timer' : 'Start Timer'} className={buttonColor}>
               {isRunning ? 'Pause' : 'Start'}
             </Button>

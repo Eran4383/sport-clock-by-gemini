@@ -7,7 +7,8 @@ import { db } from '../services/firebase';
 // --- Types and Defaults (moved from hooks/useSettings.ts) ---
 
 export interface Settings {
-  showTimer: boolean;
+  showSessionTimer: boolean;
+  showWorkoutTimer: boolean;
   showCountdown: boolean;
   showCycleCounter: boolean;
   stealthModeEnabled: boolean;
@@ -41,7 +42,8 @@ export interface Settings {
 }
 
 const defaultSettings: Settings = {
-  showTimer: true,
+  showSessionTimer: true,
+  showWorkoutTimer: true,
   showCountdown: true,
   showCycleCounter: true,
   stealthModeEnabled: false,

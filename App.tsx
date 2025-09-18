@@ -478,6 +478,7 @@ const AppContent: React.FC = () => {
   };
 
   const isWarmupStep = isWorkoutActive && currentStep.isWarmup;
+  const shouldShowFooter = (isWorkoutActive ? (settings.showWorkoutTimer || settings.showSessionTimer) : settings.showSessionTimer) || settings.showCycleCounter;
 
   return (
     <div 
@@ -583,7 +584,7 @@ const AppContent: React.FC = () => {
         </div>
       </main>
 
-      {(settings.showTimer || settings.showCycleCounter) && (
+      {shouldShowFooter && (
         <footer className="w-full max-w-3xl mx-auto flex flex-col items-center gap-1">
             {/* Reserve space for "Next Up" to prevent layout shift on the last step */}
             <div className="text-center mb-0 h-5 flex items-center justify-center">
@@ -593,21 +594,23 @@ const AppContent: React.FC = () => {
                   </p>
               )}
             </div>
-            {settings.showTimer && (
-              isWorkoutActive ? (
-                <>
-                  {/* Workout Timer (Large) */}
-                  <TimerDisplay time={workoutStopwatch.time} />
-                  {/* Session Timer (Small) */}
+            
+            {isWorkoutActive ? (
+              <>
+                {/* Workout Timer (Large) */}
+                {settings.showWorkoutTimer && <TimerDisplay time={workoutStopwatch.time} />}
+                {/* Session Timer (Small) */}
+                {settings.showSessionTimer && (
                   <div className="text-xl font-bold tabular-nums tracking-tight text-gray-400 -mt-2" title="Total Session Time">
                     {formatTime(mainStopwatch.time)}
                   </div>
-                </>
-              ) : (
-                /* Main Stopwatch (Large) */
-                <TimerDisplay time={mainStopwatch.time} />
-              )
+                )}
+              </>
+            ) : (
+              /* Main Stopwatch (Large) */
+              settings.showSessionTimer && <TimerDisplay time={mainStopwatch.time} />
             )}
+            
             <Controls 
               isRunning={mainStopwatch.isRunning}
               start={startStopwatchAndReset}
@@ -617,7 +620,7 @@ const AppContent: React.FC = () => {
               cycleCount={settings.showCycleCounter && !isWorkoutActive ? countdown?.cycleCount : null}
               // FIX: Added check for countdown object before accessing its properties.
               resetCycleCount={countdown?.resetCycleCount}
-              showTimer={settings.showTimer}
+              showSessionTimer={settings.showSessionTimer}
               showStopwatchControls={settings.showStopwatchControls}
               isWorkoutActive={isWorkoutActive}
               nextStep={nextStep}

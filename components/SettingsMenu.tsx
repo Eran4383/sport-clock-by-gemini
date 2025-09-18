@@ -249,7 +249,7 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
     if (e.button !== 0) return; // Only left-click
     e.preventDefault();
     
-    const target = e.currentTarget.parentElement?.parentElement;
+    const target = e.currentTarget.parentElement?.parentElement?.parentElement;
     if (!target) return;
     
     const rect = target.getBoundingClientRect();
@@ -320,6 +320,15 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
       window.removeEventListener('mouseup', handleMouseUp);
     };
   }, [draggedInfo, overIndex, settings.settingsCategoryOrder, updateSettings]);
+
+  const handleResetDisplaySizes = () => {
+    updateSettings({
+      countdownSize: 100,
+      stopwatchSize: 100,
+      countdownControlsSize: 100,
+      stopwatchControlsSize: 100,
+    });
+  };
 
 
   const categories: Record<string, { title: string, content: JSX.Element }> = {
@@ -402,7 +411,8 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
       title: "Stopwatch",
       content: (
         <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
-          <Toggle id="showTimerToggle" label="Show Stopwatch" checked={settings.showTimer} onChange={(e) => updateSettings({ showTimer: e.target.checked })} />
+          <Toggle id="showSessionTimerToggle" label="Show Session Timer" checked={settings.showSessionTimer} onChange={(e) => updateSettings({ showSessionTimer: e.target.checked })} />
+          <Toggle id="showWorkoutTimerToggle" label="Show Workout Timer" checked={settings.showWorkoutTimer} onChange={(e) => updateSettings({ showWorkoutTimer: e.target.checked })} />
           <Toggle id="showStopwatchControlsToggle" label="Show Controls" checked={settings.showStopwatchControls} onChange={(e) => updateSettings({ showStopwatchControls: e.target.checked })} />
         </div>
       )
@@ -477,9 +487,11 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
             }}
           >
             <div>
-              <h3 className="text-lg font-semibold text-gray-300 mb-3 cursor-grabbing px-3 pt-3">
-                {category.title}
-              </h3>
+              <div className="flex justify-between items-baseline px-3 pt-3">
+                  <h3 className="text-lg font-semibold text-gray-300 mb-3 cursor-grabbing">
+                    {category.title}
+                  </h3>
+              </div>
               {category.content}
             </div>
           </div>
@@ -564,12 +576,25 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
                   style={{ transform }}
                 >
                   <div style={{ visibility: isBeingDragged ? 'hidden' : 'visible' }}>
-                    <h3
-                      className="text-lg font-semibold text-gray-300 mb-3 cursor-grab"
-                      onMouseDown={(e) => handleMouseDown(e, index, key)}
-                    >
-                      {category.title}
-                    </h3>
+                    <div className="flex justify-between items-baseline">
+                      <h3
+                        className="text-lg font-semibold text-gray-300 mb-3 cursor-grab"
+                        onMouseDown={(e) => handleMouseDown(e, index, key)}
+                      >
+                        {category.title}
+                      </h3>
+                      {key === 'displaySizes' && (
+                          <button
+                            onClick={handleResetDisplaySizes}
+                            className="p-1 rounded-full text-gray-400 hover:text-white hover:bg-gray-600/50 transition-colors"
+                            title="Reset sizes to default"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5m-5-5a9 9 0 0114.13-5.23M20 15a9 9 0 01-14.13 5.23" />
+                            </svg>
+                          </button>
+                      )}
+                    </div>
                     {category.content}
                   </div>
                 </div>
