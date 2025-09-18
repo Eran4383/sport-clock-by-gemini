@@ -2,6 +2,8 @@
 
 
 
+
+
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Settings } from '../contexts/SettingsContext';
 import { playNotificationSound, playEndSound } from '../utils/sound';
@@ -78,10 +80,17 @@ export const useCountdown = (initialDuration: number, restDuration: number, sett
                     halfwaySoundPlayedRef.current = false;
                 }
             } else if (phaseRef.current === 'resting') {
-                setPhase('stopped');
+                // For the default timer (which is the only case that reaches here),
+                // loop back to the running phase instead of stopping.
+                setPhase('running');
+                endTimeRef.current = performance.now() + durationMsRef.current;
                 setTimeLeft(durationMsRef.current);
-                timeLeftOnPauseRef.current = durationMsRef.current;
-                halfwaySoundPlayedRef.current = false;
+                halfwaySoundPlayedRef.current = false; // Reset for the next run
+                if (canPlaySound && currentSettings.playSoundOnRestart) {
+                    // Play a sound to signify the start of the next cycle
+                    playNotificationSound(volume);
+                }
+                animationFrameRef.current = requestAnimationFrame(animate);
             }
         }, 100);
         return;
