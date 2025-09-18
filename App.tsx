@@ -1,7 +1,3 @@
-
-
-
-
 import React, { useMemo, useEffect, useRef, useState, useCallback } from 'react';
 import { CountdownDisplay } from './components/CountdownDisplay';
 import { CountdownControls } from './components/CountdownControls';
@@ -21,6 +17,7 @@ import { playNotificationSound } from './utils/sound';
 import { getStepDisplayName } from './utils/workout';
 import { ImportNotification } from './components/ImportNotification';
 import { AuthProvider } from './contexts/AuthContext';
+import { formatTime } from './utils/time';
 
 const AppContent: React.FC = () => {
   const { settings, updateSettings } = useSettings();
@@ -53,7 +50,8 @@ const AppContent: React.FC = () => {
     handleDiscardGuestHistory,
   } = useWorkout();
   
-  const stopwatch = useStopwatch();
+  const mainStopwatch = useStopwatch();
+  const workoutStopwatch = useStopwatch();
   const wasWorkoutActive = useRef(false);
   const lastActiveWorkoutRef = useRef<ActiveWorkout | null>(null);
   const [workoutCompleted, setWorkoutCompleted] = useState(false);
@@ -206,13 +204,13 @@ const AppContent: React.FC = () => {
         if (isRepStep || isWorkoutActive) return;
         
         // FIX: Added check for countdown object before accessing its properties.
-        const isAnythingRunning = stopwatch.isRunning || countdown?.isRunning || countdown?.isResting;
+        const isAnythingRunning = mainStopwatch.isRunning || countdown?.isRunning || countdown?.isResting;
         if (isAnythingRunning) {
-          stopwatch.stop();
+          mainStopwatch.stop();
           // FIX: Added check for countdown object before accessing its properties.
           countdown?.stop();
         } else {
-          stopwatch.start();
+          mainStopwatch.start();
           // FIX: Added check for countdown object before accessing its properties.
           countdown?.start();
         }
@@ -299,7 +297,7 @@ const AppContent: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [settings, updateSettings, stopwatch, countdown, isWorkoutActive, isWorkoutPaused, isRepStep, nextStep, resumeWorkout, pauseWorkout, contextStopWorkout, toggleFullScreen, workoutCompleted, isPreparingWorkout]);
+  }, [settings, updateSettings, mainStopwatch, countdown, isWorkoutActive, isWorkoutPaused, isRepStep, nextStep, resumeWorkout, pauseWorkout, contextStopWorkout, toggleFullScreen, workoutCompleted, isPreparingWorkout]);
 
   // Update document title with countdown
   useEffect(() => {
@@ -329,7 +327,7 @@ const AppContent: React.FC = () => {
 
   // Start main clock on initial load
   useEffect(() => {
-    stopwatch.start();
+    mainStopwatch.start();
     // FIX: Added check for countdown object before accessing its properties.
     countdown?.start();
   }, []);
@@ -340,17 +338,16 @@ const AppContent: React.FC = () => {
       if (!wasWorkoutActive.current) {
         // On workout start
         setWorkoutCompleted(false);
-        stopwatch.stop();
-        // FIX: Added check for countdown object before accessing its properties.
         countdown?.stop();
-        stopwatch.reset();
+        workoutStopwatch.reset();
+        workoutStopwatch.start();
       }
 
-      // Handle stopwatch based on GLOBAL pause
+      // Handle workout stopwatch based on GLOBAL pause
       if (isWorkoutPaused) {
-        stopwatch.stop();
+        workoutStopwatch.stop();
       } else {
-        stopwatch.start();
+        workoutStopwatch.start();
       }
 
       // Handle countdown based on GLOBAL and STEP pause
@@ -370,7 +367,7 @@ const AppContent: React.FC = () => {
     } else {
       if (wasWorkoutActive.current) {
         // On workout end
-        stopwatch.stop();
+        workoutStopwatch.stop();
         // FIX: Added check for countdown object before accessing its properties.
         countdown?.stop();
 
@@ -380,7 +377,7 @@ const AppContent: React.FC = () => {
         if (finishedWorkout) {
             contextStopWorkout({
                 completed: true,
-                durationMs: stopwatch.time,
+                durationMs: workoutStopwatch.time,
                 planName: finishedWorkout.plan.name || 'Unnamed Workout',
                 steps: finishedWorkout.plan.steps,
                 planIds: finishedWorkout.sourcePlanIds
@@ -391,16 +388,16 @@ const AppContent: React.FC = () => {
       }
       wasWorkoutActive.current = false;
     }
-  }, [isWorkoutActive, isWorkoutPaused, isCountdownPaused, stopwatch, countdown, contextStopWorkout, activeWorkout, isRepStep]);
+  }, [isWorkoutActive, isWorkoutPaused, isCountdownPaused, workoutStopwatch, countdown, contextStopWorkout, activeWorkout, isRepStep]);
 
   // If the user starts the main timers after a workout is complete, reset the completion screen.
   useEffect(() => {
     // FIX: Added check for countdown object before accessing its properties.
-    if (workoutCompleted && (stopwatch.isRunning || countdown?.isRunning)) {
+    if (workoutCompleted && (mainStopwatch.isRunning || countdown?.isRunning)) {
         setWorkoutCompleted(false);
     }
   // FIX: Added check for countdown object before accessing its properties.
-  }, [workoutCompleted, stopwatch.isRunning, countdown?.isRunning]);
+  }, [workoutCompleted, mainStopwatch.isRunning, countdown?.isRunning]);
 
   if (preWorkoutTimeLeft !== null) {
     return <PreWorkoutCountdown timeLeft={preWorkoutTimeLeft} onDoubleClick={toggleFullScreen} />;
@@ -464,12 +461,12 @@ const AppContent: React.FC = () => {
 
   const startStopwatchAndReset = () => {
     if (workoutCompleted) setWorkoutCompleted(false);
-    stopwatch.start();
+    mainStopwatch.start();
   };
 
   const resetStopwatchAndReset = () => {
     if (workoutCompleted) setWorkoutCompleted(false);
-    stopwatch.reset();
+    mainStopwatch.reset();
     // FIX: Added check for countdown object before accessing its properties.
     countdown?.resetCycleCount(); // Reset cycles with main timer
   };
@@ -596,11 +593,25 @@ const AppContent: React.FC = () => {
                   </p>
               )}
             </div>
-            {settings.showTimer && <TimerDisplay time={stopwatch.time} />}
+            {settings.showTimer && (
+              isWorkoutActive ? (
+                <>
+                  {/* Workout Timer (Large) */}
+                  <TimerDisplay time={workoutStopwatch.time} />
+                  {/* Session Timer (Small) */}
+                  <div className="text-xl font-bold tabular-nums tracking-tight text-gray-400 -mt-2" title="Total Session Time">
+                    {formatTime(mainStopwatch.time)}
+                  </div>
+                </>
+              ) : (
+                /* Main Stopwatch (Large) */
+                <TimerDisplay time={mainStopwatch.time} />
+              )
+            )}
             <Controls 
-              isRunning={stopwatch.isRunning}
+              isRunning={mainStopwatch.isRunning}
               start={startStopwatchAndReset}
-              stop={stopwatch.stop}
+              stop={mainStopwatch.stop}
               reset={resetStopwatchAndReset}
               // FIX: Added check for countdown object before accessing its properties.
               cycleCount={settings.showCycleCounter && !isWorkoutActive ? countdown?.cycleCount : null}

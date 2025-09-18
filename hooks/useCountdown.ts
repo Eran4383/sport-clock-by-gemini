@@ -33,8 +33,7 @@ export const useCountdown = (initialDuration: number, restDuration: number, sett
   };
 
   const animate = useCallback(() => {
-    const currentPhase = phaseRef.current;
-    if (currentPhase === 'stopped') {
+    if (phaseRef.current === 'stopped') {
         if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = undefined;
         return;
@@ -45,76 +44,62 @@ export const useCountdown = (initialDuration: number, restDuration: number, sett
     const { allSoundsEnabled, isMuted, volume, stealthModeEnabled } = currentSettings;
     const canPlaySound = allSoundsEnabled && !isMuted && !stealthModeEnabled;
 
-    // Handle end of a phase (running or resting)
     if (remaining <= 0) {
+        const endedPhase = phaseRef.current;
         setTimeLeft(0);
-        if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = undefined;
+        
+        if (animationFrameRef.current) {
+            cancelAnimationFrame(animationFrameRef.current);
+            animationFrameRef.current = undefined;
+        }
 
-        // Use a timeout to allow the '0' to render for a full second before transitioning
         setTimeout(() => {
-            // Guard against the component unmounting or state changing during the timeout
             if (phaseRef.current === 'stopped') {
                 return;
             }
 
-            // --- WORKOUT MODE LOGIC ---
             if (onCycleCompleteRef.current) {
-                if (phaseRef.current === 'running') {
-                    if (canPlaySound && currentSettings.playSoundAtEnd) {
-                        playEndSound(volume);
-                    }
-                    onCycleCompleteRef.current(); // This triggers next step & hook reset
+                if (endedPhase === 'running' && canPlaySound && currentSettings.playSoundAtEnd) {
+                    playEndSound(volume);
                 }
-                // In workout mode, a rest step is just another 'running' phase.
-                // The parent context handles the sequence.
+                onCycleCompleteRef.current();
                 return;
             }
 
-            // --- DEFAULT TIMER (LOOPING) LOGIC ---
-            if (phaseRef.current === 'running') {
-                if (canPlaySound && currentSettings.playSoundAtEnd) {
-                    playEndSound(volume);
-                }
-                setCycleCount(c => c + 1);
-                
-                if (restDurationMsRef.current > 0) {
-                    // Start resting phase
-                    setPhase('resting');
-                    endTimeRef.current = performance.now() + restDurationMsRef.current;
-                    setTimeLeft(restDurationMsRef.current);
-                    halfwaySoundPlayedRef.current = false;
-                    animationFrameRef.current = requestAnimationFrame(animate);
-                } else {
-                    // No rest, loop directly to running again
-                    setPhase('running');
-                    endTimeRef.current = performance.now() + durationMsRef.current;
-                    setTimeLeft(durationMsRef.current);
-                    halfwaySoundPlayedRef.current = false;
-                    if (canPlaySound && currentSettings.playSoundOnRestart) {
-                        playNotificationSound(volume);
-                    }
-                    animationFrameRef.current = requestAnimationFrame(animate);
-                }
-            } else if (phaseRef.current === 'resting') {
-                // End of rest, loop back to running
-                setPhase('running');
-                endTimeRef.current = performance.now() + durationMsRef.current;
-                setTimeLeft(durationMsRef.current);
+            const startNewPhase = (phase: Phase, duration: number) => {
+                setPhase(phase);
+                endTimeRef.current = performance.now() + duration;
+                setTimeLeft(duration);
                 halfwaySoundPlayedRef.current = false;
                 if (canPlaySound && currentSettings.playSoundOnRestart) {
                     playNotificationSound(volume);
                 }
                 animationFrameRef.current = requestAnimationFrame(animate);
+            };
+
+            if (endedPhase === 'running') {
+                setCycleCount(c => c + 1);
+                if (canPlaySound && currentSettings.playSoundAtEnd) {
+                    playEndSound(volume);
+                }
+                
+                if (restDurationMsRef.current > 0) {
+                    startNewPhase('resting', restDurationMsRef.current);
+                } else {
+                    startNewPhase('running', durationMsRef.current);
+                }
+            } else if (endedPhase === 'resting') {
+                startNewPhase('running', durationMsRef.current);
             }
-        }, 1000); // Wait for a full second on '0'
+
+        }, 1000);
+
         return;
     }
 
     setTimeLeft(remaining);
 
-    // Play halfway sound
-    const totalDuration = currentPhase === 'running' ? durationMsRef.current : restDurationMsRef.current;
+    const totalDuration = phaseRef.current === 'running' ? durationMsRef.current : restDurationMsRef.current;
     if (canPlaySound && currentSettings.playSoundAtHalfway && !halfwaySoundPlayedRef.current && remaining <= totalDuration / 2) {
         playNotificationSound(volume);
         halfwaySoundPlayedRef.current = true;
@@ -124,8 +109,6 @@ export const useCountdown = (initialDuration: number, restDuration: number, sett
   }, []);
 
   const start = useCallback(() => {
-    // FIX: Use the state setter from useState (_setPhase) which accepts a function,
-    // and manually update the ref inside the callback to keep it in sync.
     _setPhase(currentPhase => {
         if (currentPhase !== 'stopped') {
             return currentPhase;
@@ -140,8 +123,6 @@ export const useCountdown = (initialDuration: number, restDuration: number, sett
   }, [animate]);
 
   const stop = useCallback(() => {
-    // FIX: Use the state setter from useState (_setPhase) which accepts a function,
-    // and manually update the ref inside the callback to keep it in sync.
     _setPhase(currentPhase => {
         if (currentPhase === 'stopped') {
             return 'stopped';
