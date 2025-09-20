@@ -8,7 +8,6 @@ import { WorkoutInfoModal } from './WorkoutInfoModal';
 import { WorkoutLog } from './WorkoutLog';
 import { getBaseExerciseName, generateCircuitSteps, getStepDisplayName } from '../utils/workout';
 import { useAuth } from '../contexts/AuthContext';
-import { AI_CHAT_HISTORY_KEY } from '../services/storageService';
 
 const EDITOR_STORAGE_KEY = 'sportsClockPlanEditorDraft';
 
@@ -491,40 +490,6 @@ const PlanListItem: React.FC<{
     return `בוצע לאחרונה: ${lastPerformed.toLocaleDateString('he-IL')}`;
   }, [workoutHistory, plan.id]);
 
-  const lastPerformedTooltip = useMemo(() => {
-    const relevantLogs = workoutHistory
-        .filter(log => log.planIds?.includes(plan.id))
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-    if (relevantLogs.length === 0) return undefined;
-
-    const lastLogDate = new Date(relevantLogs[0].date);
-    const lastLogDayStart = new Date(lastLogDate.getFullYear(), lastLogDate.getMonth(), lastLogDate.getDate()).getTime();
-    const lastLogDayEnd = lastLogDayStart + 24 * 60 * 60 * 1000;
-
-    const logsOnLastDay = relevantLogs.filter(log => {
-        const logTime = new Date(log.date).getTime();
-        return logTime >= lastLogDayStart && logTime < lastLogDayEnd;
-    });
-
-    if (logsOnLastDay.length === 0) return undefined;
-
-    const dateString = new Date(logsOnLastDay[0].date).toLocaleDateString('he-IL', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-    });
-    
-    const times = logsOnLastDay
-        .map(log => new Date(log.date).toLocaleTimeString('he-IL', {
-            hour: '2-digit',
-            minute: '2-digit'
-        }))
-        .join('\n');
-
-    return `${dateString}\n${times}`;
-  }, [workoutHistory, plan.id]);
-
 
   useEffect(() => {
     // Automatically expand the active workout plan
@@ -665,16 +630,8 @@ const PlanListItem: React.FC<{
                     {lastPerformedText && (
                     <>
                         <span className="mx-2 text-gray-500 shrink-0">|</span>
-                        <span 
-                            className="flex items-center gap-1 shrink-0 whitespace-nowrap"
-                            title={lastPerformedTooltip}
-                        >
-                            <span 
-                                className="cursor-pointer hover:underline"
-                                onClick={(e) => { e.stopPropagation(); onShowInfo(plan); }}
-                            >
-                                {lastPerformedText}
-                            </span>
+                        <span className="flex items-center gap-1 shrink-0 whitespace-nowrap">
+                            {lastPerformedText}
                             <button
                                 onClick={(e) => { e.stopPropagation(); onShowInfo(plan); }}
                                 className="text-gray-400 hover:text-white"
@@ -1074,29 +1031,32 @@ const PlanList: React.FC<{
   return (
     <div>
       {sharingPlan && <ShareModal plan={sharingPlan} onClose={() => setSharingPlan(null)} />}
-      <div className="flex justify-end items-center mb-4">
-        {/* Right Side: Action buttons & all auth displays */}
-        <div className="flex items-center gap-1">
-            {authStatus !== 'authenticated' && (
-              <div className="flex flex-col items-center text-center">
-                <p className="text-gray-400 text-xs mb-1">אורח</p>
-                <button
-                    onClick={signIn}
-                    className="bg-white text-gray-700 p-1.5 rounded-full border border-gray-200 shadow-sm hover:shadow-md transition-shadow flex items-center"
-                    title="התחברות עם גוגל"
-                    aria-label="התחברות עם גוגל"
-                >
-                    <svg version="1.1" xmlns="http://www.w3.org/2000/svg" width="18px" height="18px" viewBox="0 0 48 48">
-                      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
-                      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
-                      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
-                      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
-                      <path fill="none" d="M0 0h48v48H0z"></path>
-                    </svg>
-                </button>
-                <p className="text-white font-bold text-xs mt-1">התחברות</p>
-              </div>
-            )}
+      <div className="flex justify-between items-center mb-4">
+        {/* Left Side: Auth display (Guest only) */}
+        <div>
+           {authStatus !== 'authenticated' && (
+            <div className="flex flex-col items-center">
+              <p className="text-gray-400 text-xs mb-1">אורח</p>
+              <button
+                  onClick={signIn}
+                  className="bg-white text-gray-700 font-medium py-1 px-4 rounded-full border border-gray-200 shadow-sm hover:shadow-md transition-shadow flex items-center gap-3"
+                  aria-label="התחברות עם גוגל"
+              >
+                  <svg version="1.1" xmlns="http://www.w3.org/2000/svg" width="18px" height="18px" viewBox="0 0 48 48">
+                    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
+                    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
+                    <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
+                    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
+                    <path fill="none" d="M0 0h48v48H0z"></path>
+                  </svg>
+                  <span className="whitespace-nowrap">התחברות עם גוגל</span>
+              </button>
+            </div>
+           )}
+        </div>
+
+        {/* Right Side: Action buttons & logged-in user display */}
+        <div className="flex items-center gap-2">
             {isSyncing && (
                 <div className="p-2" title="Syncing...">
                     <svg className="animate-spin h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -2115,6 +2075,7 @@ const AiPlannerModal: React.FC<{
     type ChatMessage = { role: 'user' | 'model'; parts: ChatPart[] };
     
     const { importPlan } = useWorkout();
+    const AI_CHAT_HISTORY_KEY = 'sportsClockAiChatHistory_v2';
 
     const [messages, setMessages] = useState<ChatMessage[]>(() => {
         try {
@@ -2309,20 +2270,6 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
   const modalMutedApp = useRef(false);
   const [isAiPlannerOpen, setIsAiPlannerOpen] = useState(false);
 
-  // When the menu is closed, reset its internal view to the main plan list.
-  // This ensures that when it's reopened, it doesn't show a sub-page like the log or editor.
-  useEffect(() => {
-    if (!isOpen) {
-        // Use a timeout to avoid a jarring content flash while the menu is animating out.
-        const timer = setTimeout(() => {
-            setView('list');
-            // Also clear any lingering editor state
-            setEditingPlan(null);
-        }, 300);
-        return () => clearTimeout(timer);
-    }
-  }, [isOpen]);
-
   // Mute app sounds when the exercise modal is visible and restore on close.
   useEffect(() => {
     if (isModalVisible) {
@@ -2358,168 +2305,151 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
     return editingPlan as WorkoutPlan;
   }, [editingPlan, settings.warmupSteps]);
 
-  // Touch gesture state and handlers for swipe-to-close
+  // Touch handlers for swipe-to-close gesture
   const touchStartX = useRef<number | null>(null);
   const touchEndX = useRef<number | null>(null);
   const minSwipeDistance = 50;
 
   const handleTouchStart = (e: React.TouchEvent) => {
-    touchEndX.current = null;
-    touchStartX.current = e.touches[0].clientX;
+      touchEndX.current = null;
+      touchStartX.current = e.touches[0].clientX;
   };
-
   const handleTouchMove = (e: React.TouchEvent) => {
-    touchEndX.current = e.touches[0].clientX;
+      touchEndX.current = e.touches[0].clientX;
   };
-
   const handleTouchEnd = () => {
-    if (!touchStartX.current || !touchEndX.current) return;
-    const distance = touchStartX.current - touchEndX.current; // Swipe left to close
-    if (distance > minSwipeDistance) {
-        handleClose();
-    }
-    touchStartX.current = null;
-    touchEndX.current = null;
+      if (!touchStartX.current || !touchEndX.current) return;
+      const distance = touchEndX.current - touchStartX.current;
+      // Swipe left to close, respecting the pin
+      if (distance < -minSwipeDistance && !isPinned) {
+          setIsOpen(false);
+      }
+      touchStartX.current = null;
+      touchEndX.current = null;
   };
 
-  // Auto-close logic
-  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  
-  const handleMouseEnter = () => {
-    if (closeTimerRef.current) {
-      clearTimeout(closeTimerRef.current);
-      closeTimerRef.current = null;
+  useEffect(() => {
+    if (!isOpen) {
+        setIsPinned(false); // Unpin when manually closed
+        setTimeout(() => {
+             setView('list');
+             setEditingPlan(null);
+        }, 500); 
     }
-  };
+  }, [isOpen]);
   
-    // FIX: The handleClose function was missing and was not being called.
-    const handleClose = () => {
-        setIsOpen(false);
-        setIsPinned(false);
-    };
-
-  const handleMouseLeave = () => {
-    // Don't auto-close if pinned or during a workout
-    if (isOpen && !isPinned && !activeWorkout) {
-      closeTimerRef.current = setTimeout(() => {
-        // FIX: handleClose was undefined. Now it is defined and called correctly.
-        handleClose();
-      }, 5000);
-    }
-  };
-  
-  const handleSelectPlan = (plan: WorkoutPlan | string) => {
-    setEditingPlan(plan);
-    setView('editor');
-  };
-
   const handleCreateNew = () => {
-    setEditingPlan(null);
-    setView('editor');
+      localStorage.removeItem(EDITOR_STORAGE_KEY);
+      setEditingPlan(null);
+      setView('editor');
   };
 
-  const handleBackFromEditor = () => {
-    setEditingPlan(null);
-    setView('list');
+  const handleSelectPlan = (plan: WorkoutPlan | string) => {
+      localStorage.removeItem(EDITOR_STORAGE_KEY);
+      setEditingPlan(plan);
+      setView('editor');
   };
 
-  const handleInitiateDelete = (planId: string) => {
-    setConfirmDeletePlanId(planId);
+  const handleBack = () => {
+      setView('list');
+      setEditingPlan(null);
   };
-
+  
   const handleConfirmDelete = () => {
     if (confirmDeletePlanId) {
-      deletePlan(confirmDeletePlanId);
+        deletePlan(confirmDeletePlanId);
+        setConfirmDeletePlanId(null);
     }
-    setConfirmDeletePlanId(null);
   };
 
   const handleInspectExercise = (exerciseName: string) => {
+    if (isModalVisible && exerciseToInspect === exerciseName) {
+        return;
+    }
     setExerciseToInspect(exerciseName);
     setIsModalVisible(true);
   };
-  
-  const handleShowInfo = (plan: WorkoutPlan) => {
-      setInfoPlan(plan);
+
+  const handleCloseModal = () => {
+    setIsModalVisible(false);
   };
 
-  // FIX: Added the missing return statement and JSX for the component.
-  // The component was previously returning `void`, causing a type error. This implementation
-  // renders the workout menu panel, its content based on the current view (list, editor, log),
-  // and all associated modals.
+  useEffect(() => {
+      if(activeWorkout && !isPinned) {
+          setIsOpen(false);
+      }
+  }, [activeWorkout, isPinned]);
+
+
   return (
     <>
-      <ExerciseInfoModal 
-        isVisible={isModalVisible} 
-        exerciseName={exerciseToInspect} 
-        onClose={() => setIsModalVisible(false)} 
-      />
-      {confirmDeletePlanId && planToDelete && (
-          <ConfirmDeleteModal 
-            planName={planToDelete.name} 
-            onConfirm={handleConfirmDelete} 
-            onCancel={() => setConfirmDeletePlanId(null)} 
-          />
-      )}
-      {infoPlan && (
-          <WorkoutInfoModal plan={infoPlan} onClose={() => setInfoPlan(null)} />
-      )}
-      {isAiPlannerOpen && <AiPlannerModal onClose={() => setIsAiPlannerOpen(false)} />}
-      
-      {/* Overlay */}
+      <div className="absolute top-4 left-4 menu-container group">
+        <button 
+          onClick={() => setIsOpen(!isOpen)} 
+          aria-label="Open workout planner"
+          className="w-12 h-12 flex items-center justify-center rounded-full bg-gray-500/20 text-gray-400 hover:bg-gray-500/30 transition-opacity duration-1000 focus:outline-none opacity-0 group-hover:opacity-100"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" /></svg>
+        </button>
+      </div>
+
       {isOpen && (
         <div 
           className="fixed inset-0 bg-black/60 z-40"
-          onClick={() => !isPinned && handleClose()}
+          onClick={() => !isPinned && setIsOpen(false)}
         ></div>
       )}
 
-      {/* Menu Trigger */}
-      <div className="absolute top-4 left-4 menu-container group">
-        <button 
-          onClick={() => isOpen ? handleClose() : setIsOpen(true)} 
-          aria-label="Open workout menu"
-          className="w-12 h-12 flex items-center justify-center rounded-full bg-gray-500/20 text-gray-400 hover:bg-gray-500/30 transition-opacity duration-1000 focus:outline-none opacity-0 group-hover:opacity-100"
-        >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
-        </button>
-      </div>
-      
-      {/* Main Panel */}
-      <div
+      {planToDelete && (
+          <ConfirmDeleteModal 
+              planName={planToDelete.name}
+              onConfirm={handleConfirmDelete}
+              onCancel={() => setConfirmDeletePlanId(null)}
+          />
+      )}
+
+      <ExerciseInfoModal 
+          exerciseName={exerciseToInspect}
+          onClose={handleCloseModal}
+          isVisible={isModalVisible}
+      />
+
+      {infoPlan && <WorkoutInfoModal plan={infoPlan} onClose={() => setInfoPlan(null)} />}
+
+      {isAiPlannerOpen && <AiPlannerModal onClose={() => setIsAiPlannerOpen(false)} />}
+
+      <div 
         className={`fixed top-0 left-0 h-full w-full max-w-sm bg-gray-800/80 backdrop-blur-md shadow-2xl z-50 transform transition-all ease-in-out ${isOpen ? 'duration-500' : 'duration-[1500ms]'} ${isOpen ? 'translate-x-0 opacity-100' : '-translate-x-full opacity-0 pointer-events-none'}`}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-      >
-        <div className="p-6 overflow-y-auto h-full text-white">
-          {view === 'list' && (
-            <PlanList
-              onSelectPlan={handleSelectPlan}
-              onCreateNew={handleCreateNew}
-              onInitiateDelete={handleInitiateDelete}
-              onShowLog={() => setView('log')}
-              onInspectExercise={handleInspectExercise}
-              onShowInfo={handleShowInfo}
-              isPinned={isPinned}
-              onTogglePin={() => setIsPinned(!isPinned)}
-              onOpenAiPlanner={() => setIsAiPlannerOpen(true)}
-            />
-          )}
-          {view === 'editor' && (
-            <PlanEditor 
-              plan={planToEdit} 
-              onBack={handleBackFromEditor}
-              isWarmupEditor={editingPlan === '_warmup_'}
-            />
-          )}
-          {view === 'log' && (
-            <WorkoutLog onBack={() => setView('list')} />
-          )}
+        >
+          <div className="p-6 overflow-y-auto h-full">
+            {view === 'list' && (
+                <PlanList 
+                    onSelectPlan={handleSelectPlan} 
+                    onCreateNew={handleCreateNew} 
+                    onInitiateDelete={setConfirmDeletePlanId}
+                    onShowLog={() => setView('log')}
+                    onInspectExercise={handleInspectExercise}
+                    onShowInfo={setInfoPlan}
+                    isPinned={isPinned}
+                    onTogglePin={() => setIsPinned(!isPinned)}
+                    onOpenAiPlanner={() => setIsAiPlannerOpen(true)}
+                />
+            )}
+            {view === 'editor' && (
+                <PlanEditor 
+                    plan={planToEdit} 
+                    onBack={handleBack} 
+                    isWarmupEditor={typeof editingPlan === 'string' && editingPlan === '_warmup_'}
+                />
+            )}
+            {view === 'log' && (
+                <WorkoutLog onBack={handleBack} />
+            )}
+          </div>
         </div>
-      </div>
     </>
   );
 };

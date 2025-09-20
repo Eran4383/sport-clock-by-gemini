@@ -1,9 +1,5 @@
 
 
-
-
-
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useSettings } from '../contexts/SettingsContext';
 import { playNotificationSound } from '../utils/sound';
@@ -323,19 +319,6 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
 
 
   const categories: Record<string, { title: string, content: JSX.Element }> = {
-    account: {
-        title: "Account",
-        content: (
-            <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
-                <Toggle 
-                    id="syncSettings" 
-                    label="Sync Settings Across Devices" 
-                    checked={settings.syncSettingsAcrossDevices} 
-                    onChange={(e) => updateSettings({ syncSettingsAcrossDevices: e.target.checked })} 
-                />
-            </div>
-        )
-    },
     sounds: {
       title: "Sounds",
       content: (
@@ -404,16 +387,9 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
         <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
           <Toggle id="showTimerToggle" label="Show Stopwatch" checked={settings.showTimer} onChange={(e) => updateSettings({ showTimer: e.target.checked })} />
           <Toggle id="showStopwatchControlsToggle" label="Show Controls" checked={settings.showStopwatchControls} onChange={(e) => updateSettings({ showStopwatchControls: e.target.checked })} />
+            <Toggle id="showCycleCounterToggle" label="Show Cycle Counter" checked={settings.showCycleCounter} onChange={(e) => updateSettings({ showCycleCounter: e.target.checked })} />
         </div>
       )
-    },
-    cycles: {
-        title: "Cycles",
-        content: (
-            <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
-                <Toggle id="showCycleCounterToggle" label="Show Cycle Counter" checked={settings.showCycleCounter} onChange={(e) => updateSettings({ showCycleCounter: e.target.checked })} />
-            </div>
-        )
     },
     workoutDisplay: {
       title: "Workout Display",
