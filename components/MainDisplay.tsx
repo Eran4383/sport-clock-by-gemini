@@ -284,6 +284,7 @@ export const MainDisplay: React.FC<MainDisplayProps> = ({
       if (wasWorkoutActive.current) {
         workoutStopwatch.stop();
         countdown?.stop();
+        mainStopwatch.stop(); // FIX: Stop the main stopwatch when workout ends.
 
         const finishedWorkout = lastActiveWorkoutRef.current;
         
@@ -301,7 +302,7 @@ export const MainDisplay: React.FC<MainDisplayProps> = ({
       }
       wasWorkoutActive.current = false;
     }
-  }, [isWorkoutActive, isWorkoutPaused, isCountdownPaused, workoutStopwatch, countdown, contextStopWorkout, activeWorkout, isRepStep]);
+  }, [isWorkoutActive, isWorkoutPaused, isCountdownPaused, workoutStopwatch, countdown, contextStopWorkout, activeWorkout, isRepStep, mainStopwatch]);
 
   useEffect(() => {
     if (workoutCompleted && (mainStopwatch.isRunning || countdown?.isRunning)) {
