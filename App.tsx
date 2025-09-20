@@ -119,6 +119,15 @@ const AppContent: React.FC = () => {
     }
   }, []);
   
+  const handleDoubleClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    // Do not trigger on interactive elements to allow interaction without toggling fullscreen.
+    if (target.closest('button, input, a, [role="button"], label, [onclick], .menu-container')) {
+        return;
+    }
+    toggleFullScreen();
+  }, [toggleFullScreen]);
+
   const stopWorkoutAborted = () => {
     setWorkoutCompleted(false); // Aborting is not completing
     if (isPreparingWorkout) {
@@ -378,7 +387,7 @@ const AppContent: React.FC = () => {
   }
 
   const dynamicStyles = {
-    '--countdown-font-size': `clamp(3.5rem, 25vmin, 18rem)`,
+    '--countdown-font-size': `clamp(3rem, 22vmin, 16rem)`,
     '--stopwatch-font-size': `clamp(1.5rem, 8vw, ${2 + (settings.stopwatchSize / 100) * 1.5}rem)`,
     '--countdown-controls-scale': settings.countdownControlsSize / 100,
     '--stopwatch-controls-scale': settings.stopwatchControlsSize / 100,
@@ -448,7 +457,7 @@ const AppContent: React.FC = () => {
 
   return (
     <div 
-        onDoubleClick={(e) => { if (e.target === e.currentTarget) toggleFullScreen(); }} 
+        onDoubleClick={handleDoubleClick} 
         className={`h-dvh flex flex-col p-4 select-none theme-transition`} 
         style={dynamicStyles}
         onTouchStart={handleTouchStart}
@@ -476,18 +485,19 @@ const AppContent: React.FC = () => {
       {/* TOP TITLE AREA */}
       <header className="text-center w-full max-w-4xl mx-auto min-h-[4rem] flex items-center justify-center">
           {(() => {
+              const titleClasses = "text-4xl md:text-5xl lg:text-7xl font-bold";
               if (workoutCompleted) {
-                  return <p className="text-5xl sm:text-6xl lg:text-8xl font-bold" dir="rtl">סוף האימון</p>;
+                  return <p className={titleClasses} dir="rtl">סוף האימון</p>;
               }
 
               if (isWorkoutActive && currentStep) {
                   if (currentStep.name === 'מנוחה לפני אימון') {
-                      return <p className="text-5xl sm:text-6xl lg:text-8xl font-bold" dir="rtl">האימון מתחיל!</p>;
+                      return <p className={titleClasses} dir="rtl">האימון מתחיל!</p>;
                   }
                   
                   if (currentStep.type === 'rest') {
                       return (
-                          <p className="text-5xl sm:text-6xl lg:text-8xl font-bold" dir="rtl">
+                          <p className={titleClasses} dir="rtl">
                               {isWorkoutPaused ? 'PAUSED'
                               : isCountdownPaused ? 'מנוחה (Paused)'
                               : 'מנוחה'}
@@ -496,12 +506,12 @@ const AppContent: React.FC = () => {
                   }
                   
                   if (isWarmupStep) {
-                      return <p className="text-5xl sm:text-6xl lg:text-8xl font-bold" dir="rtl">חימום</p>;
+                      return <p className={titleClasses} dir="rtl">חימום</p>;
                   }
               }
               
               if (!isWorkoutActive && countdown.isResting && settings.showRestTitleOnDefaultCountdown) {
-                  return <p className="text-5xl sm:text-6xl lg:text-8xl font-bold" dir="rtl">מנוחה</p>;
+                  return <p className={titleClasses} dir="rtl">מנוחה</p>;
               }
 
               return null;
