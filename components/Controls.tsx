@@ -1,15 +1,42 @@
+
 import React from 'react';
 
-interface CycleDisplayProps {
+interface ControlsProps {
+  isRunning: boolean;
+  start: () => void;
+  stop: () => void;
+  reset: () => void;
+  cycleCount: number | null;
+  resetCycleCount: () => void;
+  showTimer: boolean;
+  showStopwatchControls: boolean;
+  isWorkoutActive: boolean;
+  nextStep: () => void;
+  previousStep: () => void;
   workoutStepInfo?: {
     current: number;
     total: number;
   };
-  cycleCount: number | null;
-  resetCycleCount: (() => void) | undefined;
 }
 
-const CycleDisplay: React.FC<CycleDisplayProps> = ({ workoutStepInfo, cycleCount, resetCycleCount }) => {
+const Button: React.FC<{ onMouseDown: () => void; className?: string; children: React.ReactNode; ariaLabel: string, disabled?: boolean }> = ({ onMouseDown, className = '', children, ariaLabel, disabled = false }) => (
+  <button
+    onMouseDown={onMouseDown}
+    aria-label={ariaLabel}
+    disabled={disabled}
+    className={`w-28 px-6 py-2 rounded-md text-lg font-semibold transition-colors duration-200 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
+  >
+    {children}
+  </button>
+);
+
+export const Controls: React.FC<ControlsProps> = ({ 
+  isRunning, start, stop, reset, cycleCount, resetCycleCount, showTimer, showStopwatchControls,
+  isWorkoutActive, nextStep, previousStep, workoutStepInfo 
+}) => {
+  const buttonColor = 'bg-gray-500/30 hover:bg-gray-500/40 text-white';
+
+  const CycleDisplay = () => {
     if (workoutStepInfo) {
       return (
         <div className="text-center w-28">
@@ -41,42 +68,7 @@ const CycleDisplay: React.FC<CycleDisplayProps> = ({ workoutStepInfo, cycleCount
     }
 
     return <div className="w-28"></div>; // Placeholder for alignment
-};
-
-const Button: React.FC<{ onMouseDown: () => void; className?: string; children: React.ReactNode; ariaLabel: string, disabled?: boolean }> = ({ onMouseDown, className = '', children, ariaLabel, disabled = false }) => (
-  <button
-    onMouseDown={onMouseDown}
-    aria-label={ariaLabel}
-    disabled={disabled}
-    className={`w-28 px-6 py-2 rounded-md text-lg font-semibold transition-colors duration-200 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
-  >
-    {children}
-  </button>
-);
-
-interface ControlsProps {
-  isRunning: boolean;
-  start: () => void;
-  stop: () => void;
-  reset: () => void;
-  cycleCount: number | null;
-  resetCycleCount: (() => void) | undefined;
-  showSessionTimer: boolean;
-  showStopwatchControls: boolean;
-  isWorkoutActive: boolean;
-  nextStep: () => void;
-  previousStep: () => void;
-  workoutStepInfo?: {
-    current: number;
-    total: number;
   };
-}
-
-export const Controls: React.FC<ControlsProps> = ({ 
-  isRunning, start, stop, reset, cycleCount, resetCycleCount, showSessionTimer, showStopwatchControls,
-  isWorkoutActive, nextStep, previousStep, workoutStepInfo 
-}) => {
-  const buttonColor = 'bg-gray-500/30 hover:bg-gray-500/40 text-white';
 
   return (
     <div 
@@ -89,7 +81,7 @@ export const Controls: React.FC<ControlsProps> = ({
           <Button onMouseDown={previousStep} ariaLabel="Previous Step" className={buttonColor}>
             Previous
           </Button>
-          <CycleDisplay workoutStepInfo={workoutStepInfo} cycleCount={cycleCount} resetCycleCount={resetCycleCount} />
+          <CycleDisplay />
           <Button onMouseDown={nextStep} ariaLabel="Skip Step" className={buttonColor}>
             Skip
           </Button>
@@ -97,16 +89,16 @@ export const Controls: React.FC<ControlsProps> = ({
       ) : (
         // Default layout: RESET | CYCLES | START
         <>
-          { showSessionTimer && showStopwatchControls ?
+          { showTimer && showStopwatchControls ?
             <Button onMouseDown={reset} ariaLabel={'Reset Timer'} className={buttonColor} disabled={isRunning}>
               Reset
             </Button>
             : <div className="w-28"></div> /* Placeholder for alignment */
           }
 
-          <CycleDisplay workoutStepInfo={workoutStepInfo} cycleCount={cycleCount} resetCycleCount={resetCycleCount} />
+          <CycleDisplay />
 
-          { showSessionTimer && showStopwatchControls ?
+          { showTimer && showStopwatchControls ?
             <Button onMouseDown={isRunning ? stop : start} ariaLabel={isRunning ? 'Pause Timer' : 'Start Timer'} className={buttonColor}>
               {isRunning ? 'Pause' : 'Start'}
             </Button>

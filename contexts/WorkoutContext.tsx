@@ -6,7 +6,8 @@ import { useSettings } from './SettingsContext';
 import { getLocalPlans, saveLocalPlans, getLocalHistory, saveLocalHistory, clearAiChatHistory } from '../services/storageService';
 import { useAuth } from './AuthContext';
 import { db } from '../services/firebase';
-import { collection, query, orderBy, onSnapshot, getDocs, writeBatch, doc, setDoc, deleteDoc } from 'firebase/firestore';
+// FIX: Switched to Firebase v9 compat syntax, which doesn't use these modular imports.
+// The db object imported from firebase.ts is now a compat instance.
 
 export interface ActiveWorkout {
   plan: WorkoutPlan; // This can be a "meta-plan" if multiple plans are selected
@@ -100,6 +101,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
 
 
   useEffect(() => {
+    // FIX: Using compat syntax, Unsubscribe is just a function that returns void.
     let plansUnsubscribe: (() => void) | undefined;
     let historyUnsubscribe: (() => void) | undefined;
 
@@ -116,18 +118,18 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         initialSyncDone.current = false; // Reset for new login
         
         // --- Plans Listener ---
-        const plansCollectionRef = collection(db, 'users', user.uid, 'plans');
-        const plansQuery = query(plansCollectionRef, orderBy('order', 'asc'));
-        plansUnsubscribe = onSnapshot(plansQuery, (snapshot) => {
+        const plansCollection = db.collection('users').doc(user.uid).collection('plans');
+        const plansQuery = plansCollection.orderBy('order', 'asc');
+        plansUnsubscribe = plansQuery.onSnapshot((snapshot) => {
             const remotePlans = snapshot.docs.map(doc => migratePlanToV2(doc.data() as WorkoutPlan));
             setPlans(remotePlans);
             saveLocalPlans(remotePlans); // Keep local storage synced for offline access
         }, (error) => console.error("Firestore plans listener error:", error));
 
         // --- History Listener ---
-        const historyCollectionRef = collection(db, 'users', user.uid, 'history');
-        const historyQuery = query(historyCollectionRef, orderBy('date', 'desc'));
-        historyUnsubscribe = onSnapshot(historyQuery, snapshot => {
+        const historyCollection = db.collection('users').doc(user.uid).collection('history');
+        const historyQuery = historyCollection.orderBy('date', 'desc');
+        historyUnsubscribe = historyQuery.onSnapshot(snapshot => {
             const remoteHistory = snapshot.docs.map(doc => doc.data() as WorkoutLogEntry);
             setWorkoutHistory(remoteHistory);
             saveLocalHistory(remoteHistory); // Keep local storage synced
@@ -138,8 +140,8 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         const checkDataToMerge = async () => {
              // Wait for both collections to give us their first result
             const [plansSnapshot, historySnapshot] = await Promise.all([
-                getDocs(plansQuery),
-                getDocs(historyQuery)
+                plansQuery.get(),
+                historyQuery.get()
             ]);
 
             if (!initialSyncDone.current) {
@@ -206,15 +208,15 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     setIsSyncing(true);
     try {
         // Plans
-        const plansCollectionRef = collection(db, 'users', user.uid, 'plans');
-        const remotePlansSnapshot = await getDocs(query(plansCollectionRef, orderBy('order', 'asc')));
+        const plansCollection = db.collection('users').doc(user.uid).collection('plans');
+        const remotePlansSnapshot = await plansCollection.orderBy('order', 'asc').get();
         const remotePlans = remotePlansSnapshot.docs.map(doc => migratePlanToV2(doc.data() as WorkoutPlan));
         setPlans(remotePlans);
         saveLocalPlans(remotePlans);
         
         // History
-        const historyCollectionRef = collection(db, 'users', user.uid, 'history');
-        const remoteHistorySnapshot = await getDocs(query(historyCollectionRef, orderBy('date', 'desc')));
+        const historyCollection = db.collection('users').doc(user.uid).collection('history');
+        const remoteHistorySnapshot = await historyCollection.orderBy('date', 'desc').get();
         const remoteHistory = remoteHistorySnapshot.docs.map(doc => doc.data() as WorkoutLogEntry);
         setWorkoutHistory(remoteHistory);
         saveLocalHistory(remoteHistory);
@@ -240,9 +242,9 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         const maxOrder = plans.reduce((max, p) => Math.max(max, p.order ?? -1), -1);
         const plansToUpload = plansToMerge.map((p, i) => ({ ...p, order: maxOrder + 1 + i }));
         
-        const batch = writeBatch(db);
+        const batch = db.batch();
         plansToUpload.forEach((plan) => {
-            const planRef = doc(db, 'users', user.uid, 'plans', plan.id);
+            const planRef = db.collection('users').doc(user.uid).collection('plans').doc(plan.id);
             batch.set(planRef, plan);
         });
         await batch.commit();
@@ -267,9 +269,10 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     setIsSyncing(true);
     setShowGuestHistoryMergeModal(false);
     try {
-        const batch = writeBatch(db);
+        const batch = db.batch();
+        const historyCollection = db.collection('users').doc(user.uid).collection('history');
         historyToMerge.forEach(entry => {
-            const docRef = doc(db, 'users', user.uid, 'history', entry.id);
+            const docRef = historyCollection.doc(entry.id); // Use ISO date string as ID
             batch.set(docRef, entry);
         });
         await batch.commit();
@@ -301,8 +304,8 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     if (user) {
         try {
-            const planRef = doc(db, 'users', user.uid, 'plans', migratedPlan.id);
-            await setDoc(planRef, migratedPlan, { merge: true });
+            const planRef = db.collection('users').doc(user.uid).collection('plans').doc(migratedPlan.id);
+            await planRef.set(migratedPlan, { merge: true });
         } catch (error) {
             console.error("Failed to save plan to Firestore:", error);
         }
@@ -401,8 +404,8 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     setPlans(prev => prev.filter(p => p.id !== planId));
     if (user) {
       try {
-        const planRef = doc(db, 'users', user.uid, 'plans', planId);
-        await deleteDoc(planRef);
+        const planRef = db.collection('users').doc(user.uid).collection('plans').doc(planId);
+        await planRef.delete();
       } catch (error) {
         console.error("Failed to delete plan from Firestore:", error);
       }
@@ -417,9 +420,9 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
 
       if (user) {
         try {
-            const batch = writeBatch(db);
+            const batch = db.batch();
             plansWithOrder.forEach((plan) => {
-                const planRef = doc(db, 'users', user.uid, 'plans', plan.id);
+                const planRef = db.collection('users').doc(user.uid).collection('plans').doc(plan.id);
                 batch.set(planRef, plan, { merge: true });
             });
             await batch.commit();
@@ -444,8 +447,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     setWorkoutHistory(prev => [newEntry, ...prev]);
 
     if (user) {
-        const historyDocRef = doc(db, 'users', user.uid, 'history', newEntry.id);
-        setDoc(historyDocRef, newEntry)
+        db.collection('users').doc(user.uid).collection('history').doc(newEntry.id).set(newEntry)
           .catch(error => console.error("Failed to save workout log to Firestore:", error));
     }
   }, [user]);
@@ -455,11 +457,11 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         setWorkoutHistory([]); // Optimistic update for UI
         if (user) {
             try {
-                const historyCollectionRef = collection(db, 'users', user.uid, 'history');
-                const snapshot = await getDocs(historyCollectionRef);
+                const historyCollection = db.collection('users').doc(user.uid).collection('history');
+                const snapshot = await historyCollection.get();
                 if (snapshot.empty) return;
                 
-                const batch = writeBatch(db);
+                const batch = db.batch();
                 snapshot.docs.forEach(doc => batch.delete(doc.ref));
                 await batch.commit();
             } catch (error) {

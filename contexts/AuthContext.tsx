@@ -1,15 +1,12 @@
 import React, { createContext, useContext, useState, ReactNode, useCallback, useEffect } from 'react';
-import {
-  GoogleAuthProvider,
-  onAuthStateChanged,
-  signInWithPopup,
-  signOut as firebaseSignOut,
-  User,
-} from 'firebase/auth';
+// FIX: Switched to Firebase v9 compat imports to resolve module errors.
+import firebase from 'firebase/compat/app';
+import 'firebase/compat/auth';
 import { auth } from '../services/firebase';
 
 interface AuthContextType {
-  user: User | null;
+  // FIX: Use namespaced User type from firebase compat.
+  user: firebase.User | null;
   authStatus: 'loading' | 'authenticated' | 'unauthenticated';
   signIn: () => void;
   signOut: () => void;
@@ -18,11 +15,12 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<firebase.User | null>(null);
   const [authStatus, setAuthStatus] = useState<'loading' | 'authenticated' | 'unauthenticated'>('loading');
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    // FIX: Use auth.onAuthStateChanged from the compat auth instance.
+    const unsubscribe = auth.onAuthStateChanged((currentUser) => {
       if (currentUser) {
         setUser(currentUser);
         setAuthStatus('authenticated');
@@ -38,9 +36,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const signIn = useCallback(async () => {
     setAuthStatus('loading');
-    const provider = new GoogleAuthProvider();
+    // FIX: Use namespaced GoogleAuthProvider from firebase compat.
+    const provider = new firebase.auth.GoogleAuthProvider();
     try {
-      await signInWithPopup(auth, provider);
+      // FIX: Use auth.signInWithPopup from the compat auth instance.
+      await auth.signInWithPopup(provider);
       // onAuthStateChanged will handle setting the user and authStatus
     } catch (error) {
       console.error("Authentication Error:", error);
@@ -50,7 +50,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const signOut = useCallback(async () => {
     try {
-      await firebaseSignOut(auth);
+      // FIX: Use auth.signOut from the compat auth instance.
+      await auth.signOut();
       // onAuthStateChanged will handle setting user to null
     } catch (error) {
       console.error("Sign Out Error:", error);

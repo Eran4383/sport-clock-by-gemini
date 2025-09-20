@@ -1,7 +1,7 @@
-// FIX: Changed import paths to use scoped Firebase packages to resolve module export errors.
-import { initializeApp, getApp, getApps } from "@firebase/app";
-import { getAuth } from "@firebase/auth";
-import { getFirestore } from "@firebase/firestore";
+// FIX: Switched to Firebase v9 compat imports to resolve module errors.
+import firebase from 'firebase/compat/app';
+import 'firebase/compat/auth';
+import 'firebase/compat/firestore';
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -14,9 +14,11 @@ const firebaseConfig = {
   measurementId: "G-N7QC8DZPYP"
 };
 
-// Initialize Firebase using the v9 modular SDK
-// This pattern prevents re-initializing the app on hot reloads
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+// Initialize Firebase only if it hasn't been initialized yet
+if (!firebase.apps.length) {
+  firebase.initializeApp(firebaseConfig);
+}
 
-export const auth = getAuth(app);
-export const db = getFirestore(app);
+// FIX: Export compat instances of auth and firestore
+export const auth = firebase.auth();
+export const db = firebase.firestore();
