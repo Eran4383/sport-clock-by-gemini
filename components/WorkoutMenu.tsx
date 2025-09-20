@@ -8,8 +8,10 @@ import { WorkoutInfoModal } from './WorkoutInfoModal';
 import { WorkoutLog } from './WorkoutLog';
 import { getBaseExerciseName, generateCircuitSteps, getStepDisplayName } from '../utils/workout';
 import { useAuth } from '../contexts/AuthContext';
+import { AI_CHAT_HISTORY_KEY } from '../services/storageService';
 
 const EDITOR_STORAGE_KEY = 'sportsClockPlanEditorDraft';
+const AI_PLANNER_CONTEXT_KEY = 'sportsClockAiPlannerContext';
 
 const ExerciseInfoModal: React.FC<{
   exerciseName: string | null;
@@ -490,6 +492,40 @@ const PlanListItem: React.FC<{
     return `בוצע לאחרונה: ${lastPerformed.toLocaleDateString('he-IL')}`;
   }, [workoutHistory, plan.id]);
 
+  const lastPerformedTooltip = useMemo(() => {
+    const relevantLogs = workoutHistory
+        .filter(log => log.planIds?.includes(plan.id))
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    if (relevantLogs.length === 0) return undefined;
+
+    const lastLogDate = new Date(relevantLogs[0].date);
+    const lastLogDayStart = new Date(lastLogDate.getFullYear(), lastLogDate.getMonth(), lastLogDate.getDate()).getTime();
+    const lastLogDayEnd = lastLogDayStart + 24 * 60 * 60 * 1000;
+
+    const logsOnLastDay = relevantLogs.filter(log => {
+        const logTime = new Date(log.date).getTime();
+        return logTime >= lastLogDayStart && logTime < lastLogDayEnd;
+    });
+
+    if (logsOnLastDay.length === 0) return undefined;
+
+    const dateString = new Date(logsOnLastDay[0].date).toLocaleDateString('he-IL', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+    });
+    
+    const times = logsOnLastDay
+        .map(log => new Date(log.date).toLocaleTimeString('he-IL', {
+            hour: '2-digit',
+            minute: '2-digit'
+        }))
+        .join('\n');
+
+    return `${dateString}\n${times}`;
+  }, [workoutHistory, plan.id]);
+
 
   useEffect(() => {
     // Automatically expand the active workout plan
@@ -630,8 +666,16 @@ const PlanListItem: React.FC<{
                     {lastPerformedText && (
                     <>
                         <span className="mx-2 text-gray-500 shrink-0">|</span>
-                        <span className="flex items-center gap-1 shrink-0 whitespace-nowrap">
-                            {lastPerformedText}
+                        <span 
+                            className="flex items-center gap-1 shrink-0 whitespace-nowrap"
+                            title={lastPerformedTooltip}
+                        >
+                            <span 
+                                className="cursor-pointer hover:underline"
+                                onClick={(e) => { e.stopPropagation(); onShowInfo(plan); }}
+                            >
+                                {lastPerformedText}
+                            </span>
                             <button
                                 onClick={(e) => { e.stopPropagation(); onShowInfo(plan); }}
                                 className="text-gray-400 hover:text-white"
@@ -907,8 +951,10 @@ const PlanList: React.FC<{
   };
 
   const handleToggleSelection = (planId: string) => {
+    // FIX: Corrected the logic to properly add/remove a planId from the selection.
+    // The original code had a scoping issue with the `id` variable and incorrect filter logic.
     setSelectedPlanIds(prev =>
-      prev.includes(planId) ? prev.filter(id => id !== id) : [...prev, planId]
+      prev.includes(planId) ? prev.filter(id => id !== planId) : [...prev, planId]
     );
   };
   
@@ -1032,31 +1078,31 @@ const PlanList: React.FC<{
     <div>
       {sharingPlan && <ShareModal plan={sharingPlan} onClose={() => setSharingPlan(null)} />}
       <div className="flex justify-between items-center mb-4">
-        {/* Left Side: Auth display (Guest only) */}
-        <div>
-           {authStatus !== 'authenticated' && (
-            <div className="flex flex-col items-center">
-              <p className="text-gray-400 text-xs mb-1">אורח</p>
-              <button
-                  onClick={signIn}
-                  className="bg-white text-gray-700 font-medium py-1 px-4 rounded-full border border-gray-200 shadow-sm hover:shadow-md transition-shadow flex items-center gap-3"
-                  aria-label="התחברות עם גוגל"
-              >
-                  <svg version="1.1" xmlns="http://www.w3.org/2000/svg" width="18px" height="18px" viewBox="0 0 48 48">
-                    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
-                    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
-                    <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
-                    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
-                    <path fill="none" d="M0 0h48v48H0z"></path>
-                  </svg>
-                  <span className="whitespace-nowrap">התחברות עם גוגל</span>
-              </button>
-            </div>
-           )}
-        </div>
+        {/* Left Side: Title */}
+        <h2 className="text-2xl font-bold text-white">אימונים</h2>
 
-        {/* Right Side: Action buttons & logged-in user display */}
-        <div className="flex items-center gap-2">
+        {/* Right Side: Action buttons & all auth displays */}
+        <div className="flex items-center gap-1">
+            {authStatus !== 'authenticated' && (
+              <div className="flex flex-col items-center text-center">
+                <p className="text-gray-400 text-xs mb-1">אורח</p>
+                <button
+                    onClick={signIn}
+                    className="bg-white text-gray-700 p-1.5 rounded-full border border-gray-200 shadow-sm hover:shadow-md transition-shadow flex items-center"
+                    title="התחברות עם גוגל"
+                    aria-label="התחברות עם גוגל"
+                >
+                    <svg version="1.1" xmlns="http://www.w3.org/2000/svg" width="18px" height="18px" viewBox="0 0 48 48">
+                      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
+                      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
+                      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
+                      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
+                      <path fill="none" d="M0 0h48v48H0z"></path>
+                    </svg>
+                </button>
+                <p className="text-white font-bold text-xs mt-1">התחברות</p>
+              </div>
+            )}
             {isSyncing && (
                 <div className="p-2" title="Syncing...">
                     <svg className="animate-spin h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -1357,6 +1403,12 @@ const SetBuilder: React.FC<{ onAddSets: (steps: WorkoutStep[]) => void }> = ({ o
     );
 };
 
+const PinButton: React.FC<{onClick: () => void; isActive: boolean; title: string}> = ({ onClick, isActive, title }) => (
+    <button onClick={onClick} title={title} className={`p-1 rounded-full ${isActive ? 'text-blue-400' : 'text-gray-500 hover:text-white'}`}>
+         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5.586l2.293-2.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 9.586V4a1 1 0 011-1z" clipRule="evenodd" /><path d="M10 18a8 8 0 100-16 8 8 0 000 16z" /></svg>
+    </button>
+);
+
 const EditableStepItem: React.FC<{
     step: WorkoutStep;
     index: number;
@@ -1370,12 +1422,6 @@ const EditableStepItem: React.FC<{
     isWarmupEditor?: boolean;
 }> = ({ step, index, updateStep, removeStep, isExpanded, onToggleExpand, color, settings, updateSettings, isWarmupEditor = false }) => {
     
-    const PinButton: React.FC<{onClick: () => void; isActive: boolean; title: string}> = ({ onClick, isActive, title }) => (
-        <button onClick={onClick} title={title} className={`p-1 rounded-full ${isActive ? 'text-blue-400' : 'text-gray-500 hover:text-white'}`}>
-             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5.586l2.293-2.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 9.586V4a1 1 0 011-1z" clipRule="evenodd" /><path d="M10 18a8 8 0 100-16 8 8 0 000 16z" /></svg>
-        </button>
-    );
-
     const stepBgClass = step.type === 'rest' ? 'bg-gray-700/80' : 'bg-gray-700/50';
     const displayName = getStepDisplayName(step);
 
@@ -2068,328 +2114,637 @@ const ConfirmDeleteModal: React.FC<{
     </div>
 );
 
-const AiPlannerModal: React.FC<{
-    onClose: () => void;
-}> = ({ onClose }) => {
-    type ChatPart = { text: string; isPlanLink?: boolean; planName?: string };
-    type ChatMessage = { role: 'user' | 'model'; parts: ChatPart[] };
-    
-    const { importPlan } = useWorkout();
-    const AI_CHAT_HISTORY_KEY = 'sportsClockAiChatHistory_v2';
+interface DumbbellSet {
+    id: number;
+    weight: string;
+    quantity: string;
+}
 
-    const [messages, setMessages] = useState<ChatMessage[]>(() => {
-        try {
-            const saved = localStorage.getItem(AI_CHAT_HISTORY_KEY);
-            return saved ? JSON.parse(saved) : [];
-        } catch { return []; }
+interface BandSet {
+    id: number;
+    resistance: string;
+    quantity: string;
+}
+
+interface QuestionnaireAnswers {
+    goal: string;
+    level: string;
+    age: number;
+    time: number;
+    equipment: string;
+    dumbbells: DumbbellSet[];
+    bands: BandSet[];
+    extra: string;
+}
+
+const AiPlannerQuestionnaire: React.FC<{
+  onSubmit: (answers: QuestionnaireAnswers, prompt: string) => void;
+  onSkip: () => void;
+  initialAnswers?: QuestionnaireAnswers | null;
+}> = ({ onSubmit, onSkip, initialAnswers }) => {
+    const [step, setStep] = useState(0);
+    const [answers, setAnswers] = useState<QuestionnaireAnswers>(initialAnswers || {
+        goal: '',
+        level: '',
+        age: 30,
+        time: 45,
+        equipment: '',
+        dumbbells: [{ id: Date.now(), weight: '', quantity: '' }],
+        bands: [{ id: Date.now(), resistance: '', quantity: '' }],
+        extra: '',
     });
-    const [input, setInput] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-    const messagesEndRef = useRef<HTMLDivElement>(null);
-    const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-    useEffect(() => {
-        localStorage.setItem(AI_CHAT_HISTORY_KEY, JSON.stringify(messages));
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, [messages]);
+    const goals = ['בניית שריר', 'ירידה במשקל', 'שיפור סיבולת', 'כושר כללי'];
+    const levels = ['מתחיל', 'בינוני', 'מתקדם'];
+    const equipmentTags = ['משקולות', 'גומיות התנגדות', 'מזרן', 'TRX', 'כדור פיזיו'];
 
-    useEffect(() => {
-        const textarea = textareaRef.current;
-        if (textarea) {
-            textarea.style.height = 'auto';
-            const scrollHeight = textarea.scrollHeight;
-            
-            const computedStyle = getComputedStyle(textarea);
-            const lineHeight = parseFloat(computedStyle.lineHeight) || 24; // Fallback
-            const paddingTop = parseFloat(computedStyle.paddingTop);
-            const paddingBottom = parseFloat(computedStyle.paddingBottom);
-            const maxHeight = (lineHeight * 5) + paddingTop + paddingBottom;
-
-            textarea.style.height = `${Math.min(scrollHeight, maxHeight)}px`;
-            textarea.style.overflowY = scrollHeight > maxHeight ? 'auto' : 'hidden';
+    const handleAnswer = <K extends keyof QuestionnaireAnswers>(key: K, value: QuestionnaireAnswers[K]) => {
+        setAnswers(prev => ({ ...prev, [key]: value }));
+    };
+    
+    // Dumbbell handlers
+    const handleDumbbellChange = (id: number, field: 'weight' | 'quantity', value: string) => {
+        handleAnswer('dumbbells', answers.dumbbells.map(d => d.id === id ? { ...d, [field]: value } : d));
+    };
+    const handleAddDumbbellSet = () => {
+        handleAnswer('dumbbells', [...answers.dumbbells, { id: Date.now(), weight: '', quantity: '' }]);
+    };
+    const handleRemoveDumbbellSet = (id: number) => {
+        if (answers.dumbbells.length > 1) {
+            handleAnswer('dumbbells', answers.dumbbells.filter(d => d.id !== id));
         }
-    }, [input]);
-
-    const handleNewChat = () => {
-        setMessages([]);
-        localStorage.removeItem(AI_CHAT_HISTORY_KEY);
+    };
+    
+    // Band handlers
+    const handleBandChange = (id: number, field: 'resistance' | 'quantity', value: string) => {
+        handleAnswer('bands', answers.bands.map(b => b.id === id ? { ...b, [field]: value } : b));
+    };
+    const handleAddBandSet = () => {
+        handleAnswer('bands', [...answers.bands, { id: Date.now(), resistance: '', quantity: '' }]);
+    };
+    const handleRemoveBandSet = (id: number) => {
+        if (answers.bands.length > 1) {
+            handleAnswer('bands', answers.bands.filter(b => b.id !== id));
+        }
     };
 
-    const handleSend = async () => {
-        if (!input.trim() || isLoading) return;
 
-        const userMessage: ChatMessage = { role: 'user', parts: [{ text: input }] };
-        const newMessages = [...messages, userMessage];
-        setMessages(newMessages);
-        setInput('');
+    const handleEquipmentTagClick = (tag: string) => {
+        const currentEquipment = answers.equipment.split(',').map(s => s.trim()).filter(Boolean);
+        const newEquipment = currentEquipment.includes(tag)
+            ? currentEquipment.filter(t => t !== tag)
+            : [...currentEquipment, tag];
+        handleAnswer('equipment', newEquipment.join(', '));
+    };
+
+    const handleNext = () => setStep(s => s + 1);
+    const handleBack = () => setStep(s => s - 1);
+    
+    const handleSubmit = () => {
+        const eqList = answers.equipment.split(',').map(s => s.trim()).filter(Boolean);
+        let equipmentPrompt = "";
+
+        if (eqList.length === 0) {
+            equipmentPrompt = "משקל גוף בלבד";
+        } else {
+            const equipmentParts = eqList.map(eq => {
+                if (eq === 'משקולות') {
+                    const validSets = answers.dumbbells.filter(d => d.weight.trim() && d.quantity.trim());
+                    if (validSets.length > 0) {
+                        return `משקולות (${validSets.map(d => `${d.quantity.trim()}x ${d.weight.trim()}`).join(', ')})`;
+                    }
+                    return 'משקולות'; // Return the base name if no details are provided
+                }
+                if (eq === 'גומיות התנגדות') {
+                    const validSets = answers.bands.filter(b => b.resistance.trim() && b.quantity.trim());
+                    if (validSets.length > 0) {
+                        return `גומיות התנגדות (${validSets.map(b => `${b.quantity.trim()}x ${b.resistance.trim()}`).join(', ')})`;
+                    }
+                    return 'גומיות התנגדות'; // Return the base name if no details are provided
+                }
+                return eq; // For other equipment, just return the name
+            });
+            
+            equipmentPrompt = equipmentParts.join(', ');
+        }
+
+        const compiledPrompt = `
+אני רוצה תוכנית אימונים. הנה הפרטים שלי:
+- מטרה: ${answers.goal}
+- רמת כושר: ${answers.level}
+- גיל: ${answers.age}
+- זמן פנוי לאימון: ${answers.time} דקות
+- ציוד זמין: ${equipmentPrompt || 'משקל גוף בלבד'}
+- בקשות נוספות: ${answers.extra.trim() || 'אין'}
+`;
+        onSubmit(answers, compiledPrompt.trim());
+    };
+    
+    const isNextDisabled = () => {
+        switch(step) {
+            case 0: return !answers.goal;
+            case 1: return !answers.level;
+            case 2: return !answers.age || answers.age < 10 || answers.age > 100;
+            default: return false;
+        }
+    };
+
+    const totalSteps = 6;
+    const commonButtonClass = 'w-full p-4 rounded-lg text-white font-semibold transition-colors';
+
+    const renderStepContent = () => {
+        switch (step) {
+            case 0: // Goal
+                return (
+                    <>
+                        <h3 className="text-xl font-semibold text-white mb-6">מה המטרה העיקרית שלך?</h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            {goals.map(option => (
+                                <button key={option} onClick={() => { handleAnswer('goal', option); handleNext(); }}
+                                    className={`${commonButtonClass} ${answers.goal === option ? 'bg-blue-600 ring-2 ring-blue-400' : 'bg-gray-700/50 hover:bg-gray-700'}`}>
+                                    {option}
+                                </button>
+                            ))}
+                        </div>
+                    </>
+                );
+            case 1: // Level
+                return (
+                    <>
+                        <h3 className="text-xl font-semibold text-white mb-6">מה רמת הכושר שלך?</h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                             {levels.map(option => (
+                                <button key={option} onClick={() => { handleAnswer('level', option); handleNext(); }}
+                                    className={`${commonButtonClass} ${answers.level === option ? 'bg-blue-600 ring-2 ring-blue-400' : 'bg-gray-700/50 hover:bg-gray-700'}`}>
+                                    {option}
+                                </button>
+                            ))}
+                        </div>
+                    </>
+                );
+            case 2: // Age
+                return (
+                     <>
+                        <h3 className="text-xl font-semibold text-white mb-6">מה הגיל שלך?</h3>
+                        <input type="number" value={answers.age} onChange={(e) => handleAnswer('age', parseInt(e.target.value, 10) || 0)}
+                            className="w-40 mx-auto bg-gray-800 text-white p-3 text-2xl text-center rounded-lg focus:outline-none focus:ring-2 ring-blue-500 [appearance:textfield]"
+                            min="10" max="100" />
+                    </>
+                );
+            case 3: // Time
+                 return (
+                     <>
+                        <h3 className="text-xl font-semibold text-white mb-4">כמה זמן יש לך לאימון?</h3>
+                        <p className="text-4xl font-bold text-center text-white mb-6 tabular-nums">{answers.time} דקות</p>
+                        <input type="range" min="0" max="120" step="1" value={answers.time}
+                            onChange={(e) => handleAnswer('time', parseInt(e.target.value, 10))}
+                            className="w-full h-3 bg-gray-600 rounded-lg appearance-none cursor-pointer" />
+                     </>
+                 );
+            case 4: // Equipment
+                return (
+                    <>
+                        <h3 className="text-xl font-semibold text-white mb-4">איזה ציוד זמין לך?</h3>
+                        <div className="flex flex-wrap gap-2 justify-center mb-4">
+                            {equipmentTags.map(tag => (
+                                <button key={tag} onClick={() => handleEquipmentTagClick(tag)}
+                                    className={`px-3 py-1.5 rounded-full text-sm font-semibold transition-colors ${
+                                        answers.equipment.split(',').map(s => s.trim()).includes(tag)
+                                        ? 'bg-blue-500 text-white' 
+                                        : 'bg-gray-600 text-gray-200 hover:bg-gray-500'
+                                    }`}>
+                                    {tag}
+                                </button>
+                            ))}
+                        </div>
+                        <input type="text" value={answers.equipment} onChange={(e) => handleAnswer('equipment', e.target.value)}
+                            placeholder="או כתוב ציוד אחר..."
+                            className="w-full bg-gray-800 text-white p-3 rounded-lg focus:outline-none focus:ring-2 ring-blue-500 text-center" />
+
+                        {answers.equipment.includes('משקולות') && (
+                            <div className="mt-4 animate-fadeIn text-right">
+                                <label className="text-sm text-gray-300 block mb-2">אילו משקולות יש ברשותך?</label>
+                                <div className="space-y-2">
+                                    {answers.dumbbells.map((dumbbell) => (
+                                        <div key={dumbbell.id} className="grid grid-cols-[1fr_auto_auto] items-center gap-2">
+                                            <input type="text" placeholder="משקל (לדוגמה: 5 קג)" 
+                                                   className="min-w-0 bg-gray-900 text-white p-2 rounded-md text-sm focus:outline-none focus:ring-1 ring-blue-500"
+                                                   value={dumbbell.weight}
+                                                   onChange={(e) => handleDumbbellChange(dumbbell.id, 'weight', e.target.value)} />
+                                            <input type="text" placeholder="כמות" 
+                                                   className="w-16 bg-gray-900 text-white p-2 rounded-md text-sm focus:outline-none focus:ring-1 ring-blue-500 text-center"
+                                                   value={dumbbell.quantity}
+                                                   onChange={(e) => handleDumbbellChange(dumbbell.id, 'quantity', e.target.value)} />
+                                            <button onClick={() => handleRemoveDumbbellSet(dumbbell.id)}
+                                                    disabled={answers.dumbbells.length <= 1}
+                                                    aria-label="Remove dumbbell set"
+                                                    className="p-2 text-gray-400 hover:text-red-500 rounded-full disabled:opacity-50 disabled:cursor-not-allowed">
+                                                {/* FIX: Corrected invalid SVG path data */}
+                                                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5 10a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1z" clipRule="evenodd" /></svg>
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                                <button onClick={handleAddDumbbellSet} className="text-xs text-blue-400 hover:underline mt-2">+ הוסף סט משקולות</button>
+                            </div>
+                        )}
+
+                        {answers.equipment.includes('גומיות התנגדות') && (
+                             <div className="mt-4 animate-fadeIn text-right">
+                                <label className="text-sm text-gray-300 block mb-2">אילו גומיות יש ברשותך?</label>
+                                <div className="space-y-2">
+                                    {answers.bands.map((band) => (
+                                        <div key={band.id} className="grid grid-cols-[1fr_auto_auto] items-center gap-2">
+                                            <input type="text" placeholder="התנגדות (לדוגמה: בינוני, 15 קג)" 
+                                                   className="min-w-0 bg-gray-900 text-white p-2 rounded-md text-sm focus:outline-none focus:ring-1 ring-blue-500"
+                                                   value={band.resistance}
+                                                   onChange={(e) => handleBandChange(band.id, 'resistance', e.target.value)} />
+                                            <input type="text" placeholder="כמות" 
+                                                   className="w-16 bg-gray-900 text-white p-2 rounded-md text-sm focus:outline-none focus:ring-1 ring-blue-500 text-center"
+                                                   value={band.quantity}
+                                                   onChange={(e) => handleBandChange(band.id, 'quantity', e.target.value)} />
+                                            <button onClick={() => handleRemoveBandSet(band.id)}
+                                                    disabled={answers.bands.length <= 1}
+                                                    aria-label="Remove band set"
+                                                    className="p-2 text-gray-400 hover:text-red-500 rounded-full disabled:opacity-50 disabled:cursor-not-allowed">
+                                                {/* FIX: Corrected invalid SVG path data */}
+                                                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5 10a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1z" clipRule="evenodd" /></svg>
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                                <button onClick={handleAddBandSet} className="text-xs text-blue-400 hover:underline mt-2">+ הוסף סט גומיות</button>
+                            </div>
+                        )}
+                    </>
+                );
+            case 5: // Extra
+                return (
+                    <>
+                        <h3 className="text-xl font-semibold text-white mb-4">יש משהו נוסף שחשוב שאדע?</h3>
+                        <textarea value={answers.extra} onChange={(e) => handleAnswer('extra', e.target.value)}
+                            placeholder="לדוגמה: כאבים בברך ימין, מעדיף אימונים קצרים, לא אוהב לקפוץ..."
+                            className="w-full h-28 bg-gray-800 text-white p-3 rounded-lg focus:outline-none focus:ring-2 ring-blue-500" />
+                    </>
+                );
+            default: return null;
+        }
+    };
+
+    // FIX: Added the missing return statement for the component's JSX structure.
+    return (
+      <div className="bg-gray-800/80 backdrop-blur-md p-6 rounded-lg w-full max-w-lg mx-auto animate-fadeIn text-center" dir="rtl">
+          {/* Progress bar */}
+          <div className="w-full bg-gray-700 rounded-full h-2.5 mb-6">
+              <div className="bg-blue-500 h-2.5 rounded-full transition-all" style={{ width: `${((step + 1) / totalSteps) * 100}%` }}></div>
+          </div>
+
+          {/* Content */}
+          <div className="min-h-[300px] flex flex-col justify-center">
+              {renderStepContent()}
+          </div>
+
+          {/* Navigation */}
+          <div className="mt-8 flex gap-4">
+              {step > 0 && <button onClick={handleBack} className={`${commonButtonClass} bg-gray-600 hover:bg-gray-500`}>חזור</button>}
+              {step < totalSteps - 1 && <button onClick={handleNext} disabled={isNextDisabled()} className={`${commonButtonClass} bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:cursor-not-allowed`}>המשך</button>}
+              {step === totalSteps - 1 && <button onClick={handleSubmit} className={`${commonButtonClass} bg-green-500 hover:bg-green-600`}>צור תוכנית</button>}
+          </div>
+          <button onClick={onSkip} className="mt-4 text-sm text-gray-400 hover:underline">דלג ובקש מה שבראש שלך</button>
+      </div>
+    );
+};
+
+const AiPlanner: React.FC<{
+    onBack: () => void;
+}> = ({ onBack }) => {
+    const { importPlan } = useWorkout();
+    const [history, setHistory] = useState<{ role: 'user' | 'model'; parts: { text: string }[] }[]>([]);
+    const [userMessage, setUserMessage] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+    const [showQuestionnaire, setShowQuestionnaire] = useState(true);
+    const [questionnaireAnswers, setQuestionnaireAnswers] = useState<QuestionnaireAnswers | null>(null);
+
+    useEffect(() => {
+        const savedHistory = localStorage.getItem(AI_CHAT_HISTORY_KEY);
+        const savedAnswers = localStorage.getItem(AI_PLANNER_CONTEXT_KEY);
+        if (savedHistory) {
+            setHistory(JSON.parse(savedHistory));
+            setShowQuestionnaire(false); // If there's history, user has already interacted.
+        }
+        if (savedAnswers) {
+            setQuestionnaireAnswers(JSON.parse(savedAnswers));
+        }
+    }, []);
+
+    useEffect(() => {
+        localStorage.setItem(AI_CHAT_HISTORY_KEY, JSON.stringify(history));
+    }, [history]);
+
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [history, isLoading]);
+    
+    const handleQuestionnaireSubmit = (answers: QuestionnaireAnswers, prompt: string) => {
+        setQuestionnaireAnswers(answers);
+        localStorage.setItem(AI_PLANNER_CONTEXT_KEY, JSON.stringify(answers));
+        setUserMessage(prompt);
+        setShowQuestionnaire(false);
+        // We don't call handleSubmit directly because the user might want to edit the prompt first.
+        // It will be sent when they click the send button.
+    };
+
+    const handleSkipQuestionnaire = () => {
+        setShowQuestionnaire(false);
+    };
+
+    const handleSubmit = async (e?: React.FormEvent) => {
+        e?.preventDefault();
+        if (!userMessage.trim() || isLoading) return;
+
+        const newUserMessage = { role: 'user' as const, parts: [{ text: userMessage }] };
+        const newHistory = [...history, newUserMessage];
+        setHistory(newHistory);
+        setUserMessage('');
         setIsLoading(true);
+        setError(null);
 
         try {
-            const responseText = await generateWorkoutPlan(messages, input);
-            
-            // The service now returns a user-friendly error string, prefixed with "Error:".
-            if (responseText.startsWith('Error: ')) {
-                const userFriendlyMessage = responseText.substring('Error: '.length);
-                setMessages(prev => [...prev, { role: 'model', parts: [{ text: userFriendlyMessage }] }]);
-                return; // Stop further processing
+            const responseText = await generateWorkoutPlan(history, userMessage);
+            if (responseText.startsWith('Error:')) {
+                throw new Error(responseText.substring(7));
             }
-
-
-            // --- Success Path ---
-            const jsonRegex = /```json\s*([\s\S]*?)\s*```/;
-            const match = responseText.match(jsonRegex);
-            const conversationalText = responseText.replace(jsonRegex, '').trim();
-            
-            let finalMessages = [...newMessages];
-
-            if (conversationalText) {
-                finalMessages.push({ role: 'model', parts: [{ text: conversationalText }]});
-            }
-
-            if (match && match[1]) {
-                try {
-                    const planJson = JSON.parse(match[1]);
-                    planJson.isSmartPlan = true;
-                    planJson.color = '#a855f7';
-                    
-                    importPlan(planJson, 'ai');
-                    
-                    finalMessages.push({ role: 'model', parts: [{ text: '', isPlanLink: true, planName: planJson.name }]});
-                    
-                } catch (e) {
-                    console.error("Failed to parse AI-generated JSON:", e);
-                    finalMessages.push({ role: 'model', parts: [{ text: "I tried to generate a plan, but there was an error in the format. Could you please clarify your request? The full response is below for debugging:\n\n" + responseText }] });
-                }
-            } else if (!conversationalText) {
-                // If there's no conversational text and no JSON, it's probably just a text response.
-                 finalMessages.push({ role: 'model', parts: [{ text: responseText }]});
-            }
-            
-            setMessages(finalMessages);
-
-        } catch (error) {
-            console.error("AI Planner error:", error);
-            const errorMessage = error instanceof Error ? error.message : "Sorry, something went wrong.";
-            setMessages([...newMessages, { role: 'model', parts: [{ text: errorMessage }] }]);
+            const newModelMessage = { role: 'model' as const, parts: [{ text: responseText }] };
+            setHistory([...newHistory, newModelMessage]);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : "An unknown error occurred.";
+            setError(message);
         } finally {
             setIsLoading(false);
         }
     };
 
+    const handleImport = (planJson: string) => {
+        try {
+            const plan = JSON.parse(planJson);
+            plan.isSmartPlan = true;
+            importPlan(plan, 'ai');
+            onBack();
+        } catch (e) {
+            setError("Could not parse the workout plan from the AI's response.");
+        }
+    };
+    
+    const handleReset = () => {
+        if (window.confirm("Are you sure you want to clear the conversation and start over?")) {
+            setHistory([]);
+            setUserMessage('');
+            setError(null);
+            localStorage.removeItem(AI_CHAT_HISTORY_KEY);
+            localStorage.removeItem(AI_PLANNER_CONTEXT_KEY);
+            setQuestionnaireAnswers(null);
+            setShowQuestionnaire(true);
+        }
+    };
+
+    const renderMessageContent = (text: string) => {
+        const parts = text.split(/(`{3}json\s*[\s\S]*?\s*`{3})/);
+        return parts.map((part, index) => {
+            if (part.startsWith('```json')) {
+                const jsonContent = part.replace(/`{3}json\s*/, '').replace(/\s*`{3}$/, '');
+                return (
+                    <div key={index} className="bg-gray-900/50 p-3 rounded-lg my-2">
+                        <pre className="text-xs text-gray-300 whitespace-pre-wrap font-mono">{jsonContent}</pre>
+                        <button
+                            onClick={() => handleImport(jsonContent)}
+                            className="mt-3 w-full py-2 bg-green-500 text-white font-semibold rounded-lg hover:bg-green-600 transition-colors"
+                        >
+                            Import this Plan
+                        </button>
+                    </div>
+                );
+            }
+            return <p key={index} className="whitespace-pre-wrap">{part}</p>;
+        });
+    };
+
+    if (showQuestionnaire) {
+        return <AiPlannerQuestionnaire onSubmit={handleQuestionnaireSubmit} onSkip={handleSkipQuestionnaire} initialAnswers={questionnaireAnswers} />;
+    }
+
     return (
-        <div className="fixed inset-0 bg-gray-900/90 z-[100] flex flex-col p-4" aria-modal="true" role="dialog">
-             <div className="flex justify-between items-center mb-4 text-white">
-                <h2 className="text-xl font-bold flex items-center gap-2">✨ AI Workout Planner</h2>
-                <div className="flex items-center gap-2">
-                    <button onClick={handleNewChat} title="Start a new chat" className="p-2 rounded-full hover:bg-gray-700">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 110 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" /></svg>
-                    </button>
-                    <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-700">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                    </button>
-                </div>
+        <div className="flex flex-col h-full max-h-[85vh]">
+            <div className="flex items-center mb-4">
+                <button onClick={onBack} className="p-2 rounded-full hover:bg-gray-500/30 mr-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                </button>
+                <h2 className="text-2xl font-bold text-white">AI Workout Planner</h2>
+                <button onClick={handleReset} title="Reset Conversation" className="p-2 rounded-full hover:bg-gray-500/30 ml-auto">
+                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                       <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5m-5-5a9 9 0 0114.13-5.23M20 15a9 9 0 01-14.13 5.23" />
+                     </svg>
+                </button>
             </div>
-            <div className="flex-grow overflow-y-auto mb-4 space-y-4 pr-2">
-                 {messages.length === 0 && (
-                    <div className="text-center text-gray-400 p-8" dir="rtl">
-                        <p className="text-lg">ברוכים הבאים למתכנן האימונים החכם!</p>
-                        <p className="mt-2">תאר את האימון שברצונך לבנות. לדוגמה:</p>
-                        <em className="block mt-2">"צור לי תוכנית אימון למתחילים באורך 20 דקות לכל הגוף."</em>
+            
+            <div className="flex-grow overflow-y-auto pr-2 mb-4 space-y-4" dir="rtl">
+                {history.length === 0 && (
+                    <div className="text-center text-gray-400 p-8">
+                        <p>✨</p>
+                        <p>Tell me what you'd like to achieve.</p>
+                        <p className="text-sm mt-2">e.g., "Build a 30-minute full body workout for home with just dumbbells"</p>
                     </div>
                 )}
-                {messages.map((msg, index) => (
+                {history.map((msg, index) => (
                     <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-prose p-3 rounded-lg ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-200'}`}>
-                            {msg.parts.map((part, partIndex) => 
-                                part.isPlanLink ? (
-                                    <div key={partIndex} dir="auto">
-                                        <p>הוספתי את תוכנית "{part.planName}" לרשימה שלך.</p>
-                                        <button onClick={onClose} className="mt-2 font-bold text-blue-300 hover:text-blue-200 underline">
-                                            הצג תוכנית
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <p key={partIndex} className="whitespace-pre-wrap" dir="auto">{part.text}</p>
-                                )
-                            )}
+                        <div className={`max-w-xl p-3 rounded-lg ${msg.role === 'user' ? 'bg-blue-600' : 'bg-gray-700'}`}>
+                            {renderMessageContent(msg.parts[0].text)}
                         </div>
                     </div>
                 ))}
                 {isLoading && (
                      <div className="flex justify-start">
-                        <div className="max-w-sm p-3 rounded-lg bg-gray-700 text-gray-200">
-                            <div className="flex items-center gap-3">
-                                <div className="flex items-center gap-2">
-                                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0s'}}></div>
-                                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
-                                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
-                                </div>
-                                <span className="text-sm italic text-gray-400">בונה לך את האימון המושלם, כמה רגעים...</span>
-                            </div>
+                        <div className="max-w-xl p-3 rounded-lg bg-gray-700">
+                           <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0s' }}></div>
+                                <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
+                                <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
+                           </div>
                         </div>
                     </div>
                 )}
-                 <div ref={messagesEndRef} />
+                 {error && (
+                    <div className="flex justify-start">
+                        <div className="max-w-xl p-3 rounded-lg bg-red-900/50 text-red-300">
+                           <p><span className="font-bold">Error:</span> {error}</p>
+                        </div>
+                    </div>
+                 )}
+                <div ref={messagesEndRef} />
             </div>
-            <div className="flex gap-2">
+            
+            <form onSubmit={handleSubmit} className="flex gap-2" dir="rtl">
                 <textarea
-                    ref={textareaRef}
-                    rows={1}
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyPress={(e) => {
+                    value={userMessage}
+                    onChange={(e) => setUserMessage(e.target.value)}
+                    onKeyDown={(e) => {
                         if (e.key === 'Enter' && !e.shiftKey) {
                             e.preventDefault();
-                            handleSend();
+                            handleSubmit();
                         }
                     }}
-                    placeholder="תאר את האימון הרצוי..."
-                    className="flex-grow bg-gray-800 text-white p-3 rounded-lg focus:outline-none focus:ring-2 ring-blue-500 resize-none"
-                    dir="rtl"
+                    placeholder="Type your message..."
+                    className="flex-grow p-3 bg-gray-600 text-white rounded-lg focus:outline-none focus:ring-2 ring-blue-500 resize-none"
+                    rows={Math.max(1, Math.min(4, userMessage.split('\n').length))}
                     disabled={isLoading}
                 />
-                <button onClick={handleSend} disabled={isLoading || !input.trim()} className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed">
-                    Send
+                <button type="submit" className="p-3 bg-blue-600 rounded-lg hover:bg-blue-700 disabled:bg-gray-500" disabled={isLoading}>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 transform rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                    </svg>
                 </button>
-            </div>
+            </form>
         </div>
     );
 };
 
-
+// FIX: Export the WorkoutMenu component so it can be imported in App.tsx
 export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean) => void; }> = ({ isOpen, setIsOpen }) => {
+  const [activeView, setActiveView] = useState<'list' | 'editor' | 'log' | 'aiPlanner'>('list');
+  const [selectedPlan, setSelectedPlan] = useState<WorkoutPlan | null>(null);
+  const [planToDelete, setPlanToDelete] = useState<WorkoutPlan | null>(null);
+  const [planForInfo, setPlanForInfo] = useState<WorkoutPlan | null>(null);
   const [isPinned, setIsPinned] = useState(false);
-  const [editingPlan, setEditingPlan] = useState<WorkoutPlan | null | string>(null);
-  const [view, setView] = useState<'list' | 'editor' | 'log'>('list');
-  const [confirmDeletePlanId, setConfirmDeletePlanId] = useState<string | null>(null);
-  const [exerciseToInspect, setExerciseToInspect] = useState<string | null>(null);
-  const [isModalVisible, setIsModalVisible] = useState(false);
-  const [infoPlan, setInfoPlan] = useState<WorkoutPlan | null>(null);
-  const { activeWorkout, plans, deletePlan } = useWorkout();
-  const { settings, updateSettings } = useSettings();
-  const modalMutedApp = useRef(false);
-  const [isAiPlannerOpen, setIsAiPlannerOpen] = useState(false);
-
-  // Mute app sounds when the exercise modal is visible and restore on close.
-  useEffect(() => {
-    if (isModalVisible) {
-      // Modal is opening.
-      if (!settings.isMuted) {
-        modalMutedApp.current = true;
-        updateSettings({ isMuted: true });
-      }
-    } else {
-      // Modal is closing.
-      if (modalMutedApp.current) {
-        modalMutedApp.current = false;
-        updateSettings({ isMuted: false });
-      }
-    }
-  }, [isModalVisible, settings.isMuted, updateSettings]);
+  const { plans, deletePlan, activeWorkout } = useWorkout();
+  const [inspectedExercise, setInspectedExercise] = useState<string | null>(null);
   
-  const planToDelete = useMemo(() => {
-    return plans.find(p => p.id === confirmDeletePlanId) || null;
-  }, [confirmDeletePlanId, plans]);
-  
-  const planToEdit = useMemo(() => {
-    if(editingPlan === null) return null;
-    if(typeof editingPlan === 'string' && editingPlan === '_warmup_') {
-        return {
-            id: '_warmup_',
-            name: 'Warm-up Routine',
-            steps: settings.warmupSteps,
-            color: '#f97316', // Orange for warm-up
-            version: 2,
-        } as WorkoutPlan
-    }
-    return editingPlan as WorkoutPlan;
-  }, [editingPlan, settings.warmupSteps]);
-
-  // Touch handlers for swipe-to-close gesture
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const touchStartX = useRef<number | null>(null);
   const touchEndX = useRef<number | null>(null);
   const minSwipeDistance = 50;
 
-  const handleTouchStart = (e: React.TouchEvent) => {
-      touchEndX.current = null;
-      touchStartX.current = e.touches[0].clientX;
-  };
-  const handleTouchMove = (e: React.TouchEvent) => {
-      touchEndX.current = e.touches[0].clientX;
-  };
-  const handleTouchEnd = () => {
-      if (!touchStartX.current || !touchEndX.current) return;
-      const distance = touchEndX.current - touchStartX.current;
-      // Swipe left to close, respecting the pin
-      if (distance < -minSwipeDistance && !isPinned) {
-          setIsOpen(false);
-      }
-      touchStartX.current = null;
-      touchEndX.current = null;
-  };
-
   useEffect(() => {
-    if (!isOpen) {
-        setIsPinned(false); // Unpin when manually closed
-        setTimeout(() => {
-             setView('list');
-             setEditingPlan(null);
-        }, 500); 
+    // If a workout starts, and the menu isn't pinned, close it.
+    if (activeWorkout && !isPinned) {
+      setIsOpen(false);
     }
-  }, [isOpen]);
-  
-  const handleCreateNew = () => {
-      localStorage.removeItem(EDITOR_STORAGE_KEY);
-      setEditingPlan(null);
-      setView('editor');
-  };
+  }, [activeWorkout, isPinned, setIsOpen]);
 
   const handleSelectPlan = (plan: WorkoutPlan | string) => {
-      localStorage.removeItem(EDITOR_STORAGE_KEY);
-      setEditingPlan(plan);
-      setView('editor');
+    if (typeof plan === 'string' && plan === '_warmup_') {
+      const warmupPlan: WorkoutPlan = {
+          id: '_warmup_',
+          name: 'Warm-up Routine',
+          steps: [], // The editor will load steps from settings
+          version: 2
+      };
+      setSelectedPlan(warmupPlan);
+    } else if (typeof plan !== 'string') {
+       setSelectedPlan(plan);
+    }
+    setActiveView('editor');
   };
 
-  const handleBack = () => {
-      setView('list');
-      setEditingPlan(null);
+  const handleCreateNew = () => {
+    setSelectedPlan(null); // Passing null to the editor signifies a new plan
+    setActiveView('editor');
+  };
+
+  const handleBackToList = () => {
+    setActiveView('list');
+    setSelectedPlan(null);
   };
   
+  const handleShowLog = () => {
+      setActiveView('log');
+  };
+  
+  const handleOpenAiPlanner = () => {
+      setActiveView('aiPlanner');
+  };
+
+  const handleInitiateDelete = (planId: string) => {
+    const plan = plans.find(p => p.id === planId);
+    if (plan) {
+      setPlanToDelete(plan);
+    }
+  };
+
   const handleConfirmDelete = () => {
-    if (confirmDeletePlanId) {
-        deletePlan(confirmDeletePlanId);
-        setConfirmDeletePlanId(null);
+    if (planToDelete) {
+      deletePlan(planToDelete.id);
+      setPlanToDelete(null);
     }
   };
 
-  const handleInspectExercise = (exerciseName: string) => {
-    if (isModalVisible && exerciseToInspect === exerciseName) {
-        return;
+  const handleMouseEnter = () => {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
     }
-    setExerciseToInspect(exerciseName);
-    setIsModalVisible(true);
   };
 
-  const handleCloseModal = () => {
-    setIsModalVisible(false);
+  const handleMouseLeave = () => {
+    if (isOpen && !isPinned) {
+      closeTimerRef.current = setTimeout(() => {
+        setIsOpen(false);
+      }, 10000);
+    }
+  };
+  
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchEndX.current = null;
+    touchStartX.current = e.touches[0].clientX;
   };
 
-  useEffect(() => {
-      if(activeWorkout && !isPinned) {
-          setIsOpen(false);
-      }
-  }, [activeWorkout, isPinned]);
+  const handleTouchMove = (e: React.TouchEvent) => {
+    touchEndX.current = e.touches[0].clientX;
+  };
 
+  const handleTouchEnd = () => {
+    if (!touchStartX.current || !touchEndX.current) return;
+    const distance = touchStartX.current - touchEndX.current; // Swipe left to close
+    if (distance > minSwipeDistance) {
+        setIsOpen(false);
+    }
+    touchStartX.current = null;
+    touchEndX.current = null;
+  };
+  
+  const renderContent = () => {
+    switch (activeView) {
+      case 'editor':
+        return <PlanEditor plan={selectedPlan} onBack={handleBackToList} isWarmupEditor={selectedPlan?.id === '_warmup_'} />;
+      case 'log':
+        return <WorkoutLog onBack={handleBackToList} />;
+      case 'aiPlanner':
+        return <AiPlanner onBack={handleBackToList} />;
+      case 'list':
+      default:
+        return <PlanList 
+                    onSelectPlan={handleSelectPlan} 
+                    onCreateNew={handleCreateNew}
+                    onInitiateDelete={handleInitiateDelete}
+                    onShowLog={handleShowLog}
+                    onInspectExercise={setInspectedExercise}
+                    onShowInfo={setPlanForInfo}
+                    isPinned={isPinned}
+                    onTogglePin={() => setIsPinned(!isPinned)}
+                    onOpenAiPlanner={handleOpenAiPlanner}
+               />;
+    }
+  };
 
   return (
     <>
       <div className="absolute top-4 left-4 menu-container group">
         <button 
-          onClick={() => setIsOpen(!isOpen)} 
-          aria-label="Open workout planner"
+          onClick={() => setIsOpen(true)} 
+          aria-label="Open workout menu"
           className="w-12 h-12 flex items-center justify-center rounded-full bg-gray-500/20 text-gray-400 hover:bg-gray-500/30 transition-opacity duration-1000 focus:outline-none opacity-0 group-hover:opacity-100"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" /></svg>
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
         </button>
       </div>
 
@@ -2399,57 +2754,39 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
           onClick={() => !isPinned && setIsOpen(false)}
         ></div>
       )}
-
+      
       {planToDelete && (
           <ConfirmDeleteModal 
-              planName={planToDelete.name}
-              onConfirm={handleConfirmDelete}
-              onCancel={() => setConfirmDeletePlanId(null)}
+            planName={planToDelete.name}
+            onConfirm={handleConfirmDelete}
+            onCancel={() => setPlanToDelete(null)}
+          />
+      )}
+      
+      {inspectedExercise && (
+          <ExerciseInfoModal 
+              exerciseName={inspectedExercise}
+              onClose={() => setInspectedExercise(null)}
+              isVisible={!!inspectedExercise}
           />
       )}
 
-      <ExerciseInfoModal 
-          exerciseName={exerciseToInspect}
-          onClose={handleCloseModal}
-          isVisible={isModalVisible}
-      />
-
-      {infoPlan && <WorkoutInfoModal plan={infoPlan} onClose={() => setInfoPlan(null)} />}
-
-      {isAiPlannerOpen && <AiPlannerModal onClose={() => setIsAiPlannerOpen(false)} />}
+      {planForInfo && (
+        <WorkoutInfoModal plan={planForInfo} onClose={() => setPlanForInfo(null)} />
+      )}
 
       <div 
         className={`fixed top-0 left-0 h-full w-full max-w-sm bg-gray-800/80 backdrop-blur-md shadow-2xl z-50 transform transition-all ease-in-out ${isOpen ? 'duration-500' : 'duration-[1500ms]'} ${isOpen ? 'translate-x-0 opacity-100' : '-translate-x-full opacity-0 pointer-events-none'}`}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        >
-          <div className="p-6 overflow-y-auto h-full">
-            {view === 'list' && (
-                <PlanList 
-                    onSelectPlan={handleSelectPlan} 
-                    onCreateNew={handleCreateNew} 
-                    onInitiateDelete={setConfirmDeletePlanId}
-                    onShowLog={() => setView('log')}
-                    onInspectExercise={handleInspectExercise}
-                    onShowInfo={setInfoPlan}
-                    isPinned={isPinned}
-                    onTogglePin={() => setIsPinned(!isPinned)}
-                    onOpenAiPlanner={() => setIsAiPlannerOpen(true)}
-                />
-            )}
-            {view === 'editor' && (
-                <PlanEditor 
-                    plan={planToEdit} 
-                    onBack={handleBack} 
-                    isWarmupEditor={typeof editingPlan === 'string' && editingPlan === '_warmup_'}
-                />
-            )}
-            {view === 'log' && (
-                <WorkoutLog onBack={handleBack} />
-            )}
-          </div>
+      >
+        <div className="p-6 overflow-y-auto h-full">
+          {renderContent()}
         </div>
+      </div>
     </>
   );
 };
