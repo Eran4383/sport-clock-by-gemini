@@ -1,5 +1,5 @@
 {
-  "name": "copy-of-copy-of-copy-of-copy-of-copy-of-advanced-sports-clock---אחרון-לפני-הוספת-מסד-נתונים-היברידי",
+  "name": "copy-of-copy-of-copy-of-advanced-sports-clock---אחרון-לפני-הוספת-מסד-נתונים-היברידי",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -13,10 +13,7 @@
     "@google/genai": "^1.16.0",
     "react": "^19.1.1",
     "@vercel/kv": "^3.0.0",
-    "firebase": "^12.2.1",
-    "@firebase/app": "^0.14.3",
-    "@firebase/auth": "^1.11.0",
-    "@firebase/firestore": "^4.9.2"
+    "firebase": "^12.2.1"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

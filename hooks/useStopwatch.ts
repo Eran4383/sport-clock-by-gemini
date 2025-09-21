@@ -18,13 +18,13 @@ export const useStopwatch = () => {
     animationFrameRef.current = requestAnimationFrame(animate);
   }, []);
 
-  const start = useCallback((startTime?: number) => {
+  const start = useCallback(() => {
     setIsRunning(running => {
       if (running) {
         return true; // Already running, do nothing
       }
-      // Set the start time for this new running interval, using provided time or getting a new one.
-      startTimeRef.current = startTime ?? performance.now();
+      // Set the start time for this new running interval
+      startTimeRef.current = performance.now();
       animationFrameRef.current = requestAnimationFrame(animate);
       return true;
     });
