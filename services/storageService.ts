@@ -1,4 +1,5 @@
-import { Settings } from '../hooks/useSettings';
+// FIX: The Settings interface was moved to SettingsContext.ts. Updated the import path.
+import { Settings } from '../contexts/SettingsContext';
 import { WorkoutPlan, WorkoutLogEntry } from '../types';
 import { ExerciseInfo } from './geminiService';
 import { getBaseExerciseName } from '../utils/workout';
@@ -9,6 +10,7 @@ const WORKOUT_PLANS_KEY = 'sportsClockWorkoutPlans';
 const WORKOUT_HISTORY_KEY = 'sportsClockWorkoutHistory';
 const EXERCISE_CACHE_KEY = 'geminiExerciseCache_v3';
 const EDITOR_DRAFT_KEY = 'sportsClockPlanEditorDraft';
+export const AI_CHAT_HISTORY_KEY = 'sportsClockAiChatHistory_v2';
 
 // --- Generic Helpers ---
 const getItem = <T>(key: string): T | null => {
@@ -97,4 +99,9 @@ export const saveEditorDraft = (plan: WorkoutPlan): void => {
 
 export const clearEditorDraft = (): void => {
     window.localStorage.removeItem(EDITOR_DRAFT_KEY);
+};
+
+// --- AI Chat History ---
+export const clearAiChatHistory = (): void => {
+    window.localStorage.removeItem(AI_CHAT_HISTORY_KEY);
 };
