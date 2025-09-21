@@ -119,6 +119,15 @@ const AppContent: React.FC = () => {
     }
   }, []);
   
+  const handleDoubleClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    // Do not trigger on interactive elements to allow interaction without toggling fullscreen.
+    if (target.closest('button, input, a, [role="button"], label, [onclick], .menu-container')) {
+        return;
+    }
+    toggleFullScreen();
+  }, [toggleFullScreen]);
+
   const stopWorkoutAborted = () => {
     setWorkoutCompleted(false); // Aborting is not completing
     if (isPreparingWorkout) {
@@ -378,7 +387,7 @@ const AppContent: React.FC = () => {
   }
 
   const dynamicStyles = {
-    '--countdown-font-size': `clamp(4rem, 25dvh, 20rem)`,
+    '--countdown-font-size': `clamp(3rem, 22vmin, 16rem)`,
     '--stopwatch-font-size': `clamp(1.5rem, 8vw, ${2 + (settings.stopwatchSize / 100) * 1.5}rem)`,
     '--countdown-controls-scale': settings.countdownControlsSize / 100,
     '--stopwatch-controls-scale': settings.stopwatchControlsSize / 100,
@@ -448,8 +457,8 @@ const AppContent: React.FC = () => {
 
   return (
     <div 
-        onDoubleClick={(e) => { if (e.target === e.currentTarget) toggleFullScreen(); }} 
-        className={`h-screen overflow-y-hidden flex flex-col p-4 select-none theme-transition`} 
+        onDoubleClick={handleDoubleClick} 
+        className={`h-dvh flex flex-col p-4 select-none theme-transition`} 
         style={dynamicStyles}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
@@ -472,46 +481,45 @@ const AppContent: React.FC = () => {
       )}
       <SettingsMenu isOpen={isSettingsOpen} setIsOpen={setIsSettingsOpen} />
       <WorkoutMenu isOpen={isWorkoutOpen} setIsOpen={setIsWorkoutOpen} />
-      <main onDoubleClick={toggleFullScreen} className="flex-grow flex flex-col items-center justify-center w-full max-w-4xl mx-auto">
-        {/* TOP TITLE CONTAINER - reserves space to prevent layout shift */}
-        <div className="text-center mb-2 h-28 flex items-end justify-center">
-            {(() => {
-                if (workoutCompleted) {
-                    return <p className="text-8xl font-bold" dir="rtl">סוף האימון</p>;
-                }
 
-                if (isWorkoutActive && currentStep) {
-                    // Special title for the post-warmup rest
-                    if (currentStep.name === 'מנוחה לפני אימון') {
-                        return <p className="text-8xl font-bold" dir="rtl">האימון מתחיל!</p>;
-                    }
-                    
-                    // For any rest step (during warm-up or main workout)
-                    if (currentStep.type === 'rest') {
-                        return (
-                            <p className="text-8xl font-bold" dir="rtl">
-                                {isWorkoutPaused ? 'PAUSED'
-                                : isCountdownPaused ? 'מנוחה (Paused)'
-                                : 'מנוחה'}
-                            </p>
-                        );
-                    }
-                    
-                    // Title for any warm-up EXERCISE step
-                    if (isWarmupStep) { // at this point, currentStep.type is not 'rest'
-                        return <p className="text-8xl font-bold" dir="rtl">חימום</p>;
-                    }
-                }
-                
-                // Title for the default countdown rest (no workout active)
-                if (!isWorkoutActive && countdown.isResting && settings.showRestTitleOnDefaultCountdown) {
-                    return <p className="text-8xl font-bold" dir="rtl">מנוחה</p>;
-                }
+      {/* TOP TITLE AREA */}
+      <header className="text-center w-full max-w-4xl mx-auto min-h-[4rem] flex items-center justify-center">
+          {(() => {
+              const titleClasses = "text-4xl md:text-5xl lg:text-7xl font-bold";
+              if (workoutCompleted) {
+                  return <p className={titleClasses} dir="rtl">סוף האימון</p>;
+              }
 
-                return null; // No title for other cases (e.g., active exercise)
-            })()}
-        </div>
+              if (isWorkoutActive && currentStep) {
+                  if (currentStep.name === 'מנוחה לפני אימון') {
+                      return <p className={titleClasses} dir="rtl">האימון מתחיל!</p>;
+                  }
+                  
+                  if (currentStep.type === 'rest') {
+                      return (
+                          <p className={titleClasses} dir="rtl">
+                              {isWorkoutPaused ? 'PAUSED'
+                              : isCountdownPaused ? 'מנוחה (Paused)'
+                              : 'מנוחה'}
+                          </p>
+                      );
+                  }
+                  
+                  if (isWarmupStep) {
+                      return <p className={titleClasses} dir="rtl">חימום</p>;
+                  }
+              }
+              
+              if (!isWorkoutActive && countdown.isResting && settings.showRestTitleOnDefaultCountdown) {
+                  return <p className={titleClasses} dir="rtl">מנוחה</p>;
+              }
 
+              return null;
+          })()}
+      </header>
+
+      {/* MAIN FLEXIBLE CONTENT AREA */}
+      <main className="flex-grow w-full max-w-4xl mx-auto flex flex-col items-center justify-center min-h-0 py-2">
         {settings.showCountdown && (
           <>
             {isRepStep ? (
@@ -532,22 +540,21 @@ const AppContent: React.FC = () => {
           </>
         )}
 
-        {/* BOTTOM TITLE CONTAINER - reserves space to prevent layout shift */}
-        <div className="text-center mt-4 h-16 flex items-start justify-center">
+        <div className="text-center mt-2">
           {isWorkoutActive && currentStep.type === 'exercise' && (
-            <p className="text-2xl">
+            <p className="text-xl sm:text-2xl">
               {isWorkoutPaused ? 'PAUSED' : (isCountdownPaused ? `${getStepDisplayName(currentStep)} (Paused)` : getStepDisplayName(currentStep))}
             </p>
           )}
         </div>
       </main>
 
+      {/* FOOTER */}
       {(settings.showTimer || settings.showCycleCounter) && (
         <footer className="w-full max-w-3xl mx-auto flex flex-col items-center gap-1">
-            {/* Reserve space for "Next Up" to prevent layout shift on the last step */}
-            <div className="text-center mb-2 h-7 flex items-center justify-center">
+            <div className="text-center mb-1 min-h-[1.75rem]">
               {isWorkoutActive && settings.showNextExercise && nextUpcomingStep && (
-                  <p className="text-xl text-gray-400">
+                  <p className="text-lg md:text-xl text-gray-400">
                       Next Up: <span className="font-bold text-gray-300">{getStepDisplayName(nextUpcomingStep)}</span>
                   </p>
               )}
