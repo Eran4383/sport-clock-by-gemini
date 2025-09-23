@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⏱️</text></svg>">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>⏱️</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        /* Add a transition for smooth background color changes */
+        transition: background-color 0.3s ease;
+      }
+      .font-mono {
+        /* Ensure even elements with font-mono class get the requested font */
+        font-family: Arial, sans-serif;
+      }
+      .tabular-nums {
+        /* Keeps numbers from shifting width as they change */
+        font-variant-numeric: tabular-nums;
+      }
+      /* Simple transition for theme changes */
+      .theme-transition {
+        transition: background-color 0.3s ease, color 0.3s ease;
+      }
+      .menu-container {
+        z-index: 60;
+      }
+      @keyframes pop {
+        0% { transform: scale(0.5); opacity: 0; }
+        60% { transform: scale(1.1); opacity: 1; }
+        100% { transform: scale(1); opacity: 1; }
+      }
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      @keyframes glow {
+        0%, 100% {
+          box-shadow: 0 0 0 rgba(59, 130, 246, 0); /* blue-500 */
+        }
+        50% {
+          box-shadow: 0 0 15px 4px rgba(59, 130, 246, 0.6);
+        }
+      }
+      .animate-pop {
+        animation: pop 1s ease-out;
+      }
+      .animate-fadeIn {
+        animation: fadeIn 0.3s ease-in;
+      }
+      .animate-glow {
+        animation: glow 2.5s ease-in-out;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.1.1/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.16.0",
+    "react/": "https://aistudiocdn.com/react@^19.1.1/",
+    "react": "https://aistudiocdn.com/react@^19.1.1",
+    "@vercel/kv": "https://aistudiocdn.com/@vercel/kv@^3.0.0",
+    "firebase/app": "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js",
+    "firebase/auth": "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js",
+    "firebase/firestore": "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js",
+    "firebase/": "https://aistudiocdn.com/firebase@^12.2.1/"
+  }
+}
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
