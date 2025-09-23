@@ -3,11 +3,14 @@ import { WorkoutStep } from '../types';
 import { getLocalSettings, saveLocalSettings } from '../services/storageService';
 import { useAuth } from './AuthContext';
 import { db } from '../services/firebase';
+import { doc, onSnapshot, getDoc, setDoc, collection } from 'firebase/firestore';
+
 
 // --- Types and Defaults (moved from hooks/useSettings.ts) ---
 
 export interface Settings {
-  showTimer: boolean;
+  showSessionTimer: boolean;
+  showWorkoutTimer: boolean;
   showCountdown: boolean;
   showCycleCounter: boolean;
   stealthModeEnabled: boolean;
@@ -41,7 +44,8 @@ export interface Settings {
 }
 
 const defaultSettings: Settings = {
-  showTimer: true,
+  showSessionTimer: true,
+  showWorkoutTimer: true,
   showCountdown: true,
   showCycleCounter: true,
   stealthModeEnabled: false,
@@ -104,24 +108,23 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Effect to handle Firestore synchronization for authenticated users
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
-    const usersCollection = db.collection('users');
-
+    
     const setupFirestoreListener = (uid: string) => {
-        const settingsDocRef = usersCollection.doc(uid).collection('settings').doc('main');
-        unsubscribe = settingsDocRef.onSnapshot((doc) => {
-            if (doc.exists) {
+        const settingsDocRef = doc(db, 'users', uid, 'settings', 'main');
+        unsubscribe = onSnapshot(settingsDocRef, (doc) => {
+            if (doc.exists()) {
                 const remoteSettings = doc.data() as Partial<Settings>;
                 setSettings(current => ({ ...defaultSettings, ...current, ...remoteSettings }));
             } else {
-                settingsDocRef.set(settings, { merge: true });
+                setDoc(settingsDocRef, settings, { merge: true });
             }
         });
     };
 
     if (authStatus === 'authenticated' && user) {
-        const settingsDocRef = usersCollection.doc(user.uid).collection('settings').doc('main');
+        const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'main');
         
-        settingsDocRef.get().then(doc => {
+        getDoc(settingsDocRef).then(doc => {
             const remoteSyncEnabled = doc.data()?.syncSettingsAcrossDevices ?? true; // Default to sync
             
             if (remoteSyncEnabled) {
@@ -167,7 +170,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // Handle Firestore saving for logged-in users
     const currentUser = userRef.current;
     if (currentUser) {
-        const settingsDocRef = db.collection('users').doc(currentUser.uid).collection('settings').doc('main');
+        const settingsDocRef = doc(db, 'users', currentUser.uid, 'settings', 'main');
         const syncIsEnabled = updatedSettings.syncSettingsAcrossDevices;
 
         // Case A: The sync setting itself is being changed. We MUST update Firestore.
@@ -175,16 +178,16 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             if (newSettings.syncSettingsAcrossDevices === true) {
                 // Sync is being turned ON. Push the entire current local state to remote
                 // to make it the new source of truth for all devices.
-                settingsDocRef.set(updatedSettings);
+                setDoc(settingsDocRef, updatedSettings);
             } else {
                 // Sync is being turned OFF. Just update the flag on remote so other
                 // devices know not to sync anymore.
-                settingsDocRef.set({ syncSettingsAcrossDevices: false }, { merge: true });
+                setDoc(settingsDocRef, { syncSettingsAcrossDevices: false }, { merge: true });
             }
         } 
         // Case B: A different setting was changed, and sync is enabled.
         else if (syncIsEnabled) {
-            settingsDocRef.set(newSettings, { merge: true });
+            setDoc(settingsDocRef, newSettings, { merge: true });
         }
         // Case C: A different setting was changed, and sync is disabled. Do nothing to Firestore.
     }

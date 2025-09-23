@@ -1,9 +1,3 @@
-
-
-
-
-
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useSettings } from '../contexts/SettingsContext';
 import { playNotificationSound } from '../utils/sound';
@@ -58,6 +52,7 @@ const RangeSlider: React.FC<{
     </div>
 );
 
+
 export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean) => void; }> = ({ isOpen, setIsOpen }) => {
   const { settings, updateSettings } = useSettings();
   const [isPinned, setIsPinned] = useState(false);
@@ -110,16 +105,13 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
       min: number
     ) => {
       e.preventDefault();
-      const input = e.currentTarget as HTMLInputElement;
-      if (document.activeElement === input) {
-        input.blur();
-      }
+      
       const delta = e.deltaY > 0 ? -1 : 1;
       stateUpdater(prev => {
           const currentVal = parseInt(prev, 10) || 0;
           const nextVal = currentVal + delta;
-          if (nextVal < min) return min.toString();
-          return nextVal.toString();
+          const finalVal = Math.max(min, nextVal);
+          return finalVal.toString();
       });
     };
 
@@ -148,6 +140,11 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
       closeTimerRef.current = null;
     }
   };
+
+  const handleDurationChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setLocalCountdownDurationStr(value);
+  };
   
   const handleDurationBlur = () => {
      const num = parseInt(localCountdownDurationStr, 10);
@@ -156,6 +153,11 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
      updateSettings({ countdownDuration: finalValue });
   };
   
+  const handleRestChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const value = e.target.value;
+      setLocalRestDurationStr(value);
+  };
+
   const handleRestBlur = () => {
      const num = parseInt(localRestDurationStr, 10);
      const finalValue = !isNaN(num) && num >= 0 ? num : 0;
@@ -163,6 +165,11 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
      updateSettings({ countdownRestDuration: finalValue });
   };
   
+  const handlePreWorkoutChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const value = e.target.value;
+      setLocalPreWorkoutCountdownStr(value);
+  };
+
   const handlePreWorkoutBlur = () => {
      const num = parseInt(localPreWorkoutCountdownStr, 10);
      const finalValue = !isNaN(num) && num >= 1 ? num : 1;
@@ -249,7 +256,7 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
     if (e.button !== 0) return; // Only left-click
     e.preventDefault();
     
-    const target = e.currentTarget.parentElement?.parentElement;
+    const target = e.currentTarget.parentElement?.parentElement?.parentElement;
     if (!target) return;
     
     const rect = target.getBoundingClientRect();
@@ -321,6 +328,15 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
     };
   }, [draggedInfo, overIndex, settings.settingsCategoryOrder, updateSettings]);
 
+  const handleResetDisplaySizes = () => {
+    updateSettings({
+      countdownSize: 100,
+      stopwatchSize: 100,
+      countdownControlsSize: 100,
+      stopwatchControlsSize: 100,
+    });
+  };
+
 
   const categories: Record<string, { title: string, content: JSX.Element }> = {
     account: {
@@ -381,15 +397,15 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
         <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
           <div className="flex items-center justify-between">
               <label htmlFor="countdownDuration" className="text-white">Duration (s)</label>
-              <input ref={durationInputRef} type="number" id="countdownDuration" min="1" className="w-20 bg-gray-600 text-white text-center rounded-md p-1 focus:ring-2 focus:outline-none ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" value={localCountdownDurationStr} onChange={(e) => setLocalCountdownDurationStr(e.target.value)} onBlur={handleDurationBlur} />
+              <input ref={durationInputRef} type="number" id="countdownDuration" min="1" className="w-20 bg-gray-600 text-white text-center rounded-md p-1 focus:ring-2 focus:outline-none ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" value={localCountdownDurationStr} onChange={handleDurationChange} onBlur={handleDurationBlur} />
           </div>
           <div className="flex items-center justify-between">
             <label htmlFor="countdownRestDuration" className="text-white">Rest Duration (s)</label>
-            <input ref={restInputRef} type="number" id="countdownRestDuration" min="0" className="w-20 bg-gray-600 text-white text-center rounded-md p-1 focus:ring-2 focus:outline-none ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" value={localRestDurationStr} onChange={(e) => setLocalRestDurationStr(e.target.value)} onBlur={handleRestBlur} />
+            <input ref={restInputRef} type="number" id="countdownRestDuration" min="0" className="w-20 bg-gray-600 text-white text-center rounded-md p-1 focus:ring-2 focus:outline-none ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" value={localRestDurationStr} onChange={handleRestChange} onBlur={handleRestBlur} />
           </div>
           <div className="flex items-center justify-between">
               <label htmlFor="preWorkoutDuration" className="text-white">Pre-Workout Time (s)</label>
-              <input ref={preWorkoutInputRef} type="number" id="preWorkoutDuration" min="1" className="w-20 bg-gray-600 text-white text-center rounded-md p-1 focus:ring-2 focus:outline-none ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" value={localPreWorkoutCountdownStr} onChange={(e) => setLocalPreWorkoutCountdownStr(e.target.value)} onBlur={handlePreWorkoutBlur} />
+              <input ref={preWorkoutInputRef} type="number" id="preWorkoutDuration" min="1" className="w-20 bg-gray-600 text-white text-center rounded-md p-1 focus:ring-2 focus:outline-none ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" value={localPreWorkoutCountdownStr} onChange={handlePreWorkoutChange} onBlur={handlePreWorkoutBlur} />
           </div>
           <hr className="border-gray-600" />
           <Toggle id="showCountdownToggle" label="Show Countdown" checked={settings.showCountdown} onChange={(e) => updateSettings({ showCountdown: e.target.checked })} />
@@ -402,7 +418,8 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
       title: "Stopwatch",
       content: (
         <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
-          <Toggle id="showTimerToggle" label="Show Stopwatch" checked={settings.showTimer} onChange={(e) => updateSettings({ showTimer: e.target.checked })} />
+          <Toggle id="showSessionTimerToggle" label="Show Session Timer" checked={settings.showSessionTimer} onChange={(e) => updateSettings({ showSessionTimer: e.target.checked })} />
+          <Toggle id="showWorkoutTimerToggle" label="Show Workout Timer" checked={settings.showWorkoutTimer} onChange={(e) => updateSettings({ showWorkoutTimer: e.target.checked })} />
           <Toggle id="showStopwatchControlsToggle" label="Show Controls" checked={settings.showStopwatchControls} onChange={(e) => updateSettings({ showStopwatchControls: e.target.checked })} />
         </div>
       )
@@ -477,9 +494,11 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
             }}
           >
             <div>
-              <h3 className="text-lg font-semibold text-gray-300 mb-3 cursor-grabbing px-3 pt-3">
-                {category.title}
-              </h3>
+              <div className="flex justify-between items-baseline px-3 pt-3">
+                  <h3 className="text-lg font-semibold text-gray-300 mb-3 cursor-grabbing">
+                    {category.title}
+                  </h3>
+              </div>
               {category.content}
             </div>
           </div>
@@ -564,12 +583,25 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
                   style={{ transform }}
                 >
                   <div style={{ visibility: isBeingDragged ? 'hidden' : 'visible' }}>
-                    <h3
-                      className="text-lg font-semibold text-gray-300 mb-3 cursor-grab"
-                      onMouseDown={(e) => handleMouseDown(e, index, key)}
-                    >
-                      {category.title}
-                    </h3>
+                    <div className="flex justify-between items-baseline">
+                      <h3
+                        className="text-lg font-semibold text-gray-300 mb-3 cursor-grab"
+                        onMouseDown={(e) => handleMouseDown(e, index, key)}
+                      >
+                        {category.title}
+                      </h3>
+                      {key === 'displaySizes' && (
+                          <button
+                            onClick={handleResetDisplaySizes}
+                            className="p-1 rounded-full text-gray-400 hover:text-white hover:bg-gray-600/50 transition-colors"
+                            title="Reset sizes to default"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5m-5-5a9 9 0 0114.13-5.23M20 15a9 9 0 01-14.13 5.23" />
+                            </svg>
+                          </button>
+                      )}
+                    </div>
                     {category.content}
                   </div>
                 </div>
