@@ -45,16 +45,25 @@ export const getStepDisplayName = (step: WorkoutStep): string => {
 
 /**
  * Migrates a workout plan from the old string-based set format to the new
- * structured `set` object format.
+ * structured `set` object format. This function is now defensive against corrupted data.
  * @param plan The workout plan to migrate.
- * @returns A new workout plan object conforming to the latest data structure.
+ * @returns A new workout plan object conforming to the latest data structure, or null if the plan is invalid.
  */
-export const migratePlanToV2 = (plan: any): WorkoutPlan => {
+export const migratePlanToV2 = (plan: any): WorkoutPlan | null => {
+    // If plan is falsy, not an object, return null so it can be filtered out.
+    if (!plan || typeof plan !== 'object') {
+        return null;
+    }
+
     if (plan.version === 2) {
         return plan as WorkoutPlan;
     }
 
-    const migratedSteps = plan.steps.map((step: any) => {
+    const migratedSteps = (Array.isArray(plan.steps) ? plan.steps : []).map((step: any) => {
+        // A step must be an object with a name property to be valid for migration.
+        if (!step || typeof step.name !== 'string') {
+            return null; // Mark invalid steps to be filtered out.
+        }
         if (step.type === 'exercise') {
             const { name, set } = parseStepName(step.name);
             return { ...step, name, set };
@@ -62,7 +71,7 @@ export const migratePlanToV2 = (plan: any): WorkoutPlan => {
         // For rest steps, we also parse them to handle names like "Rest (סט 1/3)"
         const { name, set } = parseStepName(step.name);
         return { ...step, name, set };
-    });
+    }).filter(Boolean) as WorkoutStep[]; // Remove nulls from malformed steps.
 
     return { ...plan, steps: migratedSteps, version: 2 };
 };

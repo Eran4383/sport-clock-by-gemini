@@ -1,15 +1,16 @@
 import React, { useState } from 'react';
 import { WorkoutPlan } from '../types';
+import { GuestMergeOptions } from '../contexts/WorkoutContext';
 
 interface GuestDataMergeModalProps {
   guestPlans: WorkoutPlan[];
   guestHistoryCount: number;
-  onMerge: (options: { mergePlans: boolean; plansToMerge: WorkoutPlan[]; mergeHistory: boolean; }) => void;
+  onMerge: (options: GuestMergeOptions) => void;
   onDiscard: () => void;
 }
 
 const Toggle: React.FC<{ id: string; checked: boolean; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; disabled?: boolean; }> = ({ id, checked, onChange, disabled }) => (
-    <label htmlFor={id} className={`relative inline-flex items-center cursor-pointer ${disabled ? 'opacity-50' : ''}`}>
+    <label htmlFor={id} className={`relative inline-flex items-center cursor-pointer ${disabled ? 'opacity-50' : ''}`} onClick={e => e.stopPropagation()}>
         <input type="checkbox" id={id} className="sr-only peer" checked={checked} onChange={onChange} disabled={disabled} />
         <div className="w-11 h-6 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-500"></div>
     </label>
@@ -25,10 +26,10 @@ const AccordionSection: React.FC<{
   children: React.ReactNode;
 }> = ({ title, count, isExpanded, onToggleExpand, isMergingEnabled, onToggleMerge, children }) => (
     <div className="bg-gray-700/50 rounded-lg overflow-hidden">
-        <div className="flex items-center p-3 cursor-pointer" onClick={onToggleExpand}>
-            <Toggle id={`merge-${title}`} checked={isMergingEnabled} onChange={onToggleMerge} />
+        <div className="flex items-center p-3 cursor-pointer" onClick={count > 0 ? onToggleExpand : undefined}>
+            <Toggle id={`merge-${title}`} checked={isMergingEnabled} onChange={onToggleMerge} disabled={count === 0} />
             <div className="mx-3 flex-grow">
-                <p className="font-semibold text-white">{title}</p>
+                <p className={`font-semibold ${count > 0 ? 'text-white' : 'text-gray-500'}`}>{title}</p>
                 <p className="text-sm text-gray-400">{count} {count === 1 ? 'פריט' : 'פריטים'}</p>
             </div>
             {count > 0 && (
@@ -97,7 +98,7 @@ export const GuestDataMergeModal: React.FC<GuestDataMergeModalProps> = ({ guestP
                 title="תוכניות אימונים"
                 count={guestPlans.length}
                 isExpanded={isPlansExpanded}
-                onToggleExpand={() => guestPlans.length > 0 && setIsPlansExpanded(p => !p)}
+                onToggleExpand={() => setIsPlansExpanded(p => !p)}
                 isMergingEnabled={mergePlansEnabled}
                 onToggleMerge={(e) => setMergePlansEnabled(e.target.checked)}
             >
@@ -124,7 +125,7 @@ export const GuestDataMergeModal: React.FC<GuestDataMergeModalProps> = ({ guestP
                 title="היסטוריית אימונים"
                 count={guestHistoryCount}
                 isExpanded={isHistoryExpanded}
-                onToggleExpand={() => guestHistoryCount > 0 && setIsHistoryExpanded(p => !p)}
+                onToggleExpand={() => setIsHistoryExpanded(p => !p)}
                 isMergingEnabled={mergeHistoryEnabled}
                 onToggleMerge={(e) => setMergeHistoryEnabled(e.target.checked)}
             >
