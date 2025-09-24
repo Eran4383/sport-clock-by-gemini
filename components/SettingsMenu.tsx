@@ -318,7 +318,7 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
   }, [draggedInfo, overIndex, settings.settingsCategoryOrder, updateSettings]);
 
 
-  const categories: Record<string, { title: string, content: JSX.Element }> = {
+  const categories: Record<string, { title: string, content: React.ReactNode }> = {
     sounds: {
       title: "Sounds",
       content: (
