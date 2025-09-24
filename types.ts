@@ -27,11 +27,24 @@ export interface WorkoutPlan {
   version?: number;
 }
 
+export enum StepStatus {
+  Completed = 'completed',
+  Skipped = 'skipped',
+}
+
+export interface PerformedStep {
+  step: WorkoutStep;
+  status: StepStatus;
+  durationMs: number;
+}
+
+
 export interface WorkoutLogEntry {
     id: string;
     date: string; // ISO string
     planName: string;
     durationSeconds: number;
-    steps: WorkoutStep[];
+    steps: WorkoutStep[]; // The originally planned steps
     planIds?: string[];
+    performedSteps: PerformedStep[]; // The new, detailed log of what actually happened
 }

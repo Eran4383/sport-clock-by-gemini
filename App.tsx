@@ -16,6 +16,7 @@ import { playNotificationSound } from './utils/sound';
 import { getStepDisplayName } from './utils/workout';
 import { ImportNotification } from './components/ImportNotification';
 import { AuthProvider } from './contexts/AuthContext';
+import { StepStatus } from './types';
 
 const AppContent: React.FC = () => {
   const { settings, updateSettings } = useSettings();
@@ -53,6 +54,15 @@ const AppContent: React.FC = () => {
   const [isWorkoutOpen, setIsWorkoutOpen] = useState(false);
   const [preWorkoutTimeLeft, setPreWorkoutTimeLeft] = useState<number | null>(null);
 
+  const nextStepWithTime = useCallback((status: StepStatus) => {
+      // The stopwatch time is the most accurate measure of time spent in the workout
+      nextStep(Date.now(), status);
+  }, [nextStep]);
+
+  const previousStepWithTime = useCallback(() => {
+    previousStep(Date.now());
+  }, [previousStep]);
+
 
   const isWorkoutActive = !!(activeWorkout && currentStep);
   const isRepStep = isWorkoutActive && currentStep.isRepBased;
@@ -62,7 +72,7 @@ const AppContent: React.FC = () => {
     countdownDuration, 
     settings.countdownRestDuration, 
     settings,
-    isWorkoutActive ? nextStep : undefined,
+    isWorkoutActive ? () => nextStepWithTime(StepStatus.Completed) : undefined,
     // Pass a unique key for each step and restart to ensure the countdown hook resets correctly
     isWorkoutActive ? `${currentStep.id}-${activeWorkout.currentStepIndex}-${activeWorkout.stepRestartKey || 0}` : undefined
   );
@@ -125,7 +135,7 @@ const AppContent: React.FC = () => {
     if (isPreparingWorkout) {
       clearPreparingWorkout();
     } else {
-      contextStopWorkout({ completed: false });
+      contextStopWorkout({ completed: false, durationMs: stopwatch.time });
     }
   };
   
@@ -247,7 +257,7 @@ const AppContent: React.FC = () => {
         case 'enter':
             if (isRepStep) {
                 event.preventDefault();
-                nextStep();
+                nextStepWithTime(StepStatus.Completed);
             }
             break;
         case 'home':
@@ -280,7 +290,7 @@ const AppContent: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [settings, updateSettings, stopwatch, countdown, isWorkoutActive, isWorkoutPaused, isRepStep, nextStep, resumeWorkout, pauseWorkout, contextStopWorkout, toggleFullScreen, workoutCompleted, isPreparingWorkout]);
+  }, [settings, updateSettings, stopwatch, countdown, isWorkoutActive, isWorkoutPaused, isRepStep, nextStepWithTime, resumeWorkout, pauseWorkout, contextStopWorkout, toggleFullScreen, workoutCompleted, isPreparingWorkout]);
 
   // Update document title with countdown
   useEffect(() => {
@@ -343,17 +353,12 @@ const AppContent: React.FC = () => {
         // On workout end
         stopwatch.stop();
         countdown.stop();
-
-        const finishedWorkout = lastActiveWorkoutRef.current;
         
         // BUG FIX: Added a guard to ensure workout data exists before logging.
-        if (finishedWorkout) {
+        if (lastActiveWorkoutRef.current) {
             contextStopWorkout({
                 completed: true,
                 durationMs: stopwatch.time,
-                planName: finishedWorkout.plan.name || 'Unnamed Workout',
-                steps: finishedWorkout.plan.steps,
-                planIds: finishedWorkout.sourcePlanIds
             });
             setWorkoutCompleted(true);
             lastActiveWorkoutRef.current = null; // Clean up the ref
@@ -517,7 +522,7 @@ const AppContent: React.FC = () => {
         {settings.showCountdown && (
           <>
             {isRepStep ? (
-              <RepDisplay reps={currentStep.reps} onComplete={nextStep} />
+              <RepDisplay reps={currentStep.reps} onComplete={() => nextStepWithTime(StepStatus.Completed)} />
             ) : (
               <>
                 <CountdownDisplay timeLeft={countdown.timeLeft} />
@@ -565,8 +570,8 @@ const AppContent: React.FC = () => {
               showTimer={settings.showTimer}
               showStopwatchControls={settings.showStopwatchControls}
               isWorkoutActive={isWorkoutActive}
-              nextStep={nextStep}
-              previousStep={previousStep}
+              nextStep={() => nextStepWithTime(StepStatus.Skipped)}
+              previousStep={previousStepWithTime}
               workoutStepInfo={isWorkoutActive ? { current: activeWorkout.currentStepIndex + 1, total: activeWorkout.plan.steps.length } : undefined}
             />
         </footer>

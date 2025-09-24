@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useWorkout } from '../contexts/WorkoutContext';
-import { WorkoutLogEntry, WorkoutStep } from '../types';
+import { WorkoutLogEntry, WorkoutStep, PerformedStep, StepStatus } from '../types';
+import { getStepDisplayName } from '../utils/workout';
 
 const WorkoutLogDetailModal: React.FC<{
     entry: WorkoutLogEntry;
@@ -13,15 +14,29 @@ const WorkoutLogDetailModal: React.FC<{
         const secs = seconds % 60;
         return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     };
+    
+    const formatMs = (ms: number) => {
+        return (ms/1000).toFixed(1) + 's';
+    }
 
     const handleCopy = () => {
         let textToCopy = `Workout: ${entry.planName}\n`;
         textToCopy += `Date: ${new Date(entry.date).toLocaleString()}\n`;
         textToCopy += `Duration: ${formatDuration(entry.durationSeconds)}\n\n`;
-        textToCopy += `Steps:\n`;
-        entry.steps.forEach((step, index) => {
+        textToCopy += `Steps Performed:\n`;
+        
+        const stepsToLog = entry.performedSteps || entry.steps;
+
+        stepsToLog.forEach((item, index) => {
+            const step = (item as PerformedStep).step || (item as WorkoutStep);
+            const status = (item as PerformedStep).status;
+            
             const detail = step.isRepBased ? `${step.reps} reps` : `${step.duration}s`;
-            textToCopy += `${index + 1}. ${step.name} - ${detail}\n`;
+            let line = `${index + 1}. ${getStepDisplayName(step)} - ${detail}`;
+            if (status === StepStatus.Skipped) {
+                line += " (Skipped)";
+            }
+            textToCopy += line + '\n';
         });
 
         navigator.clipboard.writeText(textToCopy).then(() => {
@@ -33,6 +48,8 @@ const WorkoutLogDetailModal: React.FC<{
             setTimeout(() => setCopyButtonText('Copy'), 2000);
         });
     };
+    
+    const hasDetailedLog = !!entry.performedSteps;
 
     return (
         <div className="fixed inset-0 bg-black/70 z-[100] flex items-center justify-center" onClick={onClose} aria-modal="true" role="dialog">
@@ -49,12 +66,24 @@ const WorkoutLogDetailModal: React.FC<{
                 </div>
                 <div className="max-h-60 overflow-y-auto pr-2">
                     <h4 className="font-semibold text-gray-200 mb-2">Steps Performed:</h4>
-                    <ol className="list-decimal list-inside space-y-1 text-gray-300">
-                        {entry.steps.map((step: WorkoutStep) => (
-                            <li key={step.id} className="truncate">
-                                {step.name} - <span className="text-gray-400">{step.isRepBased ? `${step.reps} reps` : `${step.duration}s`}</span>
-                            </li>
-                        ))}
+                    <ol className="list-decimal list-inside space-y-2 text-gray-300">
+                        {hasDetailedLog ? (
+                            entry.performedSteps.map((pStep, index) => (
+                                <li key={index} className={`flex justify-between items-center ${pStep.status === StepStatus.Skipped ? 'text-gray-500 line-through' : ''}`}>
+                                    <span className="truncate pr-2">{getStepDisplayName(pStep.step)}</span>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      {pStep.status === StepStatus.Skipped && <span className="text-xs font-bold uppercase text-yellow-500">Skipped</span>}
+                                      <span className="font-mono text-sm text-gray-400">{formatMs(pStep.durationMs)}</span>
+                                    </div>
+                                </li>
+                            ))
+                        ) : (
+                            entry.steps.map((step, index) => (
+                                <li key={index} className="truncate">
+                                    {getStepDisplayName(step)} - <span className="text-gray-400">{step.isRepBased ? `${step.reps} reps` : `${step.duration}s`}</span>
+                                </li>
+                            ))
+                        )}
                     </ol>
                 </div>
                 <div className="mt-6 flex justify-end gap-4">

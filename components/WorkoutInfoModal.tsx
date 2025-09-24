@@ -1,7 +1,7 @@
-
 import React, { useMemo } from 'react';
-import { WorkoutPlan, WorkoutLogEntry } from '../types';
+import { WorkoutPlan, WorkoutLogEntry, StepStatus } from '../types';
 import { useWorkout } from '../contexts/WorkoutContext';
+import { getStepDisplayName } from '../utils/workout';
 
 interface WorkoutInfoModalProps {
   plan: WorkoutPlan;
@@ -18,6 +18,36 @@ export const WorkoutInfoModal: React.FC<WorkoutInfoModalProps> = ({ plan, onClos
     }, [workoutHistory, plan.id]);
 
     const timesPerformed = relevantLogs.length;
+
+    const skipStats = useMemo(() => {
+        if (timesPerformed === 0) {
+            return { totalSkips: 0, mostSkipped: null };
+        }
+
+        const skipCounts = new Map<string, number>();
+        let totalSkips = 0;
+
+        relevantLogs.forEach(log => {
+            if (log.performedSteps) {
+                log.performedSteps.forEach(pStep => {
+                    if (pStep.status === StepStatus.Skipped && pStep.step.type === 'exercise') {
+                        totalSkips++;
+                        const stepName = getStepDisplayName(pStep.step);
+                        skipCounts.set(stepName, (skipCounts.get(stepName) || 0) + 1);
+                    }
+                });
+            }
+        });
+
+        if (skipCounts.size === 0) {
+            return { totalSkips: 0, mostSkipped: null };
+        }
+
+        const mostSkipped = [...skipCounts.entries()].reduce((a, b) => b[1] > a[1] ? b : a);
+
+        return { totalSkips, mostSkipped: { name: mostSkipped[0], count: mostSkipped[1] }};
+
+    }, [relevantLogs, timesPerformed]);
     
     const formatDuration = (seconds: number) => {
         const mins = Math.floor(seconds / 60);
@@ -36,10 +66,26 @@ export const WorkoutInfoModal: React.FC<WorkoutInfoModalProps> = ({ plan, onClos
                 </div>
                 
                 <div className="space-y-4">
-                    <div>
-                        <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Times Performed</h4>
-                        <p className="text-2xl font-bold text-white">{timesPerformed}</p>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Times Performed</h4>
+                            <p className="text-2xl font-bold text-white">{timesPerformed}</p>
+                        </div>
+                         <div>
+                            <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Total Skips</h4>
+                            <p className="text-2xl font-bold text-white">{skipStats.totalSkips}</p>
+                        </div>
                     </div>
+                    
+                    {skipStats.mostSkipped && (
+                         <div>
+                            <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Most Skipped Exercise</h4>
+                             <p className="text-lg font-semibold text-white truncate" title={skipStats.mostSkipped.name}>
+                                {skipStats.mostSkipped.name} 
+                                <span className="text-base font-normal text-gray-400 ml-2">({skipStats.mostSkipped.count} times)</span>
+                            </p>
+                        </div>
+                    )}
 
                     <div>
                         <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Performance History</h4>
@@ -62,11 +108,6 @@ export const WorkoutInfoModal: React.FC<WorkoutInfoModalProps> = ({ plan, onClos
                         ) : (
                             <p className="text-gray-400 italic mt-2">This workout has not been performed yet.</p>
                         )}
-                    </div>
-                    
-                    <div>
-                        <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Skipped Steps</h4>
-                         <p className="text-gray-500 italic mt-2 text-xs">Tracking for skipped steps is not yet available. This feature will be added in a future update.</p>
                     </div>
                 </div>
 

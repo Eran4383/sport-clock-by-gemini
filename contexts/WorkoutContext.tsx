@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useMemo, useRef } from 'react';
-import { WorkoutPlan, WorkoutStep, WorkoutLogEntry } from '../types';
+import { WorkoutPlan, WorkoutStep, WorkoutLogEntry, StepStatus, PerformedStep } from '../types';
 import { prefetchExercises } from '../services/geminiService';
 import { getBaseExerciseName, generateCircuitSteps, processAndFormatAiSteps, arePlansDeeplyEqual, migratePlanToV2 } from '../utils/workout';
 import { useSettings } from './SettingsContext';
@@ -13,6 +13,9 @@ export interface ActiveWorkout {
   currentStepIndex: number;
   sourcePlanIds: string[];
   stepRestartKey?: number;
+  // For detailed logging
+  sessionLog: PerformedStep[];
+  stepStartTime: number; // performance.now() timestamp
 }
 
 interface ImportNotificationData {
@@ -52,9 +55,9 @@ interface WorkoutContextType {
   startWorkout: (planIds: string[]) => void;
   commitStartWorkout: () => void;
   clearPreparingWorkout: () => void;
-  stopWorkout: (options: { completed: boolean; durationMs?: number; planName?: string; steps?: WorkoutStep[], planIds?: string[] }) => void;
-  nextStep: () => void;
-  previousStep: () => void;
+  stopWorkout: (options: { completed: boolean; durationMs: number; }) => void;
+  nextStep: (timestamp: number, status: StepStatus) => void;
+  previousStep: (timestamp: number) => void;
   pauseWorkout: () => void;
   resumeWorkout: () => void;
   restartWorkout: () => void;
@@ -420,7 +423,13 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
       // No 'else' for guest mode, the useEffect handles it.
   }, [user]);
   
-  const logWorkoutCompletion = useCallback((planName: string, durationMs: number, steps: WorkoutStep[], planIds: string[]) => {
+  const logWorkoutCompletion = useCallback((
+    planName: string, 
+    durationMs: number, 
+    steps: WorkoutStep[], 
+    planIds: string[],
+    performedSteps: PerformedStep[]
+  ) => {
     const now = new Date();
     const newEntry: WorkoutLogEntry = {
         id: now.toISOString(),
@@ -429,6 +438,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         durationSeconds: Math.round(durationMs / 1000),
         steps: steps,
         planIds: planIds,
+        performedSteps: performedSteps,
     };
 
     if (user) {
@@ -527,43 +537,94 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
       version: 2,
     };
     
-    setActiveWorkout({ plan: metaPlan, currentStepIndex: 0, sourcePlanIds: plansToStart, stepRestartKey: 0 });
+    setActiveWorkout({ 
+      plan: metaPlan, 
+      currentStepIndex: 0, 
+      sourcePlanIds: plansToStart, 
+      stepRestartKey: 0,
+      sessionLog: [],
+      stepStartTime: Date.now(),
+    });
     setIsWorkoutPaused(false);
     setIsCountdownPaused(false);
     setPlansToStart([]);
   }, [plans, plansToStart, settings]);
 
-  const stopWorkout = useCallback(({ completed, durationMs, planName, steps, planIds }: { completed: boolean; durationMs?: number; planName?: string; steps?: WorkoutStep[], planIds?: string[] }) => {
-    if (completed && durationMs !== undefined && durationMs > -1 && planName && steps && planIds) {
-        logWorkoutCompletion(planName, durationMs, steps, planIds);
+  const stopWorkout = useCallback(({ completed, durationMs }: { completed: boolean; durationMs: number; }) => {
+    if (activeWorkout) {
+        if (completed) {
+            logWorkoutCompletion(
+                activeWorkout.plan.name || 'Unnamed Workout',
+                durationMs,
+                activeWorkout.plan.steps,
+                activeWorkout.sourcePlanIds,
+                activeWorkout.sessionLog
+            );
+        }
     }
     setActiveWorkout(null);
     setIsWorkoutPaused(false);
     setIsCountdownPaused(false);
-  }, [logWorkoutCompletion]);
+  }, [logWorkoutCompletion, activeWorkout]);
 
   const pauseWorkout = useCallback(() => setIsWorkoutPaused(true), []);
   const resumeWorkout = useCallback(() => setIsWorkoutPaused(false), []);
   
   const restartWorkout = useCallback(() => {
-    setActiveWorkout(prev => prev ? { ...prev, currentStepIndex: 0, stepRestartKey: (prev.stepRestartKey || 0) + 1 } : null);
+    setActiveWorkout(prev => prev ? { 
+        ...prev, 
+        currentStepIndex: 0, 
+        stepRestartKey: (prev.stepRestartKey || 0) + 1,
+        sessionLog: [],
+        stepStartTime: Date.now(),
+    } : null);
     setIsWorkoutPaused(false);
     setIsCountdownPaused(false);
   }, []);
 
-  const nextStep = useCallback(() => {
+  const nextStep = useCallback((timestamp: number, status: StepStatus) => {
     setActiveWorkout(prev => {
       if (!prev) return null;
-      if (prev.currentStepIndex + 1 >= prev.plan.steps.length) return null;
-      return { ...prev, currentStepIndex: prev.currentStepIndex + 1 };
+
+      const currentStep = prev.plan.steps[prev.currentStepIndex];
+      const durationMs = timestamp - prev.stepStartTime;
+      const performedStep: PerformedStep = {
+        step: currentStep,
+        status,
+        durationMs,
+      };
+      
+      const newSessionLog = [...prev.sessionLog, performedStep];
+
+      if (prev.currentStepIndex + 1 >= prev.plan.steps.length) {
+        // This was the last step, workout is done.
+        return null;
+      }
+
+      return { 
+        ...prev, 
+        currentStepIndex: prev.currentStepIndex + 1,
+        sessionLog: newSessionLog,
+        stepStartTime: timestamp,
+      };
     });
     setIsCountdownPaused(false);
   }, []);
   
-  const previousStep = useCallback(() => {
+  const previousStep = useCallback((timestamp: number) => {
     setActiveWorkout(prev => {
       if (!prev || prev.currentStepIndex === 0) return prev;
-      return { ...prev, currentStepIndex: prev.currentStepIndex - 1 };
+      
+      const newSessionLog = prev.sessionLog.slice(0, -1);
+      const lastPerformedStepDuration = newSessionLog.length > 0 ? newSessionLog[newSessionLog.length - 1].durationMs : 0;
+      
+      return { 
+          ...prev, 
+          currentStepIndex: prev.currentStepIndex - 1,
+          sessionLog: newSessionLog,
+          // Estimate previous start time by subtracting the last recorded duration
+          stepStartTime: timestamp - lastPerformedStepDuration
+      };
     });
     setIsCountdownPaused(false);
   }, []);
@@ -572,7 +633,11 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
   const resumeStepCountdown = useCallback(() => setIsCountdownPaused(false), []);
   
   const restartCurrentStep = useCallback(() => {
-    setActiveWorkout(prev => prev ? { ...prev, stepRestartKey: (prev.stepRestartKey || 0) + 1 } : null);
+    setActiveWorkout(prev => prev ? { 
+        ...prev, 
+        stepRestartKey: (prev.stepRestartKey || 0) + 1,
+        stepStartTime: Date.now(), // Reset start time for the current step
+    } : null);
     setIsCountdownPaused(false);
   }, []);
 

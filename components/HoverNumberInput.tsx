@@ -90,6 +90,7 @@ export const HoverNumberInput: React.FC<HoverNumberInputProps> = ({
     <input
       ref={inputRef}
       type="number"
+      autoComplete="off"
       value={displayValue}
       onChange={handleChange}
       onBlur={handleBlur}
