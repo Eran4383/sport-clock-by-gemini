@@ -378,7 +378,7 @@ const AppContent: React.FC = () => {
   }
 
   const dynamicStyles = {
-    '--countdown-font-size': `clamp(4rem, 25dvh, 20rem)`,
+    '--countdown-font-size': `clamp(2.5rem, 22vmin, 20rem)`,
     '--stopwatch-font-size': `clamp(1.5rem, 8vw, ${2 + (settings.stopwatchSize / 100) * 1.5}rem)`,
     '--countdown-controls-scale': settings.countdownControlsSize / 100,
     '--stopwatch-controls-scale': settings.stopwatchControlsSize / 100,
@@ -449,7 +449,7 @@ const AppContent: React.FC = () => {
   return (
     <div 
         onDoubleClick={(e) => { if (e.target === e.currentTarget) toggleFullScreen(); }} 
-        className={`h-screen overflow-y-hidden flex flex-col p-4 select-none theme-transition`} 
+        className={`h-screen overflow-hidden flex flex-col p-4 select-none theme-transition`} 
         style={dynamicStyles}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
@@ -472,9 +472,9 @@ const AppContent: React.FC = () => {
       )}
       <SettingsMenu isOpen={isSettingsOpen} setIsOpen={setIsSettingsOpen} />
       <WorkoutMenu isOpen={isWorkoutOpen} setIsOpen={setIsWorkoutOpen} />
-      <main onDoubleClick={toggleFullScreen} className="flex-grow flex flex-col items-center justify-center w-full max-w-4xl mx-auto">
+      <main onDoubleClick={toggleFullScreen} className="flex-grow flex flex-col items-center justify-center w-full max-w-4xl mx-auto min-h-0">
         {/* TOP TITLE CONTAINER - reserves space to prevent layout shift */}
-        <div className="text-center mb-2 h-28 flex items-end justify-center">
+        <div className="text-center mb-2 min-h-[3.5rem] flex items-end justify-center">
             {(() => {
                 if (workoutCompleted) {
                     return <p className="text-8xl font-bold" dir="rtl">סוף האימון</p>;
@@ -533,7 +533,7 @@ const AppContent: React.FC = () => {
         )}
 
         {/* BOTTOM TITLE CONTAINER - reserves space to prevent layout shift */}
-        <div className="text-center mt-4 h-16 flex items-start justify-center">
+        <div className="text-center mt-4 min-h-[2.5rem] flex items-start justify-center">
           {isWorkoutActive && currentStep.type === 'exercise' && (
             <p className="text-2xl">
               {isWorkoutPaused ? 'PAUSED' : (isCountdownPaused ? `${getStepDisplayName(currentStep)} (Paused)` : getStepDisplayName(currentStep))}
@@ -545,7 +545,7 @@ const AppContent: React.FC = () => {
       {(settings.showTimer || settings.showCycleCounter) && (
         <footer className="w-full max-w-3xl mx-auto flex flex-col items-center gap-1">
             {/* Reserve space for "Next Up" to prevent layout shift on the last step */}
-            <div className="text-center mb-2 h-7 flex items-center justify-center">
+            <div className="text-center mb-2 min-h-[1.75rem] flex items-center justify-center">
               {isWorkoutActive && settings.showNextExercise && nextUpcomingStep && (
                   <p className="text-xl text-gray-400">
                       Next Up: <span className="font-bold text-gray-300">{getStepDisplayName(nextUpcomingStep)}</span>
