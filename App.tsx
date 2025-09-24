@@ -40,6 +40,7 @@ const AppContent: React.FC = () => {
     clearImportNotification,
     showGuestMergeModal,
     guestPlansToMerge,
+    guestHistoryToMerge,
     handleMergeGuestData,
     handleDiscardGuestData,
   } = useWorkout();
@@ -457,7 +458,8 @@ const AppContent: React.FC = () => {
     >
       {showGuestMergeModal && (
         <GuestDataMergeModal 
-          guestPlans={guestPlansToMerge} 
+          guestPlans={guestPlansToMerge}
+          guestHistoryCount={guestHistoryToMerge.length}
           onMerge={handleMergeGuestData} 
           onDiscard={handleDiscardGuestData} 
         />

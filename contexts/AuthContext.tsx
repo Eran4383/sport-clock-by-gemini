@@ -51,7 +51,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const signOut = useCallback(async () => {
     try {
       await firebaseSignOut(auth);
-      // onAuthStateChanged will handle setting user to null
+      // onAuthStateChanged will handle setting user to null.
     } catch (error) {
       console.error("Sign Out Error:", error);
     }
