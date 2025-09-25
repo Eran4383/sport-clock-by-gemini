@@ -88,14 +88,11 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [guestHistoryToMerge, setGuestHistoryToMerge] = useState<WorkoutLogEntry[]>([]);
   const initialSyncDone = useRef(false);
 
-  // --- START: Logout Bug Fix ---
-  // Ref to track the auth status from the previous render cycle.
+  // Ref to track the auth status from the previous render cycle to detect transitions.
   const prevAuthStatusRef = useRef(authStatus);
   useEffect(() => {
-    // This effect runs after every render, ensuring the ref is always up-to-date for the *next* render.
     prevAuthStatusRef.current = authStatus;
   });
-  // --- END: Logout Bug Fix ---
 
   const isPreparingWorkout = plansToStart.length > 0;
 
@@ -103,9 +100,10 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
   
   // Persist data to local storage for guest users, preventing data corruption on logout.
   useEffect(() => {
-    // This condition is CRITICAL. It prevents saving the authenticated user's data
+    // This condition is CRITICAL. It prevents saving the authenticated user's stale data
     // to localStorage during the single render cycle of the logout transition.
     const justLoggedOut = prevAuthStatusRef.current === 'authenticated' && authStatus === 'unauthenticated';
+    
     if (authStatus === 'unauthenticated' && !justLoggedOut) {
       saveLocalPlans(plans);
     }
@@ -126,7 +124,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     const cleanup = () => {
         if (plansUnsubscribe) plansUnsubscribe();
         if (historyUnsubscribe) historyUnsubscribe();
-        initialSyncDone.current = false; // CRITICAL: Reset sync flag on cleanup
+        initialSyncDone.current = false;
         setShowGuestMergeModal(false);
         setGuestPlansToMerge([]);
         setGuestHistoryToMerge([]);
@@ -136,16 +134,16 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         setIsSyncing(true);
         initialSyncDone.current = false;
         
+        // ... (rest of the authenticated logic for Firestore and merge modal is correct)
         let remotePlansCache: WorkoutPlan[] = [];
         let remoteHistoryCache: WorkoutLogEntry[] = [];
         let plansListenerDone = false;
         let historyListenerDone = false;
         
         const checkAndTriggerMergeModal = () => {
-            // This function should only run once after both listeners have fetched initial data.
             if (!plansListenerDone || !historyListenerDone || initialSyncDone.current) return;
             
-            initialSyncDone.current = true; // Mark that we've done the check for this session
+            initialSyncDone.current = true;
 
             const localPlans = getLocalPlans().map(migratePlanToV2).filter((p): p is WorkoutPlan => !!p);
             const remotePlanIds = new Set(remotePlansCache.map(p => p.id));
@@ -165,8 +163,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         const plansCollection = collection(db, 'users', user.uid, 'plans');
         plansUnsubscribe = onSnapshot(query(plansCollection, orderBy('order', 'asc')), (snapshot) => {
             remotePlansCache = snapshot.docs.map(doc => migratePlanToV2(doc.data())).filter((p): p is WorkoutPlan => !!p);
-            setPlans(remotePlansCache); // Update React state with cloud data
-            // DO NOT save to local storage here, to preserve guest data.
+            setPlans(remotePlansCache);
             
             if (!plansListenerDone) {
                 plansListenerDone = true;
@@ -181,7 +178,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         const historyCollection = collection(db, 'users', user.uid, 'history');
         historyUnsubscribe = onSnapshot(query(historyCollection, orderBy('date', 'desc')), (snapshot) => {
             remoteHistoryCache = snapshot.docs.map(doc => doc.data() as WorkoutLogEntry);
-            setWorkoutHistory(remoteHistoryCache); // Update React state with cloud data
+            setWorkoutHistory(remoteHistoryCache);
             
             if (!historyListenerDone) {
                 historyListenerDone = true;
@@ -192,20 +189,40 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         });
 
     } else if (authStatus === 'unauthenticated') {
-        cleanup();
+        cleanup(); // Detaches listeners
         
-        // On sign out, clear all session state and restore guest data from local storage.
+        // On sign out, clear all active session state.
         setActiveWorkout(null);
         setIsWorkoutPaused(false);
         setIsCountdownPaused(false);
         setPlansToStart([]);
-        setPlans(getLocalPlans().map(migratePlanToV2).filter((p): p is WorkoutPlan => !!p));
-        setWorkoutHistory(getLocalHistory());
+
+        // Load guest data ONLY on initial app load as a guest.
+        // During a logout transition, this is skipped to prevent race conditions.
+        // A separate effect will handle loading data *after* the logout is complete.
+        const wasAuthenticated = prevAuthStatusRef.current === 'authenticated';
+        if (!wasAuthenticated) {
+            setPlans(getLocalPlans().map(migratePlanToV2).filter((p): p is WorkoutPlan => !!p));
+            setWorkoutHistory(getLocalHistory());
+        }
+        
         setIsSyncing(false);
     }
     
     return cleanup;
   }, [user, authStatus]);
+
+  // This effect handles loading guest data specifically AFTER a logout has occurred,
+  // ensuring the user's data is not accidentally saved over the guest's data.
+  useEffect(() => {
+    const justLoggedOut = prevAuthStatusRef.current === 'authenticated' && authStatus === 'unauthenticated';
+    if (justLoggedOut) {
+      // The previous render cycle blocked the save. Now we can safely load guest data.
+      setPlans(getLocalPlans().map(migratePlanToV2).filter((p): p is WorkoutPlan => !!p));
+      setWorkoutHistory(getLocalHistory());
+    }
+  }, [authStatus]);
+
 
   const forceSync = useCallback(async () => {
     if (!user) return;

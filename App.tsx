@@ -12,7 +12,7 @@ import { useStopwatch } from './hooks/useStopwatch';
 import { useCountdown } from './hooks/useCountdown';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
 import { WorkoutProvider, useWorkout, ActiveWorkout } from './contexts/WorkoutContext';
-import { playNotificationSound } from './utils/sound';
+import { playNotificationSound, resumeAudioContext } from './utils/sound';
 import { getStepDisplayName } from './utils/workout';
 import { ImportNotification } from './components/ImportNotification';
 import { AuthProvider } from './contexts/AuthContext';
@@ -53,6 +53,26 @@ const AppContent: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isWorkoutOpen, setIsWorkoutOpen] = useState(false);
   const [preWorkoutTimeLeft, setPreWorkoutTimeLeft] = useState<number | null>(null);
+
+  // Resume AudioContext on the first user interaction to comply with browser policies.
+  useEffect(() => {
+    const handleFirstInteraction = () => {
+      resumeAudioContext();
+      window.removeEventListener('click', handleFirstInteraction);
+      window.removeEventListener('touchstart', handleFirstInteraction);
+      window.removeEventListener('keydown', handleFirstInteraction);
+    };
+
+    window.addEventListener('click', handleFirstInteraction);
+    window.addEventListener('touchstart', handleFirstInteraction);
+    window.addEventListener('keydown', handleFirstInteraction);
+
+    return () => {
+      window.removeEventListener('click', handleFirstInteraction);
+      window.removeEventListener('touchstart', handleFirstInteraction);
+      window.removeEventListener('keydown', handleFirstInteraction);
+    };
+  }, []);
 
   const nextStepWithTime = useCallback((status: StepStatus) => {
       // The stopwatch time is the most accurate measure of time spent in the workout

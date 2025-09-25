@@ -13,13 +13,17 @@ const getAudioContext = (): AudioContext | null => {
         return null;
       }
     }
-    // The AudioContext may be in a suspended state initially and needs to be resumed by a user gesture.
-    // We attempt to resume it here, which works in many modern browsers if called from an event handler.
-    if (audioContext.state === 'suspended') {
-      audioContext.resume();
-    }
+    return audioContext;
   }
-  return audioContext;
+  return null;
+};
+
+// New function to be called on user gesture to resume the AudioContext.
+export const resumeAudioContext = () => {
+    const context = getAudioContext();
+    if (context && context.state === 'suspended') {
+        context.resume().catch(e => console.error("Could not resume AudioContext:", e));
+    }
 };
 
 const playTone = (frequency: number, duration: number, volume: number, type: OscillatorType = 'sine') => {
@@ -28,6 +32,7 @@ const playTone = (frequency: number, duration: number, volume: number, type: Osc
   
   // Ensure the context is running
   if (context.state === 'suspended') {
+    // Attempt to resume, might fail if not triggered by user gesture, but worth a try.
     context.resume();
   }
 
