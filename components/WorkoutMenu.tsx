@@ -465,11 +465,13 @@ const PlanListItem: React.FC<{
 
   const isActive = activeWorkout?.sourcePlanIds.includes(plan.id) ?? false;
   
-  const lastPerformedText = useMemo(() => {
-    const relevantLogs = workoutHistory
+  const relevantLogs = useMemo(() => {
+    return workoutHistory
         .filter(log => log.planIds?.includes(plan.id))
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    
+  }, [workoutHistory, plan.id]);
+
+  const lastPerformedText = useMemo(() => {
     if (relevantLogs.length === 0) return null;
 
     const lastPerformed = new Date(relevantLogs[0].date);
@@ -488,7 +490,11 @@ const PlanListItem: React.FC<{
     if (diffDays < 30) return `בוצע לפני ${Math.floor(diffDays/7)} שבועות`;
 
     return `בוצע לאחרונה: ${lastPerformed.toLocaleDateString('he-IL')}`;
-  }, [workoutHistory, plan.id]);
+  }, [relevantLogs]);
+
+  const last7Performances = useMemo(() => {
+    return relevantLogs.slice(0, 7).map(log => new Date(log.date));
+  }, [relevantLogs]);
 
 
   useEffect(() => {
@@ -632,8 +638,8 @@ const PlanListItem: React.FC<{
                     {lastPerformedText && (
                     <>
                         <span className="mx-2 text-gray-500 shrink-0">|</span>
-                        <span className="flex items-center gap-1 shrink-0 whitespace-nowrap">
-                            {lastPerformedText}
+                        <div className="relative group flex items-center gap-1 shrink-0 whitespace-nowrap">
+                            <span>{lastPerformedText}</span>
                             <button
                                 onClick={(e) => { e.stopPropagation(); onShowInfo(plan); }}
                                 className="text-gray-400 hover:text-white"
@@ -644,7 +650,20 @@ const PlanListItem: React.FC<{
                                     <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
                                 </svg>
                             </button>
-                        </span>
+                            {last7Performances.length > 0 && (
+                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-xs bg-gray-900 text-white text-sm rounded-lg shadow-lg p-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none group-hover:pointer-events-auto">
+                                    <h4 className="font-bold border-b border-gray-700 pb-1 mb-1 text-center">בוצע לאחרונה:</h4>
+                                    <ul className="space-y-1">
+                                        {last7Performances.map((date, index) => (
+                                            <li key={index} className="text-xs text-gray-300 text-center">
+                                                {date.toLocaleString('he-IL', { weekday: 'short', day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                    <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-x-8 border-x-transparent border-t-8 border-t-gray-900"></div>
+                                </div>
+                            )}
+                        </div>
                     </>
                     )}
                   </div>

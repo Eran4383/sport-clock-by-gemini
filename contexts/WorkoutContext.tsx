@@ -88,19 +88,32 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [guestHistoryToMerge, setGuestHistoryToMerge] = useState<WorkoutLogEntry[]>([]);
   const initialSyncDone = useRef(false);
 
+  // --- START: Logout Bug Fix ---
+  // Ref to track the auth status from the previous render cycle.
+  const prevAuthStatusRef = useRef(authStatus);
+  useEffect(() => {
+    // This effect runs after every render, ensuring the ref is always up-to-date for the *next* render.
+    prevAuthStatusRef.current = authStatus;
+  });
+  // --- END: Logout Bug Fix ---
+
   const isPreparingWorkout = plansToStart.length > 0;
 
   const clearImportNotification = useCallback(() => setImportNotification(null), []);
   
-  // Persist data to local storage, but ONLY for guest users.
+  // Persist data to local storage for guest users, preventing data corruption on logout.
   useEffect(() => {
-    if (authStatus === 'unauthenticated') {
+    // This condition is CRITICAL. It prevents saving the authenticated user's data
+    // to localStorage during the single render cycle of the logout transition.
+    const justLoggedOut = prevAuthStatusRef.current === 'authenticated' && authStatus === 'unauthenticated';
+    if (authStatus === 'unauthenticated' && !justLoggedOut) {
       saveLocalPlans(plans);
     }
   }, [plans, authStatus]);
 
   useEffect(() => {
-    if (authStatus === 'unauthenticated') {
+    const justLoggedOut = prevAuthStatusRef.current === 'authenticated' && authStatus === 'unauthenticated';
+    if (authStatus === 'unauthenticated' && !justLoggedOut) {
       saveLocalHistory(workoutHistory);
     }
   }, [workoutHistory, authStatus]);
