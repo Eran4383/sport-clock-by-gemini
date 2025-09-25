@@ -72,7 +72,7 @@ const WorkoutContext = createContext<WorkoutContextType | undefined>(undefined);
 
 export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { settings } = useSettings();
-  const { user, authStatus } = useAuth();
+  const { user, authStatus, isTransitioning } = useAuth();
   const [plans, setPlans] = useState<WorkoutPlan[]>(() => getLocalPlans().map(migratePlanToV2).filter((p): p is WorkoutPlan => !!p));
   const [activeWorkout, setActiveWorkout] = useState<ActiveWorkout | null>(null);
   const [isWorkoutPaused, setIsWorkoutPaused] = useState(false);
@@ -88,33 +88,23 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [guestHistoryToMerge, setGuestHistoryToMerge] = useState<WorkoutLogEntry[]>([]);
   const initialSyncDone = useRef(false);
 
-  // Ref to track the auth status from the previous render cycle to detect transitions.
-  const prevAuthStatusRef = useRef(authStatus);
-  useEffect(() => {
-    prevAuthStatusRef.current = authStatus;
-  });
-
   const isPreparingWorkout = plansToStart.length > 0;
 
   const clearImportNotification = useCallback(() => setImportNotification(null), []);
   
-  // Persist data to local storage for guest users, preventing data corruption on logout.
+  // Persist data to local storage for guest users. This is now robustly protected by isTransitioning.
   useEffect(() => {
-    // This condition is CRITICAL. It prevents saving the authenticated user's stale data
-    // to localStorage during the single render cycle of the logout transition.
-    const justLoggedOut = prevAuthStatusRef.current === 'authenticated' && authStatus === 'unauthenticated';
-    
-    if (authStatus === 'unauthenticated' && !justLoggedOut) {
+    // This condition is CRITICAL. It prevents saving data to localStorage while logging out.
+    if (authStatus === 'unauthenticated' && !isTransitioning) {
       saveLocalPlans(plans);
     }
-  }, [plans, authStatus]);
+  }, [plans, authStatus, isTransitioning]);
 
   useEffect(() => {
-    const justLoggedOut = prevAuthStatusRef.current === 'authenticated' && authStatus === 'unauthenticated';
-    if (authStatus === 'unauthenticated' && !justLoggedOut) {
+    if (authStatus === 'unauthenticated' && !isTransitioning) {
       saveLocalHistory(workoutHistory);
     }
-  }, [workoutHistory, authStatus]);
+  }, [workoutHistory, authStatus, isTransitioning]);
 
 
   useEffect(() => {
@@ -189,39 +179,26 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         });
 
     } else if (authStatus === 'unauthenticated') {
-        cleanup(); // Detaches listeners
+        cleanup(); // Detaches any previous Firestore listeners.
         
-        // On sign out, clear all active session state.
+        // This is the safe point to load guest data. It runs on initial load as guest
+        // and also safely after a logout transition is complete (when isTransitioning becomes false).
+        if (!isTransitioning) {
+            setPlans(getLocalPlans().map(migratePlanToV2).filter((p): p is WorkoutPlan => !!p));
+            setWorkoutHistory(getLocalHistory());
+        }
+
+        // On sign out, clear all active session state regardless.
         setActiveWorkout(null);
         setIsWorkoutPaused(false);
         setIsCountdownPaused(false);
         setPlansToStart([]);
-
-        // Load guest data ONLY on initial app load as a guest.
-        // During a logout transition, this is skipped to prevent race conditions.
-        // A separate effect will handle loading data *after* the logout is complete.
-        const wasAuthenticated = prevAuthStatusRef.current === 'authenticated';
-        if (!wasAuthenticated) {
-            setPlans(getLocalPlans().map(migratePlanToV2).filter((p): p is WorkoutPlan => !!p));
-            setWorkoutHistory(getLocalHistory());
-        }
         
         setIsSyncing(false);
     }
     
     return cleanup;
-  }, [user, authStatus]);
-
-  // This effect handles loading guest data specifically AFTER a logout has occurred,
-  // ensuring the user's data is not accidentally saved over the guest's data.
-  useEffect(() => {
-    const justLoggedOut = prevAuthStatusRef.current === 'authenticated' && authStatus === 'unauthenticated';
-    if (justLoggedOut) {
-      // The previous render cycle blocked the save. Now we can safely load guest data.
-      setPlans(getLocalPlans().map(migratePlanToV2).filter((p): p is WorkoutPlan => !!p));
-      setWorkoutHistory(getLocalHistory());
-    }
-  }, [authStatus]);
+  }, [user, authStatus, isTransitioning]);
 
 
   const forceSync = useCallback(async () => {
