@@ -72,13 +72,13 @@ const WorkoutContext = createContext<WorkoutContextType | undefined>(undefined);
 
 export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { settings } = useSettings();
-  const { user, authStatus, isTransitioning } = useAuth();
-  const [plans, setPlans] = useState<WorkoutPlan[]>(() => getLocalPlans().map(migratePlanToV2).filter((p): p is WorkoutPlan => !!p));
+  const { user, authStatus } = useAuth();
+  const [plans, setPlans] = useState<WorkoutPlan[]>([]);
   const [activeWorkout, setActiveWorkout] = useState<ActiveWorkout | null>(null);
   const [isWorkoutPaused, setIsWorkoutPaused] = useState(false);
   const [isCountdownPaused, setIsCountdownPaused] = useState(false);
   const [recentlyImportedPlanId, setRecentlyImportedPlanId] = useState<string | null>(null);
-  const [workoutHistory, setWorkoutHistory] = useState<WorkoutLogEntry[]>(getLocalHistory);
+  const [workoutHistory, setWorkoutHistory] = useState<WorkoutLogEntry[]>([]);
   const [plansToStart, setPlansToStart] = useState<string[]>([]);
   const [importNotification, setImportNotification] = useState<ImportNotificationData | null>(null);
   const [isSyncing, setIsSyncing] = useState(true);
@@ -87,25 +87,17 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [guestPlansToMerge, setGuestPlansToMerge] = useState<WorkoutPlan[]>([]);
   const [guestHistoryToMerge, setGuestHistoryToMerge] = useState<WorkoutLogEntry[]>([]);
   const initialSyncDone = useRef(false);
+  
+  // Ref to hold the current auth status to use in callbacks without adding it as a dependency.
+  const authStatusRef = useRef(authStatus);
+  useEffect(() => {
+    authStatusRef.current = authStatus;
+  }, [authStatus]);
+
 
   const isPreparingWorkout = plansToStart.length > 0;
 
   const clearImportNotification = useCallback(() => setImportNotification(null), []);
-  
-  // Persist data to local storage for guest users. This is now robustly protected by isTransitioning.
-  useEffect(() => {
-    // This condition is CRITICAL. It prevents saving data to localStorage while logging out.
-    if (authStatus === 'unauthenticated' && !isTransitioning) {
-      saveLocalPlans(plans);
-    }
-  }, [plans, authStatus, isTransitioning]);
-
-  useEffect(() => {
-    if (authStatus === 'unauthenticated' && !isTransitioning) {
-      saveLocalHistory(workoutHistory);
-    }
-  }, [workoutHistory, authStatus, isTransitioning]);
-
 
   useEffect(() => {
     let plansUnsubscribe: Unsubscribe | undefined;
@@ -124,7 +116,6 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         setIsSyncing(true);
         initialSyncDone.current = false;
         
-        // ... (rest of the authenticated logic for Firestore and merge modal is correct)
         let remotePlansCache: WorkoutPlan[] = [];
         let remoteHistoryCache: WorkoutLogEntry[] = [];
         let plansListenerDone = false;
@@ -181,12 +172,9 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     } else if (authStatus === 'unauthenticated') {
         cleanup(); // Detaches any previous Firestore listeners.
         
-        // This is the safe point to load guest data. It runs on initial load as guest
-        // and also safely after a logout transition is complete (when isTransitioning becomes false).
-        if (!isTransitioning) {
-            setPlans(getLocalPlans().map(migratePlanToV2).filter((p): p is WorkoutPlan => !!p));
-            setWorkoutHistory(getLocalHistory());
-        }
+        // This is now the single source of truth for loading guest data.
+        setPlans(getLocalPlans().map(migratePlanToV2).filter((p): p is WorkoutPlan => !!p));
+        setWorkoutHistory(getLocalHistory());
 
         // On sign out, clear all active session state regardless.
         setActiveWorkout(null);
@@ -198,7 +186,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
     
     return cleanup;
-  }, [user, authStatus, isTransitioning]);
+  }, [user, authStatus]);
 
 
   const forceSync = useCallback(async () => {
@@ -209,7 +197,6 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         const remoteSnapshot = await getDocs(query(plansCollection, orderBy('order', 'asc')));
         const remotePlans = remoteSnapshot.docs.map(doc => migratePlanToV2(doc.data())).filter((p): p is WorkoutPlan => !!p);
         setPlans(remotePlans);
-        // Do not save to local storage on manual sync
     } catch (error) {
         console.error("Manual sync failed:", error);
     } finally {
@@ -218,8 +205,6 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
   }, [user]);
   
   const handleDiscardGuestData = useCallback(() => {
-    // This function now ONLY hides the modal. It does NOT touch localStorage.
-    // This allows the prompt to reappear on next login, as requested.
     setShowGuestMergeModal(false);
     setGuestPlansToMerge([]);
     setGuestHistoryToMerge([]);
@@ -234,7 +219,6 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     };
 
     if (!mergePlans && !mergeHistory) {
-        // If user deselects everything and clicks merge, treat it as a discard.
         handleDiscardGuestData();
         return;
     }
@@ -265,8 +249,6 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
 
         await batch.commit();
         
-        // After successful merge, update local storage so we don't ask again.
-        // We combine the current cloud data (in state) with the data we just uploaded.
         if (mergePlans && plansToUpload.length > 0) {
             saveLocalPlans([...plans, ...plansToUpload]);
         }
@@ -276,45 +258,47 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         
     } catch (error) {
         console.error("Failed to merge guest data:", error);
-        // In case of error, don't clear the temp state so the user can try again.
         setShowGuestMergeModal(true); 
     } finally {
-        // Clear temp state on success
-        if (!isSyncing) { // A bit of a hack to check if we errored out early
-            setGuestPlansToMerge([]);
-            setGuestHistoryToMerge([]);
-        }
+        setGuestPlansToMerge([]);
+        setGuestHistoryToMerge([]);
         setIsSyncing(false);
     }
-  }, [user, plans, guestHistoryToMerge, workoutHistory, handleDiscardGuestData, isSyncing]);
+  }, [user, plans, guestHistoryToMerge, workoutHistory, handleDiscardGuestData]);
 
   const savePlan = useCallback(async (planToSave: WorkoutPlan) => {
-    const migratedPlan = migratePlanToV2(planToSave);
-    if (!migratedPlan) return; // Guard against saving an invalid plan
-    const isNewPlan = !plans.some(p => p.id === migratedPlan.id);
-    
-    // Optimistically update UI
-    setPlans(prevPlans => {
-        const plansWithOrder = prevPlans.map((p, i) => ({ ...p, order: i }));
-        if (isNewPlan) {
-            const maxOrder = plansWithOrder.reduce((max, p) => Math.max(max, p.order ?? -1), -1);
-            migratedPlan.order = maxOrder + 1;
-            return [...plansWithOrder, migratedPlan];
-        }
-        return plansWithOrder.map(p => p.id === migratedPlan.id ? migratedPlan : p);
-    });
+      const migratedPlan = migratePlanToV2(planToSave);
+      if (!migratedPlan) return;
 
-    if (user) {
-        try {
-            const planRef = doc(db, 'users', user.uid, 'plans', migratedPlan.id);
-            await setDoc(planRef, migratedPlan, { merge: true });
-        } catch (error) {
-            console.error("Failed to save plan to Firestore:", error);
-            // Here you might want to add logic to revert the optimistic UI update
-        }
-    } 
-    // No 'else' block needed because the guest-mode persistence is handled by the useEffect watching `plans`.
-  }, [user, plans]);
+      setPlans(prevPlans => {
+          const isNewPlan = !prevPlans.some(p => p.id === migratedPlan.id);
+          const plansWithOrder = prevPlans.map((p, i) => ({ ...p, order: i }));
+          let newPlans;
+
+          if (isNewPlan) {
+              const maxOrder = plansWithOrder.reduce((max, p) => Math.max(max, p.order ?? -1), -1);
+              migratedPlan.order = maxOrder + 1;
+              newPlans = [...plansWithOrder, migratedPlan];
+          } else {
+              newPlans = plansWithOrder.map(p => p.id === migratedPlan.id ? migratedPlan : p);
+          }
+
+          if (authStatusRef.current === 'unauthenticated') {
+              saveLocalPlans(newPlans);
+          }
+          
+          return newPlans;
+      });
+
+      if (user) {
+          try {
+              const planRef = doc(db, 'users', user.uid, 'plans', migratedPlan.id);
+              await setDoc(planRef, migratedPlan, { merge: true });
+          } catch (error) {
+              console.error("Failed to save plan to Firestore:", error);
+          }
+      }
+  }, [user]);
   
   const importPlan = useCallback((planToImport: WorkoutPlan, source: string = 'file') => {
     const migratedPlan = migratePlanToV2(planToImport);
@@ -359,7 +343,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     const exerciseNames = newPlan.steps
         .filter(s => s.type === 'exercise')
-        .map(s => s.name); // Already base name
+        .map(s => s.name);
     prefetchExercises(exerciseNames);
 
     setRecentlyImportedPlanId(newPlanId);
@@ -399,9 +383,13 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
 
 
   const deletePlan = useCallback(async (planId: string) => {
-    // Optimistically update UI
     const originalPlans = plans;
-    setPlans(prev => prev.filter(p => p.id !== planId));
+    const newPlans = plans.filter(p => p.id !== planId);
+    setPlans(newPlans);
+
+    if (authStatusRef.current === 'unauthenticated') {
+        saveLocalPlans(newPlans);
+    }
     
     if (user) {
       try {
@@ -409,15 +397,21 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         await deleteDoc(planRef);
       } catch (error) {
         console.error("Failed to delete plan from Firestore:", error);
-        setPlans(originalPlans); // Revert on error
+        setPlans(originalPlans);
+        if (authStatusRef.current === 'unauthenticated') {
+            saveLocalPlans(originalPlans);
+        }
       }
-    } 
-    // No 'else' for guest mode, the useEffect handles it.
+    }
   }, [user, plans]);
 
   const reorderPlans = useCallback(async (reorderedPlans: WorkoutPlan[]) => {
       const plansWithOrder = reorderedPlans.map((p, i) => ({ ...p, order: i }));
-      setPlans(plansWithOrder); // Optimistic update
+      setPlans(plansWithOrder);
+
+      if (authStatusRef.current === 'unauthenticated') {
+          saveLocalPlans(plansWithOrder);
+      }
 
       if (user) {
         try {
@@ -429,10 +423,8 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
             await batch.commit();
         } catch (error) {
             console.error("Failed to reorder plans in Firestore:", error);
-            // Revert on error would be complex, might need to refetch. For now, log it.
         }
-      } 
-      // No 'else' for guest mode, the useEffect handles it.
+      }
   }, [user]);
   
   const logWorkoutCompletion = useCallback((
@@ -456,9 +448,12 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     if (user) {
         const historyRef = doc(db, 'users', user.uid, 'history', newEntry.id);
         setDoc(historyRef, newEntry).catch(e => console.error("Failed to save workout log to Firestore:", e));
-        // The onSnapshot listener will handle updating the state.
     } else {
-        setWorkoutHistory(prev => [newEntry, ...prev]);
+        setWorkoutHistory(prev => {
+            const newHistory = [newEntry, ...prev];
+            saveLocalHistory(newHistory);
+            return newHistory;
+        });
     }
   }, [user]);
   
@@ -475,7 +470,6 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
                     const batch = writeBatch(db);
                     snapshot.forEach(doc => batch.delete(doc.ref));
                     await batch.commit();
-                    // Listener will update state to be empty.
                 } catch (error) {
                     console.error("Failed to clear Firestore history:", error);
                 } finally {
@@ -483,6 +477,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
                 }
             } else {
                 setWorkoutHistory([]);
+                saveLocalHistory([]);
             }
         };
         performClear();
@@ -564,7 +559,6 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   const stopWorkout = useCallback(({ completed, durationMs, finishedWorkout }: { completed: boolean; durationMs: number; finishedWorkout: ActiveWorkout }) => {
     if (completed) {
-        // If the workout was completed, log the final (potentially unfinished) step.
         const finalSessionLog = [...finishedWorkout.sessionLog];
         const lastStep = finishedWorkout.plan.steps[finishedWorkout.currentStepIndex];
         if (lastStep) {
@@ -614,10 +608,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
       
       const newSessionLog = [...prev.sessionLog, performedStep];
 
-      // If this is the last step, stop the workout.
       if (prev.currentStepIndex + 1 >= prev.plan.steps.length) {
-        // The stopWorkout function (called via useEffect in App.tsx) will handle logging.
-        // Returning null here triggers that effect.
         return null; 
       }
 
@@ -642,7 +633,6 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
           ...prev, 
           currentStepIndex: prev.currentStepIndex - 1,
           sessionLog: newSessionLog,
-          // Estimate previous start time by subtracting the last recorded duration
           stepStartTime: timestamp - lastPerformedStepDuration
       };
     });
@@ -656,7 +646,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     setActiveWorkout(prev => prev ? { 
         ...prev, 
         stepRestartKey: (prev.stepRestartKey || 0) + 1,
-        stepStartTime: Date.now(), // Reset start time for the current step
+        stepStartTime: Date.now(),
     } : null);
     setIsCountdownPaused(false);
   }, []);
