@@ -180,7 +180,12 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     } else if (authStatus === 'unauthenticated') {
         cleanup();
-        // This is the CRITICAL part to restore guest data on sign out.
+        
+        // On sign out, clear all session state and restore guest data from local storage.
+        setActiveWorkout(null);
+        setIsWorkoutPaused(false);
+        setIsCountdownPaused(false);
+        setPlansToStart([]);
         setPlans(getLocalPlans().map(migratePlanToV2).filter((p): p is WorkoutPlan => !!p));
         setWorkoutHistory(getLocalHistory());
         setIsSyncing(false);
@@ -552,13 +557,23 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   const stopWorkout = useCallback(({ completed, durationMs }: { completed: boolean; durationMs: number; }) => {
     if (activeWorkout) {
+        // If the workout was completed, log the final (potentially unfinished) step.
+        const finalSessionLog = [...activeWorkout.sessionLog];
+        if (completed) {
+            const lastStep = activeWorkout.plan.steps[activeWorkout.currentStepIndex];
+            if (lastStep) {
+                const stepDuration = Date.now() - activeWorkout.stepStartTime;
+                finalSessionLog.push({ step: lastStep, status: StepStatus.Completed, durationMs: stepDuration });
+            }
+        }
+
         if (completed) {
             logWorkoutCompletion(
                 activeWorkout.plan.name || 'Unnamed Workout',
                 durationMs,
                 activeWorkout.plan.steps,
                 activeWorkout.sourcePlanIds,
-                activeWorkout.sessionLog
+                finalSessionLog
             );
         }
     }
@@ -596,9 +611,11 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
       
       const newSessionLog = [...prev.sessionLog, performedStep];
 
+      // If this is the last step, stop the workout.
       if (prev.currentStepIndex + 1 >= prev.plan.steps.length) {
-        // This was the last step, workout is done.
-        return null;
+        // The stopWorkout function (called via useEffect in App.tsx) will handle logging.
+        // Returning null here triggers that effect.
+        return null; 
       }
 
       return { 
