@@ -135,7 +135,9 @@ const AppContent: React.FC = () => {
     if (isPreparingWorkout) {
       clearPreparingWorkout();
     } else {
-      contextStopWorkout({ completed: false, durationMs: stopwatch.time });
+      if (activeWorkout) {
+        contextStopWorkout({ completed: false, durationMs: stopwatch.time, finishedWorkout: activeWorkout });
+      }
     }
   };
   
@@ -354,11 +356,11 @@ const AppContent: React.FC = () => {
         stopwatch.stop();
         countdown.stop();
         
-        // BUG FIX: Added a guard to ensure workout data exists before logging.
         if (lastActiveWorkoutRef.current) {
             contextStopWorkout({
                 completed: true,
                 durationMs: stopwatch.time,
+                finishedWorkout: lastActiveWorkoutRef.current,
             });
             setWorkoutCompleted(true);
             lastActiveWorkoutRef.current = null; // Clean up the ref

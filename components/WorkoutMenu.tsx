@@ -521,9 +521,9 @@ const PlanListItem: React.FC<{
 
   const handleStop = (e: React.MouseEvent) => {
       e.stopPropagation();
-      // FIX: The stopWorkout function requires a durationMs property. Since this is an abort
-      // action (not a completion), the duration is not logged. Passing 0 satisfies the type.
-      stopWorkout({ completed: false, durationMs: 0 });
+      if (activeWorkout) {
+        stopWorkout({ completed: false, durationMs: 0, finishedWorkout: activeWorkout });
+      }
   }
   
   const handleEdit = (e: React.MouseEvent) => {

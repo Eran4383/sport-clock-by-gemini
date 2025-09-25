@@ -55,7 +55,7 @@ interface WorkoutContextType {
   startWorkout: (planIds: string[]) => void;
   commitStartWorkout: () => void;
   clearPreparingWorkout: () => void;
-  stopWorkout: (options: { completed: boolean; durationMs: number; }) => void;
+  stopWorkout: (options: { completed: boolean; durationMs: number; finishedWorkout: ActiveWorkout }) => void;
   nextStep: (timestamp: number, status: StepStatus) => void;
   previousStep: (timestamp: number) => void;
   pauseWorkout: () => void;
@@ -555,32 +555,28 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     setPlansToStart([]);
   }, [plans, plansToStart, settings]);
 
-  const stopWorkout = useCallback(({ completed, durationMs }: { completed: boolean; durationMs: number; }) => {
-    if (activeWorkout) {
+  const stopWorkout = useCallback(({ completed, durationMs, finishedWorkout }: { completed: boolean; durationMs: number; finishedWorkout: ActiveWorkout }) => {
+    if (completed) {
         // If the workout was completed, log the final (potentially unfinished) step.
-        const finalSessionLog = [...activeWorkout.sessionLog];
-        if (completed) {
-            const lastStep = activeWorkout.plan.steps[activeWorkout.currentStepIndex];
-            if (lastStep) {
-                const stepDuration = Date.now() - activeWorkout.stepStartTime;
-                finalSessionLog.push({ step: lastStep, status: StepStatus.Completed, durationMs: stepDuration });
-            }
+        const finalSessionLog = [...finishedWorkout.sessionLog];
+        const lastStep = finishedWorkout.plan.steps[finishedWorkout.currentStepIndex];
+        if (lastStep) {
+            const stepDuration = Date.now() - finishedWorkout.stepStartTime;
+            finalSessionLog.push({ step: lastStep, status: StepStatus.Completed, durationMs: stepDuration });
         }
 
-        if (completed) {
-            logWorkoutCompletion(
-                activeWorkout.plan.name || 'Unnamed Workout',
-                durationMs,
-                activeWorkout.plan.steps,
-                activeWorkout.sourcePlanIds,
-                finalSessionLog
-            );
-        }
+        logWorkoutCompletion(
+            finishedWorkout.plan.name || 'Unnamed Workout',
+            durationMs,
+            finishedWorkout.plan.steps,
+            finishedWorkout.sourcePlanIds,
+            finalSessionLog
+        );
     }
     setActiveWorkout(null);
     setIsWorkoutPaused(false);
     setIsCountdownPaused(false);
-  }, [logWorkoutCompletion, activeWorkout]);
+  }, [logWorkoutCompletion]);
 
   const pauseWorkout = useCallback(() => setIsWorkoutPaused(true), []);
   const resumeWorkout = useCallback(() => setIsWorkoutPaused(false), []);
