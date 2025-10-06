@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useMemo, useRef } from 'react';
 import { WorkoutPlan, WorkoutStep, WorkoutLogEntry, StepStatus, PerformedStep } from '../types';
 import { prefetchExercises } from '../services/geminiService';
@@ -7,6 +8,7 @@ import { getLocalPlans, saveLocalPlans, getLocalHistory, saveLocalHistory } from
 import { useAuth } from './AuthContext';
 import { db } from '../services/firebase';
 import { collection, doc, writeBatch, query, orderBy, setDoc, deleteDoc, onSnapshot, Unsubscribe, getDocs } from 'firebase/firestore';
+import { useLogger } from './LoggingContext';
 
 export interface ActiveWorkout {
   plan: WorkoutPlan; // This can be a "meta-plan" if multiple plans are selected
@@ -66,6 +68,7 @@ interface WorkoutContextType {
   restartCurrentStep: () => void;
   clearWorkoutHistory: () => void;
   forceSync: () => void;
+  logManualSession: (name: string, durationMs: number, performedSteps: PerformedStep[]) => void;
 }
 
 const WorkoutContext = createContext<WorkoutContextType | undefined>(undefined);
@@ -73,6 +76,7 @@ const WorkoutContext = createContext<WorkoutContextType | undefined>(undefined);
 export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { settings } = useSettings();
   const { user, authStatus } = useAuth();
+  const { logAction } = useLogger();
   const [plans, setPlans] = useState<WorkoutPlan[]>([]);
   const [activeWorkout, setActiveWorkout] = useState<ActiveWorkout | null>(null);
   const [isWorkoutPaused, setIsWorkoutPaused] = useState(false);
@@ -113,6 +117,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     };
 
     if (authStatus === 'authenticated' && user) {
+        logAction('AUTH_STATE_AUTHENTICATED', { uid: user.uid });
         setIsSyncing(true);
         initialSyncDone.current = false;
         
@@ -135,9 +140,12 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
             const newGuestHistory = localHistory.filter(h => !remoteHistoryIds.has(h.id));
 
             if (newGuestPlans.length > 0 || newGuestHistory.length > 0) {
+                logAction('GUEST_DATA_DETECTED', { planCount: newGuestPlans.length, historyCount: newGuestHistory.length });
                 setGuestPlansToMerge(newGuestPlans);
                 setGuestHistoryToMerge(newGuestHistory);
                 setShowGuestMergeModal(true);
+            } else {
+                logAction('GUEST_DATA_NONE_DETECTED');
             }
         };
 
@@ -152,6 +160,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
             }
             setIsSyncing(false);
         }, (error) => {
+            logAction('ERROR_FIRESTORE_PLANS_LISTENER', { message: error.message });
             console.error("Firestore plans listener error:", error);
             setIsSyncing(false);
         });
@@ -166,10 +175,12 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
                 checkAndTriggerMergeModal();
             }
         }, (error) => {
+            logAction('ERROR_FIRESTORE_HISTORY_LISTENER', { message: error.message });
             console.error("Firestore history listener error:", error);
         });
 
     } else if (authStatus === 'unauthenticated') {
+        logAction('AUTH_STATE_UNAUTHENTICATED');
         cleanup(); // Detaches any previous Firestore listeners.
         
         // This is now the single source of truth for loading guest data.
@@ -186,31 +197,36 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
     
     return cleanup;
-  }, [user, authStatus]);
+  }, [user, authStatus, logAction]);
 
 
   const forceSync = useCallback(async () => {
     if (!user) return;
+    logAction('SYNC_FORCE_ATTEMPT');
     setIsSyncing(true);
     try {
         const plansCollection = collection(db, 'users', user.uid, 'plans');
         const remoteSnapshot = await getDocs(query(plansCollection, orderBy('order', 'asc')));
         const remotePlans = remoteSnapshot.docs.map(doc => migratePlanToV2(doc.data())).filter((p): p is WorkoutPlan => !!p);
         setPlans(remotePlans);
+        logAction('SYNC_FORCE_SUCCESS', { planCount: remotePlans.length });
     } catch (error) {
+        logAction('ERROR_SYNC_FORCE', { message: (error as Error).message });
         console.error("Manual sync failed:", error);
     } finally {
         setIsSyncing(false);
     }
-  }, [user]);
+  }, [user, logAction]);
   
   const handleDiscardGuestData = useCallback(() => {
+    logAction('GUEST_DATA_DISCARDED');
     setShowGuestMergeModal(false);
     setGuestPlansToMerge([]);
     setGuestHistoryToMerge([]);
-  }, []);
+  }, [logAction]);
 
   const handleMergeGuestData = useCallback(async (options: GuestMergeOptions) => {
+    logAction('GUEST_DATA_MERGE_ATTEMPT', options);
     const { mergePlans, plansToMerge, mergeHistory } = options;
 
     if (!user) {
@@ -248,6 +264,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         }
 
         await batch.commit();
+        logAction('GUEST_DATA_MERGE_SUCCESS');
         
         if (mergePlans && plansToUpload.length > 0) {
             saveLocalPlans([...plans, ...plansToUpload]);
@@ -257,6 +274,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         }
         
     } catch (error) {
+        logAction('ERROR_GUEST_DATA_MERGE', { message: (error as Error).message });
         console.error("Failed to merge guest data:", error);
         setShowGuestMergeModal(true); 
     } finally {
@@ -264,11 +282,15 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         setGuestHistoryToMerge([]);
         setIsSyncing(false);
     }
-  }, [user, plans, guestHistoryToMerge, workoutHistory, handleDiscardGuestData]);
+  }, [user, plans, guestHistoryToMerge, workoutHistory, handleDiscardGuestData, logAction]);
 
   const savePlan = useCallback(async (planToSave: WorkoutPlan) => {
+      logAction('PLAN_SAVE_ATTEMPT', { planId: planToSave.id, planName: planToSave.name });
       const migratedPlan = migratePlanToV2(planToSave);
-      if (!migratedPlan) return;
+      if (!migratedPlan) {
+          logAction('ERROR_PLAN_SAVE_MIGRATION_FAILED', { planId: planToSave.id });
+          return;
+      }
 
       setPlans(prevPlans => {
           const isNewPlan = !prevPlans.some(p => p.id === migratedPlan.id);
@@ -295,14 +317,17 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
               const planRef = doc(db, 'users', user.uid, 'plans', migratedPlan.id);
               await setDoc(planRef, migratedPlan, { merge: true });
           } catch (error) {
+              logAction('ERROR_PLAN_SAVE_FIRESTORE', { planId: migratedPlan.id, message: (error as Error).message });
               console.error("Failed to save plan to Firestore:", error);
           }
       }
-  }, [user]);
+  }, [user, logAction]);
   
   const importPlan = useCallback((planToImport: WorkoutPlan, source: string = 'file') => {
+    logAction('PLAN_IMPORT_ATTEMPT', { planName: planToImport.name, source });
     const migratedPlan = migratePlanToV2(planToImport);
     if (!migratedPlan) {
+        logAction('ERROR_PLAN_IMPORT_MIGRATION_FAILED', { planName: planToImport.name });
         setImportNotification({ message: "Import failed", planName: "The plan data was invalid.", type: 'warning' });
         return;
     }
@@ -310,6 +335,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     const isDuplicate = plans.some(existingPlan => arePlansDeeplyEqual(migratedPlan, existingPlan));
 
     if (isDuplicate) {
+        logAction('PLAN_IMPORT_DUPLICATE', { planName: migratedPlan.name });
         setImportNotification({
             message: 'האימון כבר קיים',
             planName: `"${migratedPlan.name}" לא יובא שוב.`,
@@ -348,12 +374,13 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     setRecentlyImportedPlanId(newPlanId);
     setTimeout(() => setRecentlyImportedPlanId(null), 2500);
-  }, [savePlan, plans]);
+  }, [savePlan, plans, logAction]);
 
   useEffect(() => {
     const handleImportFromUrl = () => {
         const hash = window.location.hash;
         if (hash.startsWith('#import=')) {
+            logAction('URL_IMPORT_DETECTED');
             try {
                 const base64Data = hash.substring(8);
                 const binaryString = atob(base64Data);
@@ -371,6 +398,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
                     throw new Error("Invalid plan structure in URL.");
                 }
             } catch (e) {
+                logAction('ERROR_URL_IMPORT', { message: (e as Error).message });
                 console.error("Failed to import from URL", e);
                 alert("Could not import workout plan from the link. The link may be invalid or corrupted.");
             } finally {
@@ -379,10 +407,11 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         }
     };
     handleImportFromUrl();
-  }, [importPlan]);
+  }, [importPlan, logAction]);
 
 
   const deletePlan = useCallback(async (planId: string) => {
+    logAction('PLAN_DELETE_ATTEMPT', { planId });
     const originalPlans = plans;
     const newPlans = plans.filter(p => p.id !== planId);
     setPlans(newPlans);
@@ -396,6 +425,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         const planRef = doc(db, 'users', user.uid, 'plans', planId);
         await deleteDoc(planRef);
       } catch (error) {
+        logAction('ERROR_PLAN_DELETE_FIRESTORE', { planId, message: (error as Error).message });
         console.error("Failed to delete plan from Firestore:", error);
         setPlans(originalPlans);
         if (authStatusRef.current === 'unauthenticated') {
@@ -403,9 +433,10 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         }
       }
     }
-  }, [user, plans]);
+  }, [user, plans, logAction]);
 
   const reorderPlans = useCallback(async (reorderedPlans: WorkoutPlan[]) => {
+      logAction('PLANS_REORDERED', { count: reorderedPlans.length });
       const plansWithOrder = reorderedPlans.map((p, i) => ({ ...p, order: i }));
       setPlans(plansWithOrder);
 
@@ -422,10 +453,11 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
             });
             await batch.commit();
         } catch (error) {
+            logAction('ERROR_PLANS_REORDER_FIRESTORE', { message: (error as Error).message });
             console.error("Failed to reorder plans in Firestore:", error);
         }
       }
-  }, [user]);
+  }, [user, logAction]);
   
   const logWorkoutCompletion = useCallback((
     planName: string, 
@@ -444,10 +476,14 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         planIds: planIds,
         performedSteps: performedSteps,
     };
+    logAction('WORKOUT_LOGGED', { planName, duration: newEntry.durationSeconds, performedStepCount: performedSteps.length });
 
     if (user) {
         const historyRef = doc(db, 'users', user.uid, 'history', newEntry.id);
-        setDoc(historyRef, newEntry).catch(e => console.error("Failed to save workout log to Firestore:", e));
+        setDoc(historyRef, newEntry).catch(e => {
+            logAction('ERROR_LOG_SAVE_FIRESTORE', { message: (e as Error).message });
+            console.error("Failed to save workout log to Firestore:", e)
+        });
     } else {
         setWorkoutHistory(prev => {
             const newHistory = [newEntry, ...prev];
@@ -455,10 +491,39 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
             return newHistory;
         });
     }
-  }, [user]);
+  }, [user, logAction]);
   
+  const logManualSession = useCallback((name: string, durationMs: number, performedSteps: PerformedStep[]) => {
+    const now = new Date();
+    const newEntry: WorkoutLogEntry = {
+        id: now.toISOString(),
+        date: now.toISOString(),
+        planName: name,
+        durationSeconds: Math.round(durationMs / 1000),
+        steps: performedSteps.map(p => p.step), // Extract original steps from performed steps
+        planIds: ['manual_session'], // Special ID for manual sessions
+        performedSteps: performedSteps,
+    };
+    logAction('MANUAL_WORKOUT_LOGGED', { planName: name, duration: newEntry.durationSeconds, performedStepCount: performedSteps.length });
+
+    if (user) {
+        const historyRef = doc(db, 'users', user.uid, 'history', newEntry.id);
+        setDoc(historyRef, newEntry).catch(e => {
+            logAction('ERROR_LOG_SAVE_FIRESTORE', { message: (e as Error).message });
+            console.error("Failed to save manual workout log to Firestore:", e)
+        });
+    } else {
+        setWorkoutHistory(prev => {
+            const newHistory = [newEntry, ...prev];
+            saveLocalHistory(newHistory);
+            return newHistory;
+        });
+    }
+  }, [user, logAction]);
+
   const clearWorkoutHistory = useCallback(() => {
     if (window.confirm("Are you sure you want to delete your entire workout history? This action cannot be undone.")) {
+        logAction('HISTORY_CLEAR_ATTEMPT');
         const performClear = async () => {
             if (user) {
                 setIsSyncing(true);
@@ -470,7 +535,9 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
                     const batch = writeBatch(db);
                     snapshot.forEach(doc => batch.delete(doc.ref));
                     await batch.commit();
+                    logAction('HISTORY_CLEAR_SUCCESS_FIRESTORE');
                 } catch (error) {
+                    logAction('ERROR_HISTORY_CLEAR_FIRESTORE', { message: (error as Error).message });
                     console.error("Failed to clear Firestore history:", error);
                 } finally {
                     setIsSyncing(false);
@@ -478,24 +545,28 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
             } else {
                 setWorkoutHistory([]);
                 saveLocalHistory([]);
+                logAction('HISTORY_CLEAR_SUCCESS_LOCAL');
             }
         };
         performClear();
     }
-  }, [user]);
+  }, [user, logAction]);
 
   const startWorkout = useCallback((planIds: string[]) => {
+    logAction('WORKOUT_PREPARE', { planIds });
     if (planIds.length === 0) return;
     setPlansToStart(planIds);
-  }, []);
+  }, [logAction]);
   
   const clearPreparingWorkout = useCallback(() => {
+    logAction('WORKOUT_PREPARE_CLEARED');
     setPlansToStart([]);
-  }, []);
+  }, [logAction]);
   
   const commitStartWorkout = useCallback(() => {
     if (plansToStart.length === 0) return;
     
+    logAction('WORKOUT_START_COMMIT', { plansToStart });
     const plansToRun = plansToStart.map(id => plans.find(p => p.id === id)).filter(Boolean) as WorkoutPlan[];
     if (plansToRun.length === 0) {
         setPlansToStart([]);
@@ -544,20 +615,25 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
       version: 2,
     };
     
-    setActiveWorkout({ 
+    const newActiveWorkout: ActiveWorkout = { 
       plan: metaPlan, 
       currentStepIndex: 0, 
       sourcePlanIds: plansToStart, 
       stepRestartKey: 0,
       sessionLog: [],
       stepStartTime: Date.now(),
-    });
+    };
+    
+    setActiveWorkout(newActiveWorkout);
+    logAction('WORKOUT_STARTED', { planName: newActiveWorkout.plan.name, stepCount: newActiveWorkout.plan.steps.length });
+
     setIsWorkoutPaused(false);
     setIsCountdownPaused(false);
     setPlansToStart([]);
-  }, [plans, plansToStart, settings]);
+  }, [plans, plansToStart, settings, logAction]);
 
   const stopWorkout = useCallback(({ completed, durationMs, finishedWorkout }: { completed: boolean; durationMs: number; finishedWorkout: ActiveWorkout }) => {
+    logAction('WORKOUT_STOPPED', { completed, durationMs, planName: finishedWorkout.plan.name });
     if (completed) {
         const finalSessionLog = [...finishedWorkout.sessionLog];
         const lastStep = finishedWorkout.plan.steps[finishedWorkout.currentStepIndex];
@@ -577,12 +653,20 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     setActiveWorkout(null);
     setIsWorkoutPaused(false);
     setIsCountdownPaused(false);
-  }, [logWorkoutCompletion]);
+  }, [logWorkoutCompletion, logAction]);
 
-  const pauseWorkout = useCallback(() => setIsWorkoutPaused(true), []);
-  const resumeWorkout = useCallback(() => setIsWorkoutPaused(false), []);
+  const pauseWorkout = useCallback(() => {
+      logAction('WORKOUT_PAUSED_GLOBAL');
+      setIsWorkoutPaused(true);
+  }, [logAction]);
+
+  const resumeWorkout = useCallback(() => {
+      logAction('WORKOUT_RESUMED_GLOBAL');
+      setIsWorkoutPaused(false);
+  }, [logAction]);
   
   const restartWorkout = useCallback(() => {
+    logAction('WORKOUT_RESTARTED');
     setActiveWorkout(prev => prev ? { 
         ...prev, 
         currentStepIndex: 0, 
@@ -592,11 +676,12 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     } : null);
     setIsWorkoutPaused(false);
     setIsCountdownPaused(false);
-  }, []);
+  }, [logAction]);
 
   const nextStep = useCallback((timestamp: number, status: StepStatus) => {
     setActiveWorkout(prev => {
       if (!prev) return null;
+      logAction('WORKOUT_NEXT_STEP', { currentIndex: prev.currentStepIndex, nextIndex: prev.currentStepIndex + 1, status });
 
       const currentStep = prev.plan.steps[prev.currentStepIndex];
       const durationMs = timestamp - prev.stepStartTime;
@@ -620,11 +705,12 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
       };
     });
     setIsCountdownPaused(false);
-  }, []);
+  }, [logAction]);
   
   const previousStep = useCallback((timestamp: number) => {
     setActiveWorkout(prev => {
       if (!prev || prev.currentStepIndex === 0) return prev;
+      logAction('WORKOUT_PREVIOUS_STEP', { currentIndex: prev.currentStepIndex, prevIndex: prev.currentStepIndex - 1 });
       
       const newSessionLog = prev.sessionLog.slice(0, -1);
       const lastPerformedStepDuration = newSessionLog.length > 0 ? newSessionLog[newSessionLog.length - 1].durationMs : 0;
@@ -637,19 +723,27 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
       };
     });
     setIsCountdownPaused(false);
-  }, []);
+  }, [logAction]);
 
-  const pauseStepCountdown = useCallback(() => setIsCountdownPaused(true), []);
-  const resumeStepCountdown = useCallback(() => setIsCountdownPaused(false), []);
+  const pauseStepCountdown = useCallback(() => {
+      logAction('WORKOUT_PAUSED_STEP_COUNTDOWN');
+      setIsCountdownPaused(true);
+  }, [logAction]);
+
+  const resumeStepCountdown = useCallback(() => {
+      logAction('WORKOUT_RESUMED_STEP_COUNTDOWN');
+      setIsCountdownPaused(false);
+  }, [logAction]);
   
   const restartCurrentStep = useCallback(() => {
+    logAction('WORKOUT_RESTARTED_STEP');
     setActiveWorkout(prev => prev ? { 
         ...prev, 
         stepRestartKey: (prev.stepRestartKey || 0) + 1,
         stepStartTime: Date.now(),
     } : null);
     setIsCountdownPaused(false);
-  }, []);
+  }, [logAction]);
 
   const currentStep = activeWorkout ? activeWorkout.plan.steps[activeWorkout.currentStepIndex] : null;
 
@@ -699,6 +793,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     restartCurrentStep,
     clearWorkoutHistory,
     forceSync,
+    logManualSession,
   };
 
   return <WorkoutContext.Provider value={value}>{children}</WorkoutContext.Provider>;
