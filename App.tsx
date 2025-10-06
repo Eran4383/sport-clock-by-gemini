@@ -1,7 +1,6 @@
 
 
 
-
 import React, { useMemo, useEffect, useRef, useState, useCallback } from 'react';
 import { CountdownDisplay } from './components/CountdownDisplay';
 import { CountdownControls } from './components/CountdownControls';
@@ -605,7 +604,7 @@ const AppContent: React.FC = () => {
       {showGuestMergeModal && (
         <GuestDataMergeModal 
           guestPlans={guestPlansToMerge}
-          guestHistory={guestHistoryToMerge}
+          guestHistoryCount={guestHistoryToMerge.length}
           onMerge={handleMergeGuestData} 
           onDiscard={handleDiscardGuestData} 
         />
