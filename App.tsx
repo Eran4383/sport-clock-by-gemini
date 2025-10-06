@@ -1,3 +1,7 @@
+
+
+
+
 import React, { useMemo, useEffect, useRef, useState, useCallback } from 'react';
 import { CountdownDisplay } from './components/CountdownDisplay';
 import { CountdownControls } from './components/CountdownControls';
@@ -50,10 +54,7 @@ const AppContent: React.FC = () => {
     guestHistoryToMerge,
     handleMergeGuestData,
     handleDiscardGuestData,
-    saveManualSession,
-    isManualSessionActive,
-    startManualSession,
-    cancelManualSession,
+    logManualSession,
   } = workoutContext;
   
   const stopwatch = useStopwatch();
@@ -145,7 +146,7 @@ const AppContent: React.FC = () => {
 
   // Track manual session cycles
   useEffect(() => {
-    if (!isWorkoutActive && isManualSessionActive && countdown.cycleCount > prevCycleCount.current) {
+    if (!isWorkoutActive && countdown.cycleCount > prevCycleCount.current) {
         const cyclesCompleted = countdown.cycleCount - prevCycleCount.current;
         const newPerformedSteps: PerformedStep[] = [];
 
@@ -184,7 +185,7 @@ const AppContent: React.FC = () => {
         setManualSessionLog(currentLog => [...currentLog, ...newPerformedSteps]);
     }
     prevCycleCount.current = countdown.cycleCount;
-  }, [countdown.cycleCount, isWorkoutActive, isManualSessionActive, settings.countdownDuration, settings.countdownRestDuration]);
+  }, [countdown.cycleCount, isWorkoutActive, settings.countdownDuration, settings.countdownRestDuration]);
 
   // Sync prevCycleCount on reset
   useEffect(() => {
@@ -568,7 +569,6 @@ const AppContent: React.FC = () => {
     stopwatch.reset();
     countdown.resetCycleCount(); // Reset cycles with main timer
     setManualSessionLog([]); // Clear manual session
-    cancelManualSession();
   };
   
   const resetCountdownAndReset = () => {
@@ -576,22 +576,13 @@ const AppContent: React.FC = () => {
     isWorkoutActive ? restartCurrentStep() : countdown.reset();
   };
 
-  const handleSaveManualSession = (name: string) => {
-    saveManualSession(name, stopwatch.time, manualSessionLog);
+  const handleLogManualSession = (name: string) => {
+    logManualSession(name, stopwatch.time, manualSessionLog);
     // Reset everything after logging
     stopwatch.reset();
     countdown.resetCycleCount();
     setManualSessionLog([]);
     setIsLoggingModalOpen(false);
-  };
-
-  const handleStartManualSession = () => {
-    startManualSession();
-    stopwatch.reset();
-    countdown.resetCycleCount();
-    setManualSessionLog([]);
-    stopwatch.start();
-    countdown.start();
   };
 
   const isWarmupStep = isWorkoutActive && currentStep.isWarmup;
@@ -629,7 +620,7 @@ const AppContent: React.FC = () => {
       )}
       {isLoggingModalOpen && (
         <LogSessionModal
-            onSave={handleSaveManualSession}
+            onSave={handleLogManualSession}
             onClose={() => setIsLoggingModalOpen(false)}
         />
       )}
@@ -637,10 +628,8 @@ const AppContent: React.FC = () => {
       <WorkoutMenu 
         isOpen={isWorkoutOpen} 
         setIsOpen={setIsWorkoutOpen} 
-        isManualSessionActive={isManualSessionActive}
-        onStartManualSession={handleStartManualSession}
-        onSaveManualSession={() => setIsLoggingModalOpen(true)}
-        canSaveManualSession={manualSessionLog.length > 0}
+        showLogSessionButton={!isWorkoutActive && manualSessionLog.length > 0}
+        onLogSession={() => setIsLoggingModalOpen(true)}
       />
       <main onDoubleClick={toggleFullScreen} className="flex-grow flex flex-col items-center justify-center w-full max-w-4xl mx-auto min-h-0">
         {/* TOP TITLE CONTAINER - reserves space to prevent layout shift */}

@@ -13,10 +13,12 @@ interface State {
 }
 
 class ErrorBoundaryInternal extends React.Component<Props, State> {
-  // FIX: Replaced constructor with a public class field for state initialization.
-  // This is a more modern syntax and resolves the type-checking errors where `this.state` and `this.props`
-  // were not being found on the component instance.
-  public state: State = { hasError: false };
+  // FIX: Added a constructor to correctly initialize component state.
+  // This resolves errors where `this.state` and `this.props` were not accessible.
+  constructor(props: Props) {
+    super(props);
+    this.state = { hasError: false };
+  }
 
   public static getDerivedStateFromError(_: Error): State {
     return { hasError: true };
@@ -59,8 +61,6 @@ class ErrorBoundaryInternal extends React.Component<Props, State> {
 // Wrapper component to inject the logger context function into the class component
 export const ErrorBoundary: React.FC<{children: ReactNode}> = ({ children }) => {
     const { logError } = useLogger();
-    // FIX: Passing children to ErrorBoundaryInternal. The original error suggesting `children` was
-    // missing was likely a side effect of the type errors in the class component itself.
-    // This ensures the props are passed correctly.
+    // FIX: Passed the `children` prop down to `ErrorBoundaryInternal` to satisfy its required props.
     return <ErrorBoundaryInternal logError={logError}>{children}</ErrorBoundaryInternal>;
 };
