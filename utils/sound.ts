@@ -55,13 +55,6 @@ const playTone = (frequency: number, duration: number, volume: number, type: Osc
 };
 
 /**
- * A short, clear tone to indicate the start of a countdown.
- */
-export const playStartSound = (volume: number) => {
-    playTone(659.25, 100, volume, 'sine'); // E5 note
-};
-
-/**
  * A short, higher-pitched beep for general notifications like halfway point or restart.
  */
 export const playNotificationSound = (volume: number) => {
@@ -69,24 +62,8 @@ export const playNotificationSound = (volume: number) => {
 };
 
 /**
- * A very short, high-pitched tick for countdowns.
- */
-export const playTickSound = (volume: number) => {
-    playTone(1200, 80, volume, 'sine');
-};
-
-/**
- * A distinct, two-tone sound for final events like countdown end.
+ * A slightly longer, lower-pitched beep for final events like countdown end.
  */
 export const playEndSound = (volume: number) => {
-    const context = getAudioContext();
-    if (!context) return;
-    
-    // Play the first tone
-    playTone(523.25, 150, volume, 'sine'); // C5 note
-    
-    // Play the second, lower tone shortly after
-    setTimeout(() => {
-        playTone(392.00, 150, volume, 'sine'); // G4 note
-    }, 160);
+    playTone(523.25, 200, volume, 'sine'); // C5 note
 };

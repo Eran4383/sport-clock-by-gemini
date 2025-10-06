@@ -31,7 +31,7 @@ const Button: React.FC<{ onMouseDown: () => void; className?: string; children: 
 
 export const Controls: React.FC<ControlsProps> = ({ 
   isRunning, start, stop, reset, cycleCount, resetCycleCount, showTimer, showStopwatchControls,
-  isWorkoutActive, nextStep, previousStep, workoutStepInfo
+  isWorkoutActive, nextStep, previousStep, workoutStepInfo 
 }) => {
   const buttonColor = 'bg-gray-500/30 hover:bg-gray-500/40 text-white';
 
@@ -72,7 +72,7 @@ export const Controls: React.FC<ControlsProps> = ({
   const StopwatchControls = () => {
     if (showTimer && showStopwatchControls) {
       return (
-        <div className="flex justify-center items-center gap-4">
+        <>
           <Button 
             onMouseDown={reset} 
             ariaLabel={'Reset Timer'}
@@ -81,17 +81,15 @@ export const Controls: React.FC<ControlsProps> = ({
           >
             Reset
           </Button>
-
           <CycleDisplay />
-
           <Button 
             onMouseDown={isRunning ? stop : start} 
             ariaLabel={isRunning ? 'Pause Timer' : 'Start Timer'}
             className={buttonColor}
           >
             {isRunning ? 'Pause' : 'Start'}
-          </button>
-        </div>
+          </Button>
+        </>
       );
     }
     // If controls are hidden but we need the cycle counter

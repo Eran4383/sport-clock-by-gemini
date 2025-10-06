@@ -1,8 +1,9 @@
 
+
+
 import { useState, useEffect, useCallback } from 'react';
 import { WorkoutStep } from '../types';
 import { getLocalSettings, saveLocalSettings } from '../services/storageService';
-import { useLogger } from '../contexts/LoggingContext';
 
 export interface Settings {
   showTimer: boolean;
@@ -64,7 +65,7 @@ const defaultSettings: Settings = {
   restBackgroundColor: '#FFFFFF',
   showRestTitleOnDefaultCountdown: true,
   preWorkoutCountdownDuration: 10,
-  settingsCategoryOrder: ['sounds', 'countdown', 'stopwatch', 'workoutDisplay', 'displaySizes', 'displayColors', 'developer'],
+  settingsCategoryOrder: ['sounds', 'countdown', 'stopwatch', 'workoutDisplay', 'displaySizes', 'displayColors'],
   isWarmupEnabled: false,
   warmupSteps: [],
   restAfterWarmupDuration: 15,
@@ -72,25 +73,19 @@ const defaultSettings: Settings = {
 
 const getInitialSettings = (): Settings => {
   const localSettings = getLocalSettings();
-  // Ensure the developer category is present for existing users
-  if (localSettings && !localSettings.settingsCategoryOrder?.includes('developer')) {
-    localSettings.settingsCategoryOrder = [...(localSettings.settingsCategoryOrder || defaultSettings.settingsCategoryOrder), 'developer'];
-  }
   return localSettings ? { ...defaultSettings, ...localSettings } : defaultSettings;
 };
 
 export const useSettings = () => {
   const [settings, setSettings] = useState<Settings>(getInitialSettings);
-  const { logAction } = useLogger();
 
   useEffect(() => {
     saveLocalSettings(settings);
   }, [settings]);
 
   const updateSettings = useCallback((newSettings: Partial<Settings>) => {
-    logAction('SETTINGS_UPDATED', newSettings);
     setSettings(prevSettings => ({ ...prevSettings, ...newSettings }));
-  }, [logAction]);
+  }, []);
 
   return { settings, updateSettings };
 };

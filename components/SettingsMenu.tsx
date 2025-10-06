@@ -1,11 +1,6 @@
-
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useSettings } from '../contexts/SettingsContext';
 import { playNotificationSound } from '../utils/sound';
-import { useLogger } from '../contexts/LoggingContext';
-import { useAuth } from '../contexts/AuthContext';
-import { useWorkout } from '../contexts/WorkoutContext';
 
 const Toggle: React.FC<{
   id: string;
@@ -59,10 +54,6 @@ const RangeSlider: React.FC<{
 
 export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean) => void; }> = ({ isOpen, setIsOpen }) => {
   const { settings, updateSettings } = useSettings();
-  const { getDebugReportAsString } = useLogger();
-  const { user } = useAuth();
-  const workoutContext = useWorkout();
-
   const [isPinned, setIsPinned] = useState(false);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const durationInputRef = useRef<HTMLInputElement>(null);
@@ -72,7 +63,6 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
   const [localCountdownDurationStr, setLocalCountdownDurationStr] = useState(settings.countdownDuration.toString());
   const [localRestDurationStr, setLocalRestDurationStr] = useState(settings.countdownRestDuration.toString());
   const [localPreWorkoutCountdownStr, setLocalPreWorkoutCountdownStr] = useState(settings.preWorkoutCountdownDuration.toString());
-  const [copyStatus, setCopyStatus] = useState('Copy Debug Info');
 
 
   useEffect(() => {
@@ -234,18 +224,6 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
     if (settings.allSoundsEnabled && !settings.isMuted && !settings.stealthModeEnabled) {
       playNotificationSound(settings.volume);
     }
-  };
-
-  const handleCopyDebugInfo = () => {
-    const reportString = getDebugReportAsString({ settings, user, workoutContext });
-    navigator.clipboard.writeText(reportString).then(() => {
-        setCopyStatus('Copied!');
-        setTimeout(() => setCopyStatus('Copy Debug Info'), 2000);
-    }).catch(err => {
-        console.error('Failed to copy debug info:', err);
-        setCopyStatus('Copy Failed!');
-        setTimeout(() => setCopyStatus('Copy Debug Info'), 2000);
-    });
   };
 
   // --- Drag and drop state and logic ---
@@ -446,20 +424,6 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
             <label htmlFor="restBackgroundColor" className="text-white">Rest Background</label>
             <input type="color" id="restBackgroundColor" value={settings.restBackgroundColor} onChange={(e) => updateSettings({ restBackgroundColor: e.target.value })} className="w-10 h-10 p-0 bg-transparent border-none rounded-md cursor-pointer" title="Set background color for rest periods" />
           </div>
-        </div>
-      )
-    },
-    developer: {
-      title: "Developer",
-      content: (
-        <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
-          <p className="text-sm text-gray-400">If you encounter a bug, copy this information and send it to the developer for assistance.</p>
-          <button
-            onClick={handleCopyDebugInfo}
-            className="w-full text-center py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors"
-          >
-            {copyStatus}
-          </button>
         </div>
       )
     }

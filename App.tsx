@@ -1,7 +1,3 @@
-
-
-
-
 import React, { useMemo, useEffect, useRef, useState, useCallback } from 'react';
 import { CountdownDisplay } from './components/CountdownDisplay';
 import { CountdownControls } from './components/CountdownControls';
@@ -12,7 +8,6 @@ import { WorkoutMenu } from './components/WorkoutMenu';
 import { RepDisplay } from './components/RepDisplay';
 import { PreWorkoutCountdown } from './components/PreWorkoutCountdown';
 import { GuestDataMergeModal } from './components/GuestDataMergeModal';
-import { LogSessionModal } from './components/LogSessionModal';
 import { useStopwatch } from './hooks/useStopwatch';
 import { useCountdown } from './hooks/useCountdown';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
@@ -20,22 +15,17 @@ import { WorkoutProvider, useWorkout, ActiveWorkout } from './contexts/WorkoutCo
 import { playNotificationSound, resumeAudioContext } from './utils/sound';
 import { getStepDisplayName } from './utils/workout';
 import { ImportNotification } from './components/ImportNotification';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { StepStatus, PerformedStep, WorkoutStep } from './types';
-import { LoggingProvider, useLogger } from './contexts/LoggingContext';
-import { ErrorBoundary } from './components/ErrorBoundary';
-import { CrashNotification } from './components/CrashNotification';
-
-const CRASH_FLAG_KEY = 'app_crash_detected';
+import { AuthProvider } from './contexts/AuthContext';
+import { StepStatus } from './types';
 
 const AppContent: React.FC = () => {
   const { settings, updateSettings } = useSettings();
-  const { user } = useAuth();
-  const workoutContext = useWorkout();
   const { 
     activeWorkout, 
     currentStep, 
+    nextStep,
     nextUpcomingStep,
+    previousStep,
     stopWorkout: contextStopWorkout,
     isWorkoutPaused,
     pauseWorkout,
@@ -54,8 +44,7 @@ const AppContent: React.FC = () => {
     guestHistoryToMerge,
     handleMergeGuestData,
     handleDiscardGuestData,
-    logManualSession,
-  } = workoutContext;
+  } = useWorkout();
   
   const stopwatch = useStopwatch();
   const wasWorkoutActive = useRef(false);
@@ -64,45 +53,10 @@ const AppContent: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isWorkoutOpen, setIsWorkoutOpen] = useState(false);
   const [preWorkoutTimeLeft, setPreWorkoutTimeLeft] = useState<number | null>(null);
-  const { logAction, getDebugReportAsString } = useLogger();
-  const [showCrashNotification, setShowCrashNotification] = useState(false);
-  
-  const [manualSessionLog, setManualSessionLog] = useState<PerformedStep[]>([]);
-  const [isLoggingModalOpen, setIsLoggingModalOpen] = useState(false);
-  const prevCycleCount = useRef(0);
-
-  // Check for crash flag on initial app load
-  useEffect(() => {
-    try {
-        if (localStorage.getItem(CRASH_FLAG_KEY) === 'true') {
-            setShowCrashNotification(true);
-        }
-    } catch (e) {
-        console.error("Could not read crash flag from localStorage:", e);
-    }
-  }, []);
-
-  const handleCopyCrashReport = useCallback(() => {
-    const report = getDebugReportAsString({ settings, user, workoutContext });
-    navigator.clipboard.writeText(report).then(() => {
-        // You could add a "copied!" message to the notification if desired
-    }).catch(err => {
-        console.error("Failed to copy crash report:", err);
-    });
-    // Dismiss after attempting to copy
-    setShowCrashNotification(false);
-    localStorage.removeItem(CRASH_FLAG_KEY);
-  }, [getDebugReportAsString, settings, user, workoutContext]);
-
-  const handleDismissCrashReport = useCallback(() => {
-    setShowCrashNotification(false);
-    localStorage.removeItem(CRASH_FLAG_KEY);
-  }, []);
 
   // Resume AudioContext on the first user interaction to comply with browser policies.
   useEffect(() => {
     const handleFirstInteraction = () => {
-      logAction('FIRST_USER_INTERACTION');
       resumeAudioContext();
       window.removeEventListener('click', handleFirstInteraction);
       window.removeEventListener('touchstart', handleFirstInteraction);
@@ -118,21 +72,21 @@ const AppContent: React.FC = () => {
       window.removeEventListener('touchstart', handleFirstInteraction);
       window.removeEventListener('keydown', handleFirstInteraction);
     };
-  }, [logAction]);
+  }, []);
 
   const nextStepWithTime = useCallback((status: StepStatus) => {
-      workoutContext.nextStep(Date.now(), status);
-  }, [workoutContext]);
+      // The stopwatch time is the most accurate measure of time spent in the workout
+      nextStep(Date.now(), status);
+  }, [nextStep]);
 
   const previousStepWithTime = useCallback(() => {
-    workoutContext.previousStep(Date.now());
-  }, [workoutContext]);
+    previousStep(Date.now());
+  }, [previousStep]);
 
 
   const isWorkoutActive = !!(activeWorkout && currentStep);
   const isRepStep = isWorkoutActive && currentStep.isRepBased;
   const countdownDuration = isWorkoutActive && !isRepStep ? currentStep.duration : (isWorkoutActive && isRepStep ? 0 : settings.countdownDuration);
-  const isRestStep = isWorkoutActive && currentStep.type === 'rest';
   
   const countdown = useCountdown(
     countdownDuration, 
@@ -140,59 +94,8 @@ const AppContent: React.FC = () => {
     settings,
     isWorkoutActive ? () => nextStepWithTime(StepStatus.Completed) : undefined,
     // Pass a unique key for each step and restart to ensure the countdown hook resets correctly
-    isWorkoutActive ? `${currentStep.id}-${activeWorkout.currentStepIndex}-${activeWorkout.stepRestartKey || 0}` : undefined,
-    isRestStep
+    isWorkoutActive ? `${currentStep.id}-${activeWorkout.currentStepIndex}-${activeWorkout.stepRestartKey || 0}` : undefined
   );
-
-  // Track manual session cycles
-  useEffect(() => {
-    if (!isWorkoutActive && countdown.cycleCount > prevCycleCount.current) {
-        const cyclesCompleted = countdown.cycleCount - prevCycleCount.current;
-        const newPerformedSteps: PerformedStep[] = [];
-
-        for(let i=0; i < cyclesCompleted; i++) {
-            const cycleNumber = prevCycleCount.current + i + 1;
-            const exerciseStep: WorkoutStep = {
-                id: `manual-exercise-${cycleNumber}`,
-                name: 'Interval',
-                type: 'exercise',
-                isRepBased: false,
-                duration: settings.countdownDuration,
-                reps: 0,
-            };
-            newPerformedSteps.push({
-                step: exerciseStep,
-                status: StepStatus.Completed,
-                durationMs: settings.countdownDuration * 1000,
-            });
-
-            if (settings.countdownRestDuration > 0) {
-                const restStep: WorkoutStep = {
-                    id: `manual-rest-${cycleNumber}`,
-                    name: 'Rest',
-                    type: 'rest',
-                    isRepBased: false,
-                    duration: settings.countdownRestDuration,
-                    reps: 0,
-                };
-                newPerformedSteps.push({
-                    step: restStep,
-                    status: StepStatus.Completed,
-                    durationMs: settings.countdownRestDuration * 1000,
-                });
-            }
-        }
-        setManualSessionLog(currentLog => [...currentLog, ...newPerformedSteps]);
-    }
-    prevCycleCount.current = countdown.cycleCount;
-  }, [countdown.cycleCount, isWorkoutActive, settings.countdownDuration, settings.countdownRestDuration]);
-
-  // Sync prevCycleCount on reset
-  useEffect(() => {
-      if (countdown.cycleCount === 0) {
-          prevCycleCount.current = 0;
-      }
-  }, [countdown.cycleCount]);
 
   const isPastHalfway = settings.showCountdown && countdown.isRunning && countdown.timeLeft <= countdownDuration / 2 && countdown.timeLeft > 0;
 
@@ -236,18 +139,16 @@ const AppContent: React.FC = () => {
 
 
   const toggleFullScreen = useCallback(() => {
-    logAction('TOGGLE_FULLSCREEN', { isFullscreen: !!document.fullscreenElement });
     if (!document.fullscreenElement) {
         document.documentElement.requestFullscreen().catch(err => {
             console.error(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
-            logAction('ERROR_FULLSCREEN_ENTER', { message: err.message, name: err.name });
         });
     } else {
         if (document.exitFullscreen) {
             document.exitFullscreen();
         }
     }
-  }, [logAction]);
+  }, []);
   
   const stopWorkoutAborted = () => {
     setWorkoutCompleted(false); // Aborting is not completing
@@ -299,13 +200,11 @@ const AppContent: React.FC = () => {
         
         // Swipe right from left edge to open Workout Menu
         if (diffX > 0 && touchStartX.current < edgeThreshold) {
-          logAction('SWIPE_OPEN_WORKOUT_MENU');
           setIsWorkoutOpen(true);
         }
         
         // Swipe left from right edge to open Settings Menu
         if (diffX < 0 && touchStartX.current > window.innerWidth - edgeThreshold) {
-          logAction('SWIPE_OPEN_SETTINGS_MENU');
           setIsSettingsOpen(true);
         }
       }
@@ -339,8 +238,6 @@ const AppContent: React.FC = () => {
 
       const key = event.key.toLowerCase();
       let newVolume: number;
-      
-      logAction('KEY_DOWN', { key: event.key, code: event.code });
 
       const toggleMute = () => {
         if (settings.isMuted) {
@@ -415,7 +312,7 @@ const AppContent: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [settings, updateSettings, stopwatch, countdown, isWorkoutActive, isWorkoutPaused, isRepStep, nextStepWithTime, resumeWorkout, pauseWorkout, contextStopWorkout, toggleFullScreen, workoutCompleted, isPreparingWorkout, logAction]);
+  }, [settings, updateSettings, stopwatch, countdown, isWorkoutActive, isWorkoutPaused, isRepStep, nextStepWithTime, resumeWorkout, pauseWorkout, contextStopWorkout, toggleFullScreen, workoutCompleted, isPreparingWorkout]);
 
   // Update document title with countdown
   useEffect(() => {
@@ -568,21 +465,11 @@ const AppContent: React.FC = () => {
     if (workoutCompleted) setWorkoutCompleted(false);
     stopwatch.reset();
     countdown.resetCycleCount(); // Reset cycles with main timer
-    setManualSessionLog([]); // Clear manual session
   };
   
   const resetCountdownAndReset = () => {
     if (workoutCompleted) setWorkoutCompleted(false);
     isWorkoutActive ? restartCurrentStep() : countdown.reset();
-  };
-
-  const handleLogManualSession = (name: string) => {
-    logManualSession(name, stopwatch.time, manualSessionLog);
-    // Reset everything after logging
-    stopwatch.reset();
-    countdown.resetCycleCount();
-    setManualSessionLog([]);
-    setIsLoggingModalOpen(false);
   };
 
   const isWarmupStep = isWorkoutActive && currentStep.isWarmup;
@@ -596,16 +483,10 @@ const AppContent: React.FC = () => {
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
     >
-      {showCrashNotification && (
-          <CrashNotification
-              onCopy={handleCopyCrashReport}
-              onDismiss={handleDismissCrashReport}
-          />
-      )}
       {showGuestMergeModal && (
         <GuestDataMergeModal 
           guestPlans={guestPlansToMerge}
-          guestHistory={guestHistoryToMerge}
+          guestHistoryCount={guestHistoryToMerge.length}
           onMerge={handleMergeGuestData} 
           onDiscard={handleDiscardGuestData} 
         />
@@ -618,19 +499,8 @@ const AppContent: React.FC = () => {
               type={importNotification.type}
           />
       )}
-      {isLoggingModalOpen && (
-        <LogSessionModal
-            onSave={handleLogManualSession}
-            onClose={() => setIsLoggingModalOpen(false)}
-        />
-      )}
       <SettingsMenu isOpen={isSettingsOpen} setIsOpen={setIsSettingsOpen} />
-      <WorkoutMenu 
-        isOpen={isWorkoutOpen} 
-        setIsOpen={setIsWorkoutOpen} 
-        showLogSessionButton={!isWorkoutActive && manualSessionLog.length > 0}
-        onLogSession={() => setIsLoggingModalOpen(true)}
-      />
+      <WorkoutMenu isOpen={isWorkoutOpen} setIsOpen={setIsWorkoutOpen} />
       <main onDoubleClick={toggleFullScreen} className="flex-grow flex flex-col items-center justify-center w-full max-w-4xl mx-auto min-h-0">
         {/* TOP TITLE CONTAINER - reserves space to prevent layout shift */}
         <div className="text-center mb-2 min-h-[3.5rem] flex items-end justify-center">
@@ -732,28 +602,15 @@ const AppContent: React.FC = () => {
   );
 };
 
-// New wrapper component to add a startup log
-const AppWithLogging: React.FC = () => {
-  const { logAction } = useLogger();
-  useEffect(() => {
-    logAction('APP_MOUNTED', { userAgent: navigator.userAgent });
-  }, [logAction]);
-
-  return <AppContent />;
-};
 
 const App: React.FC = () => {
   return (
     <AuthProvider>
-      <LoggingProvider>
-        <SettingsProvider>
-          <WorkoutProvider>
-            <ErrorBoundary>
-              <AppWithLogging />
-            </ErrorBoundary>
-          </WorkoutProvider>
-        </SettingsProvider>
-      </LoggingProvider>
+      <SettingsProvider>
+        <WorkoutProvider>
+          <AppContent />
+        </WorkoutProvider>
+      </SettingsProvider>
     </AuthProvider>
   );
 };
