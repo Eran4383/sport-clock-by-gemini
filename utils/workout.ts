@@ -55,6 +55,7 @@ export const migratePlanToV2 = (plan: any): WorkoutPlan | null => {
         return null;
     }
 
+    // If the plan is already on the correct version, no migration needed.
     if (plan.version === 2) {
         return plan as WorkoutPlan;
     }
@@ -64,13 +65,22 @@ export const migratePlanToV2 = (plan: any): WorkoutPlan | null => {
         if (!step || typeof step.name !== 'string') {
             return null; // Mark invalid steps to be filtered out.
         }
-        if (step.type === 'exercise') {
-            const { name, set } = parseStepName(step.name);
-            return { ...step, name, set };
-        }
-        // For rest steps, we also parse them to handle names like "Rest (סט 1/3)"
+        
+        // Parse the name to extract the base name and potential set info.
         const { name, set } = parseStepName(step.name);
-        return { ...step, name, set };
+        
+        // Create the new step, making sure to remove the old 'set' property
+        // in case it was invalid (e.g., null).
+        const newStep: Partial<WorkoutStep> = { ...step, name };
+        delete newStep.set;
+
+        // If 'set' was successfully parsed, add it to the new step object.
+        // If it wasn't parsed, the property will be absent, which is valid for Firestore.
+        if (set) {
+            (newStep as WorkoutStep).set = set;
+        }
+        
+        return newStep;
     }).filter(Boolean) as WorkoutStep[]; // Remove nulls from malformed steps.
 
     return { ...plan, steps: migratedSteps, version: 2 };

@@ -13,7 +13,7 @@ interface State {
 }
 
 class ErrorBoundaryInternal extends React.Component<Props, State> {
-  // FIX: Replaced invalid state initialization with a constructor to correctly initialize component state.
+  // FIX: Added a constructor to correctly initialize component state.
   // This resolves errors where `this.state` and `this.props` were not accessible.
   constructor(props: Props) {
     super(props);

@@ -845,7 +845,9 @@ const PlanList: React.FC<{
   isPinned: boolean;
   onTogglePin: () => void;
   onOpenAiPlanner: () => void;
-}> = ({ onSelectPlan, onCreateNew, onInitiateDelete, onShowLog, onInspectExercise, onShowInfo, isPinned, onTogglePin, onOpenAiPlanner }) => {
+  showLogSessionButton?: boolean;
+  onLogSession?: () => void;
+}> = ({ onSelectPlan, onCreateNew, onInitiateDelete, onShowLog, onInspectExercise, onShowInfo, isPinned, onTogglePin, onOpenAiPlanner, showLogSessionButton, onLogSession }) => {
   const { plans, reorderPlans, startWorkout, importPlan, activeWorkout, recentlyImportedPlanId, isSyncing, forceSync } = useWorkout();
   const { settings, updateSettings } = useSettings();
   const { user, authStatus, signIn, signOut } = useAuth();
@@ -1221,34 +1223,35 @@ const PlanList: React.FC<{
                   + New Workout
                 </button>
             </div>
-             <div className="bg-gray-700/50 rounded-lg p-3 mb-4">
-                <div className="flex items-center justify-between cursor-pointer" onClick={() => setIsWarmupSettingsExpanded(prev => !prev)}>
-                    <div className="flex items-center gap-2">
-                        <span className="font-semibold text-white">Warm-up Routine</span>
-                        <button onClick={(e) => { e.stopPropagation(); onSelectPlan('_warmup_'); }} className="p-1 rounded-full text-gray-400 hover:text-white hover:bg-gray-600">
-                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" /><path fillRule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clipRule="evenodd" /></svg>
-                        </button>
+            <div className="flex items-stretch gap-2 mb-4">
+                <div className="flex-1 bg-gray-700/50 rounded-lg">
+                    <div className="flex items-center justify-between p-2 cursor-pointer" onClick={() => setIsWarmupSettingsExpanded(prev => !prev)}>
+                        <div className="flex items-center gap-2">
+                            <span className="font-semibold text-white">Warm-up</span>
+                             <button onClick={(e) => { e.stopPropagation(); onSelectPlan('_warmup_'); }} className="p-1 rounded-full text-gray-400 hover:text-white hover:bg-gray-600" title="Edit Warm-up">
+                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" /><path fillRule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clipRule="evenodd" /></svg>
+                            </button>
+                        </div>
+                         <label htmlFor="warmup-toggle" className="relative inline-flex items-center cursor-pointer" onClick={(e) => e.stopPropagation()}>
+                            <input type="checkbox" id="warmup-toggle" className="sr-only peer" checked={settings.isWarmupEnabled} onChange={(e) => updateSettings({ isWarmupEnabled: e.target.checked })} />
+                            <div className="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
+                        </label>
                     </div>
-                    <label htmlFor="warmup-toggle" className="relative inline-flex items-center cursor-pointer" onClick={(e) => e.stopPropagation()}>
-                        <input type="checkbox" id="warmup-toggle" className="sr-only peer" checked={settings.isWarmupEnabled} onChange={(e) => updateSettings({ isWarmupEnabled: e.target.checked })} />
-                        <div className="w-11 h-6 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
-                    </label>
-                </div>
-                 {isWarmupSettingsExpanded && (
-                     <div className="mt-3 pt-3 border-t border-gray-600 animate-fadeIn" style={{ animationDuration: '0.3s'}}>
-                        {settings.isWarmupEnabled && (
-                            <>
-                                <label htmlFor="warmup-rest" className="text-sm text-gray-400">Rest after warm-up (seconds)</label>
-                                <HoverNumberInput
-                                    id="warmup-rest"
-                                    value={settings.restAfterWarmupDuration}
-                                    onChange={(val) => updateSettings({ restAfterWarmupDuration: val })}
-                                    min={0}
-                                    className="w-full mt-1 bg-gray-600 p-2 rounded-md text-center"
-                                />
-                            </>
-                        )}
-                         {settings.warmupSteps.length > 0 && (
+                    {isWarmupSettingsExpanded && (
+                         <div className="p-3 border-t border-gray-600/50 animate-fadeIn" style={{ animationDuration: '0.3s'}}>
+                            {settings.isWarmupEnabled && (
+                                <>
+                                    <label htmlFor="warmup-rest" className="text-sm text-gray-400">Rest after warm-up (seconds)</label>
+                                    <HoverNumberInput
+                                        id="warmup-rest"
+                                        value={settings.restAfterWarmupDuration}
+                                        onChange={(val) => updateSettings({ restAfterWarmupDuration: val })}
+                                        min={0}
+                                        className="w-full mt-1 bg-gray-600 p-2 rounded-md text-center"
+                                    />
+                                </>
+                            )}
+                          {settings.warmupSteps.length > 0 && (
                             <div className="mt-4">
                                 <h4 className="text-sm font-semibold text-gray-300 mb-2">Steps:</h4>
                                 <ol className="text-gray-300 space-y-1 text-sm">
@@ -1270,9 +1273,18 @@ const PlanList: React.FC<{
                                     ))}
                                 </ol>
                             </div>
-                        )}
-                     </div>
-                 )}
+                           )}
+                         </div>
+                    )}
+                </div>
+                {showLogSessionButton && (
+                    <button
+                        onClick={onLogSession}
+                        className="w-24 bg-green-600 text-white rounded-lg font-bold flex items-center justify-center p-2 hover:bg-green-700 transition-colors animate-glow"
+                    >
+                        Log Session
+                    </button>
+                )}
             </div>
           </>
       )}
@@ -2281,7 +2293,16 @@ const AiPlannerModal: React.FC<{
 };
 
 
-export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean) => void; }> = ({ isOpen, setIsOpen }) => {
+interface WorkoutMenuProps {
+  isOpen: boolean;
+  setIsOpen: (open: boolean) => void;
+  showLogSessionButton?: boolean;
+  onLogSession?: () => void;
+}
+
+export const WorkoutMenu: React.FC<WorkoutMenuProps> = ({ 
+    isOpen, setIsOpen, showLogSessionButton, onLogSession 
+}) => {
   const [isPinned, setIsPinned] = useState(false);
   const [editingPlan, setEditingPlan] = useState<WorkoutPlan | null | string>(null);
   const [view, setView] = useState<'list' | 'editor' | 'log'>('list');
@@ -2460,6 +2481,8 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
                     isPinned={isPinned}
                     onTogglePin={() => setIsPinned(!isPinned)}
                     onOpenAiPlanner={() => setIsAiPlannerOpen(true)}
+                    showLogSessionButton={showLogSessionButton}
+                    onLogSession={onLogSession}
                 />
             )}
             {view === 'editor' && (

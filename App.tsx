@@ -1,5 +1,7 @@
 
 
+
+
 import React, { useMemo, useEffect, useRef, useState, useCallback } from 'react';
 import { CountdownDisplay } from './components/CountdownDisplay';
 import { CountdownControls } from './components/CountdownControls';
@@ -603,7 +605,7 @@ const AppContent: React.FC = () => {
       {showGuestMergeModal && (
         <GuestDataMergeModal 
           guestPlans={guestPlansToMerge}
-          guestHistoryCount={guestHistoryToMerge.length}
+          guestHistory={guestHistoryToMerge}
           onMerge={handleMergeGuestData} 
           onDiscard={handleDiscardGuestData} 
         />
@@ -623,7 +625,12 @@ const AppContent: React.FC = () => {
         />
       )}
       <SettingsMenu isOpen={isSettingsOpen} setIsOpen={setIsSettingsOpen} />
-      <WorkoutMenu isOpen={isWorkoutOpen} setIsOpen={setIsWorkoutOpen} />
+      <WorkoutMenu 
+        isOpen={isWorkoutOpen} 
+        setIsOpen={setIsWorkoutOpen} 
+        showLogSessionButton={!isWorkoutActive && manualSessionLog.length > 0}
+        onLogSession={() => setIsLoggingModalOpen(true)}
+      />
       <main onDoubleClick={toggleFullScreen} className="flex-grow flex flex-col items-center justify-center w-full max-w-4xl mx-auto min-h-0">
         {/* TOP TITLE CONTAINER - reserves space to prevent layout shift */}
         <div className="text-center mb-2 min-h-[3.5rem] flex items-end justify-center">
@@ -718,8 +725,6 @@ const AppContent: React.FC = () => {
               nextStep={() => nextStepWithTime(StepStatus.Skipped)}
               previousStep={previousStepWithTime}
               workoutStepInfo={isWorkoutActive ? { current: activeWorkout.currentStepIndex + 1, total: activeWorkout.plan.steps.length } : undefined}
-              showLogSessionButton={!isWorkoutActive && manualSessionLog.length > 0}
-              onLogSession={() => setIsLoggingModalOpen(true)}
             />
         </footer>
       )}
