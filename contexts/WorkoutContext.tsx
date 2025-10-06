@@ -1,4 +1,5 @@
 
+
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useMemo, useRef } from 'react';
 import { WorkoutPlan, WorkoutStep, WorkoutLogEntry, StepStatus, PerformedStep } from '../types';
 import { prefetchExercises } from '../services/geminiService';
@@ -68,7 +69,10 @@ interface WorkoutContextType {
   restartCurrentStep: () => void;
   clearWorkoutHistory: () => void;
   forceSync: () => void;
-  logManualSession: (name: string, durationMs: number, performedSteps: PerformedStep[]) => void;
+  saveManualSession: (name: string, durationMs: number, performedSteps: PerformedStep[]) => void;
+  isManualSessionActive: boolean;
+  startManualSession: () => void;
+  cancelManualSession: () => void;
 }
 
 const WorkoutContext = createContext<WorkoutContextType | undefined>(undefined);
@@ -86,6 +90,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [plansToStart, setPlansToStart] = useState<string[]>([]);
   const [importNotification, setImportNotification] = useState<ImportNotificationData | null>(null);
   const [isSyncing, setIsSyncing] = useState(true);
+  const [isManualSessionActive, setIsManualSessionActive] = useState(false);
   
   const [showGuestMergeModal, setShowGuestMergeModal] = useState(false);
   const [guestPlansToMerge, setGuestPlansToMerge] = useState<WorkoutPlan[]>([]);
@@ -493,7 +498,17 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   }, [user, logAction]);
   
-  const logManualSession = useCallback((name: string, durationMs: number, performedSteps: PerformedStep[]) => {
+  const startManualSession = useCallback(() => {
+    logAction('MANUAL_SESSION_START');
+    setIsManualSessionActive(true);
+  }, [logAction]);
+
+  const cancelManualSession = useCallback(() => {
+    logAction('MANUAL_SESSION_CANCEL');
+    setIsManualSessionActive(false);
+  }, [logAction]);
+
+  const saveManualSession = useCallback((name: string, durationMs: number, performedSteps: PerformedStep[]) => {
     const now = new Date();
     const newEntry: WorkoutLogEntry = {
         id: now.toISOString(),
@@ -519,7 +534,8 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
             return newHistory;
         });
     }
-  }, [user, logAction]);
+    cancelManualSession();
+  }, [user, logAction, cancelManualSession]);
 
   const clearWorkoutHistory = useCallback(() => {
     if (window.confirm("Are you sure you want to delete your entire workout history? This action cannot be undone.")) {
@@ -793,7 +809,10 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     restartCurrentStep,
     clearWorkoutHistory,
     forceSync,
-    logManualSession,
+    saveManualSession,
+    isManualSessionActive,
+    startManualSession,
+    cancelManualSession,
   };
 
   return <WorkoutContext.Provider value={value}>{children}</WorkoutContext.Provider>;

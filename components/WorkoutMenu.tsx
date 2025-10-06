@@ -845,9 +845,11 @@ const PlanList: React.FC<{
   isPinned: boolean;
   onTogglePin: () => void;
   onOpenAiPlanner: () => void;
-  showLogSessionButton?: boolean;
-  onLogSession?: () => void;
-}> = ({ onSelectPlan, onCreateNew, onInitiateDelete, onShowLog, onInspectExercise, onShowInfo, isPinned, onTogglePin, onOpenAiPlanner, showLogSessionButton, onLogSession }) => {
+  isManualSessionActive: boolean;
+  onStartManualSession: () => void;
+  onSaveManualSession: () => void;
+  canSaveManualSession: boolean;
+}> = ({ onSelectPlan, onCreateNew, onInitiateDelete, onShowLog, onInspectExercise, onShowInfo, isPinned, onTogglePin, onOpenAiPlanner, isManualSessionActive, onStartManualSession, onSaveManualSession, canSaveManualSession }) => {
   const { plans, reorderPlans, startWorkout, importPlan, activeWorkout, recentlyImportedPlanId, isSyncing, forceSync } = useWorkout();
   const { settings, updateSettings } = useSettings();
   const { user, authStatus, signIn, signOut } = useAuth();
@@ -1223,6 +1225,26 @@ const PlanList: React.FC<{
                   + New Workout
                 </button>
             </div>
+             <div className="mb-4 p-3 bg-gray-900/40 rounded-lg text-center">
+              {!isManualSessionActive ? (
+                  <button 
+                    onClick={onStartManualSession} 
+                    className="w-full py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition-colors"
+                    title="התחל סשן אימון חופשי כדי לתעד את הפעילות שלך בהיסטוריה."
+                  >
+                    התחל תיעוד
+                  </button>
+              ) : (
+                  <>
+                      <p className="text-sm text-gray-400 mb-3" dir="rtl">
+                        הסשן שלך מתועד. השתמש בשעונים הראשיים. לחץ על 'שמור' בסיום.
+                      </p>
+                      <button onClick={onSaveManualSession} disabled={!canSaveManualSession} className="w-full py-2 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed animate-glow">
+                        שמור סשן
+                      </button>
+                  </>
+              )}
+          </div>
             <div className="flex items-stretch gap-2 mb-4">
                 <div className="flex-1 bg-gray-700/50 rounded-lg">
                     <div className="flex items-center justify-between p-2 cursor-pointer" onClick={() => setIsWarmupSettingsExpanded(prev => !prev)}>
@@ -1277,14 +1299,6 @@ const PlanList: React.FC<{
                          </div>
                     )}
                 </div>
-                {showLogSessionButton && (
-                    <button
-                        onClick={onLogSession}
-                        className="w-24 bg-green-600 text-white rounded-lg font-bold flex items-center justify-center p-2 hover:bg-green-700 transition-colors animate-glow"
-                    >
-                        Log Session
-                    </button>
-                )}
             </div>
           </>
       )}
@@ -2296,12 +2310,14 @@ const AiPlannerModal: React.FC<{
 interface WorkoutMenuProps {
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;
-  showLogSessionButton?: boolean;
-  onLogSession?: () => void;
+  isManualSessionActive: boolean;
+  onStartManualSession: () => void;
+  onSaveManualSession: () => void;
+  canSaveManualSession: boolean;
 }
 
 export const WorkoutMenu: React.FC<WorkoutMenuProps> = ({ 
-    isOpen, setIsOpen, showLogSessionButton, onLogSession 
+    isOpen, setIsOpen, isManualSessionActive, onStartManualSession, onSaveManualSession, canSaveManualSession 
 }) => {
   const [isPinned, setIsPinned] = useState(false);
   const [editingPlan, setEditingPlan] = useState<WorkoutPlan | null | string>(null);
@@ -2481,8 +2497,10 @@ export const WorkoutMenu: React.FC<WorkoutMenuProps> = ({
                     isPinned={isPinned}
                     onTogglePin={() => setIsPinned(!isPinned)}
                     onOpenAiPlanner={() => setIsAiPlannerOpen(true)}
-                    showLogSessionButton={showLogSessionButton}
-                    onLogSession={onLogSession}
+                    isManualSessionActive={isManualSessionActive}
+                    onStartManualSession={onStartManualSession}
+                    onSaveManualSession={onSaveManualSession}
+                    canSaveManualSession={canSaveManualSession}
                 />
             )}
             {view === 'editor' && (
