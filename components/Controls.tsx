@@ -90,7 +90,7 @@ export const Controls: React.FC<ControlsProps> = ({
             className={buttonColor}
           >
             {isRunning ? 'Pause' : 'Start'}
-          </button>
+          </Button>
         </div>
       );
     }
