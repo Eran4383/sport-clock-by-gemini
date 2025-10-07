@@ -718,7 +718,7 @@ const AppContent: React.FC = () => {
               nextStep={() => nextStepWithTime(StepStatus.Skipped)}
               previousStep={previousStepWithTime}
               workoutStepInfo={isWorkoutActive ? { current: activeWorkout.currentStepIndex + 1, total: activeWorkout.plan.steps.length } : undefined}
-              showLogSessionButton={!isWorkoutActive && manualSessionLog.length > 0}
+              showLogSessionButton={settings.showLogSessionButton && !isWorkoutActive && manualSessionLog.length > 0}
               onLogSession={() => setIsLoggingModalOpen(true)}
             />
         </footer>

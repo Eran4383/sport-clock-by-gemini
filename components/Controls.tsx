@@ -87,15 +87,16 @@ export const Controls: React.FC<ControlsProps> = ({
 
           <CycleDisplay />
 
-          {showLogButton && (
+          {showLogButton ? (
               <Button
                   onMouseDown={onLogSession}
                   ariaLabel="Log Session"
-                  className="w-28 bg-green-600/80 hover:bg-green-600/90 text-white"
+                  className={`w-16 px-4 ${buttonColor}`}
               >
                   Log
               </Button>
-          )}
+          ) : <div className="w-16"></div>}
+
 
           <Button 
             onMouseDown={isRunning ? stop : start} 

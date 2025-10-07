@@ -407,7 +407,8 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
         <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
           <Toggle id="showTimerToggle" label="Show Stopwatch" checked={settings.showTimer} onChange={(e) => updateSettings({ showTimer: e.target.checked })} />
           <Toggle id="showStopwatchControlsToggle" label="Show Controls" checked={settings.showStopwatchControls} onChange={(e) => updateSettings({ showStopwatchControls: e.target.checked })} />
-            <Toggle id="showCycleCounterToggle" label="Show Cycle Counter" checked={settings.showCycleCounter} onChange={(e) => updateSettings({ showCycleCounter: e.target.checked })} />
+          <Toggle id="showCycleCounterToggle" label="Show Cycle Counter" checked={settings.showCycleCounter} onChange={(e) => updateSettings({ showCycleCounter: e.target.checked })} />
+          <Toggle id="showLogSessionButtonToggle" label="Show Log Button" checked={settings.showLogSessionButton} onChange={(e) => updateSettings({ showLogSessionButton: e.target.checked })} />
         </div>
       )
     },

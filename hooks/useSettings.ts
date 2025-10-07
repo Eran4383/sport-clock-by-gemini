@@ -1,4 +1,5 @@
 
+
 import { useState, useEffect, useCallback } from 'react';
 import { WorkoutStep } from '../types';
 import { getLocalSettings, saveLocalSettings } from '../services/storageService';
@@ -35,6 +36,7 @@ export interface Settings {
   isWarmupEnabled: boolean;
   warmupSteps: WorkoutStep[];
   restAfterWarmupDuration: number;
+  showLogSessionButton: boolean;
 }
 
 const defaultSettings: Settings = {
@@ -68,6 +70,7 @@ const defaultSettings: Settings = {
   isWarmupEnabled: false,
   warmupSteps: [],
   restAfterWarmupDuration: 15,
+  showLogSessionButton: true,
 };
 
 const getInitialSettings = (): Settings => {
