@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { WorkoutPlan, WorkoutLogEntry } from '../types';
+import { WorkoutPlan } from '../types';
 import { GuestMergeOptions } from '../contexts/WorkoutContext';
 
 interface GuestDataMergeModalProps {
   guestPlans: WorkoutPlan[];
-  guestHistory: WorkoutLogEntry[];
+  guestHistoryCount: number;
   onMerge: (options: GuestMergeOptions) => void;
   onDiscard: () => void;
 }
@@ -46,20 +46,14 @@ const AccordionSection: React.FC<{
     </div>
 );
 
-const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-};
 
-export const GuestDataMergeModal: React.FC<GuestDataMergeModalProps> = ({ guestPlans, guestHistory, onMerge, onDiscard }) => {
-  const guestHistoryCount = guestHistory.length;
+export const GuestDataMergeModal: React.FC<GuestDataMergeModalProps> = ({ guestPlans, guestHistoryCount, onMerge, onDiscard }) => {
   const [mergePlansEnabled, setMergePlansEnabled] = useState(guestPlans.length > 0);
   const [mergeHistoryEnabled, setMergeHistoryEnabled] = useState(guestHistoryCount > 0);
   const [selectedPlanIds, setSelectedPlanIds] = useState<string[]>(() => guestPlans.map(p => p.id));
 
   const [isPlansExpanded, setIsPlansExpanded] = useState(guestPlans.length > 0);
-  const [isHistoryExpanded, setIsHistoryExpanded] = useState(guestPlans.length === 0 && guestHistoryCount > 0);
+  const [isHistoryExpanded, setIsHistoryExpanded] = useState(false);
 
   const handleTogglePlanSelection = (planId: string) => {
     setSelectedPlanIds(prev =>
@@ -135,16 +129,7 @@ export const GuestDataMergeModal: React.FC<GuestDataMergeModalProps> = ({ guestP
                 isMergingEnabled={mergeHistoryEnabled}
                 onToggleMerge={(e) => setMergeHistoryEnabled(e.target.checked)}
             >
-                <div className="max-h-48 overflow-y-auto space-y-2 pr-1">
-                    {guestHistory.map(entry => (
-                        <div key={entry.id} className="text-sm p-2 bg-gray-900/70 rounded">
-                            <p className="font-semibold text-white truncate">{entry.planName}</p>
-                            <p className="text-xs text-gray-400">
-                                {new Date(entry.date).toLocaleString('he-IL')} - {formatDuration(entry.durationSeconds)}
-                            </p>
-                        </div>
-                    ))}
-                </div>
+                <p className="text-gray-400">מיזוג יוסיף {guestHistoryCount} רשומות אימון לחשבונך.</p>
             </AccordionSection>
         </div>
 

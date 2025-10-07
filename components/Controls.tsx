@@ -16,6 +16,8 @@ interface ControlsProps {
     current: number;
     total: number;
   };
+  showLogSessionButton?: boolean;
+  onLogSession?: () => void;
 }
 
 const Button: React.FC<{ onMouseDown: () => void; className?: string; children: React.ReactNode; ariaLabel: string, disabled?: boolean }> = ({ onMouseDown, className = '', children, ariaLabel, disabled = false }) => (
@@ -31,7 +33,7 @@ const Button: React.FC<{ onMouseDown: () => void; className?: string; children: 
 
 export const Controls: React.FC<ControlsProps> = ({ 
   isRunning, start, stop, reset, cycleCount, resetCycleCount, showTimer, showStopwatchControls,
-  isWorkoutActive, nextStep, previousStep, workoutStepInfo
+  isWorkoutActive, nextStep, previousStep, workoutStepInfo, showLogSessionButton, onLogSession
 }) => {
   const buttonColor = 'bg-gray-500/30 hover:bg-gray-500/40 text-white';
 
@@ -71,6 +73,7 @@ export const Controls: React.FC<ControlsProps> = ({
 
   const StopwatchControls = () => {
     if (showTimer && showStopwatchControls) {
+      const showLogButton = showLogSessionButton && onLogSession;
       return (
         <div className="flex justify-center items-center gap-4">
           <Button 
@@ -83,6 +86,16 @@ export const Controls: React.FC<ControlsProps> = ({
           </Button>
 
           <CycleDisplay />
+
+          {showLogButton && (
+              <Button
+                  onMouseDown={onLogSession}
+                  ariaLabel="Log Session"
+                  className="w-28 bg-green-600/80 hover:bg-green-600/90 text-white"
+              >
+                  Log
+              </Button>
+          )}
 
           <Button 
             onMouseDown={isRunning ? stop : start} 

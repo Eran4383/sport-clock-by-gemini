@@ -254,13 +254,6 @@ export async function prefetchExercises(exerciseNames: string[]): Promise<{ succ
  * @returns The raw text response from the AI model.
  */
 export async function generateWorkoutPlan(chatHistory: { role: 'user' | 'model'; parts: { text: string }[] }[], userMessage: string): Promise<string> {
-    // FIX: Sanitize chat history to remove any properties not expected by the Gemini API.
-    // The frontend uses extra properties on chat parts which should not be sent.
-    const sanitizedHistory = chatHistory.map(msg => ({
-        role: msg.role,
-        parts: msg.parts.map(part => ({ text: part.text })),
-    }));
-
     try {
         const res = await fetch('/api/gemini', {
             method: 'POST',
@@ -269,7 +262,7 @@ export async function generateWorkoutPlan(chatHistory: { role: 'user' | 'model';
             },
             body: JSON.stringify({
                 chatRequest: {
-                    history: sanitizedHistory,
+                    history: chatHistory,
                     message: userMessage,
                 },
             }),
