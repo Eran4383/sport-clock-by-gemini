@@ -1,4 +1,5 @@
 
+
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useMemo, useRef } from 'react';
 import { WorkoutPlan, WorkoutStep, WorkoutLogEntry, StepStatus, PerformedStep } from '../types';
 import { prefetchExercises } from '../services/geminiService';
@@ -478,9 +479,12 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     };
     logAction('WORKOUT_LOGGED', { planName, duration: newEntry.durationSeconds, performedStepCount: performedSteps.length });
 
+    // Sanitize the object to remove undefined values before sending to Firestore.
+    const sanitizedEntry = JSON.parse(JSON.stringify(newEntry));
+
     if (user) {
         const historyRef = doc(db, 'users', user.uid, 'history', newEntry.id);
-        setDoc(historyRef, newEntry).catch(e => {
+        setDoc(historyRef, sanitizedEntry).catch(e => {
             logAction('ERROR_LOG_SAVE_FIRESTORE', { message: (e as Error).message });
             console.error("Failed to save workout log to Firestore:", e)
         });
@@ -505,10 +509,13 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         performedSteps: performedSteps,
     };
     logAction('MANUAL_WORKOUT_LOGGED', { planName: name, duration: newEntry.durationSeconds, performedStepCount: performedSteps.length });
+    
+    // Sanitize the object to remove undefined values before sending to Firestore.
+    const sanitizedEntry = JSON.parse(JSON.stringify(newEntry));
 
     if (user) {
         const historyRef = doc(db, 'users', user.uid, 'history', newEntry.id);
-        setDoc(historyRef, newEntry).catch(e => {
+        setDoc(historyRef, sanitizedEntry).catch(e => {
             logAction('ERROR_LOG_SAVE_FIRESTORE', { message: (e as Error).message });
             console.error("Failed to save manual workout log to Firestore:", e)
         });

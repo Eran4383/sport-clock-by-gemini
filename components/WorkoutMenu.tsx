@@ -1224,7 +1224,7 @@ const PlanList: React.FC<{
              <div className="bg-gray-700/50 rounded-lg p-3 mb-4">
                 <div className="flex items-center justify-between cursor-pointer" onClick={() => setIsWarmupSettingsExpanded(prev => !prev)}>
                     <div className="flex items-center gap-2">
-                        <span className="font-semibold text-white">Warm-up Routine</span>
+                        <span className="font-semibold text-white">חימום</span>
                         <button onClick={(e) => { e.stopPropagation(); onSelectPlan('_warmup_'); }} className="p-1 rounded-full text-gray-400 hover:text-white hover:bg-gray-600">
                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" /><path fillRule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clipRule="evenodd" /></svg>
                         </button>
@@ -1929,7 +1929,7 @@ const PlanEditor: React.FC<{
     const groupedRenderItems = groupStepsForEditor(editedPlan.steps);
     let stepIndexCounter = 0;
 
-    const editorTitle = isWarmupEditor ? 'Edit Warm-up' : (plan ? 'Edit Plan' : 'Create Plan');
+    const editorTitle = isWarmupEditor ? 'עריכת חימום' : (plan ? 'Edit Plan' : 'Create Plan');
 
     return (
         <div>
@@ -2320,7 +2320,7 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
     if(typeof editingPlan === 'string' && editingPlan === '_warmup_') {
         return {
             id: '_warmup_',
-            name: 'Warm-up Routine',
+            name: 'חימום',
             steps: settings.warmupSteps,
             color: '#f97316', // Orange for warm-up
             version: 2,
