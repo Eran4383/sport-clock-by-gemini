@@ -507,7 +507,7 @@ const AppContent: React.FC = () => {
   }
 
   const dynamicStyles = {
-    '--countdown-font-size': `clamp(2.5rem, 22vmin, 20rem)`,
+    '--countdown-font-size': `clamp(2.5rem, ${22 * (settings.countdownSize / 100)}vmin, 20rem)`,
     '--stopwatch-font-size': `clamp(1.5rem, 8vw, ${2 + (settings.stopwatchSize / 100) * 1.5}rem)`,
     '--countdown-controls-scale': settings.countdownControlsSize / 100,
     '--stopwatch-controls-scale': settings.stopwatchControlsSize / 100,
