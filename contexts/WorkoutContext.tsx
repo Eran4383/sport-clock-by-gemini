@@ -169,7 +169,13 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         const historyCollection = collection(db, 'users', user.uid, 'history');
         historyUnsubscribe = onSnapshot(query(historyCollection, orderBy('date', 'desc')), (snapshot) => {
             remoteHistoryCache = snapshot.docs.map(doc => doc.data() as WorkoutLogEntry);
-            setWorkoutHistory(remoteHistoryCache);
+            
+            // Robustly merge remote data with local-only fallback data
+            const remoteHistoryIds = new Set(remoteHistoryCache.map(h => h.id));
+            const localHistory = getLocalHistory();
+            const localOnlyHistory = localHistory.filter(h => !remoteHistoryIds.has(h.id));
+            const combinedHistory = [...remoteHistoryCache, ...localOnlyHistory].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+            setWorkoutHistory(combinedHistory);
             
             if (!historyListenerDone) {
                 historyListenerDone = true;
@@ -413,26 +419,26 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   const deletePlan = useCallback(async (planId: string) => {
     logAction('PLAN_DELETE_ATTEMPT', { planId });
-    const originalPlans = plans;
-    const newPlans = plans.filter(p => p.id !== planId);
-    setPlans(newPlans);
 
-    if (authStatusRef.current === 'unauthenticated') {
-        saveLocalPlans(newPlans);
-    }
-    
     if (user) {
-      try {
-        const planRef = doc(db, 'users', user.uid, 'plans', planId);
-        await deleteDoc(planRef);
-      } catch (error) {
-        logAction('ERROR_PLAN_DELETE_FIRESTORE', { planId, message: (error as Error).message });
-        console.error("Failed to delete plan from Firestore:", error);
-        setPlans(originalPlans);
-        if (authStatusRef.current === 'unauthenticated') {
-            saveLocalPlans(originalPlans);
+        try {
+            const planRef = doc(db, 'users', user.uid, 'plans', planId);
+            await deleteDoc(planRef);
+            // On success, the onSnapshot listener will update the UI.
+        } catch (error) {
+            logAction('ERROR_PLAN_DELETE_FIRESTORE', { planId, message: (error as Error).message });
+            console.error("Failed to delete plan from Firestore:", error);
+            // On failure, inform the user clearly.
+            setImportNotification({
+                message: 'מחיקה נכשלה',
+                planName: 'אין לך הרשאות למחוק תוכנית זו.',
+                type: 'warning',
+            });
         }
-      }
+    } else { // Handle guest user (local storage only)
+        const newPlans = plans.filter(p => p.id !== planId);
+        setPlans(newPlans);
+        saveLocalPlans(newPlans);
     }
   }, [user, plans, logAction]);
 

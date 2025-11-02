@@ -116,7 +116,7 @@ export const WorkoutLog: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const firstDayOfMonth = useMemo(() => {
         // Get the day of the week (0=Sun) for the 1st of the UTC month.
         const firstOfMonthTimestamp = Date.UTC(year, month, 1);
-        return new Date(firstOfMonthTimestamp).getDay();
+        return new Date(firstOfMonthTimestamp).getUTCDay();
     }, [year, month]);
 
     const workoutsByDay = useMemo(() => {
