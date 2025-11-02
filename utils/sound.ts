@@ -26,6 +26,21 @@ export const resumeAudioContext = () => {
     }
 };
 
+const playCustomSound = (dataUrl: string, volume: number): boolean => {
+  try {
+    const audio = new Audio(dataUrl);
+    audio.volume = Math.max(0, Math.min(1, volume)); // Clamp volume
+    audio.play().catch(e => {
+      console.error("Error playing custom sound:", e);
+    });
+    return true;
+  } catch (e) {
+    console.error("Failed to create audio from data URL:", e);
+    return false;
+  }
+};
+
+
 const playTone = (frequency: number, duration: number, volume: number, type: OscillatorType = 'sine') => {
   const context = getAudioContext();
   if (!context || volume <= 0) return;
@@ -57,28 +72,40 @@ const playTone = (frequency: number, duration: number, volume: number, type: Osc
 /**
  * A short, clear tone to indicate the start of a countdown.
  */
-export const playStartSound = (volume: number) => {
+export const playStartSound = (volume: number, customSoundUrl?: string) => {
+    if (customSoundUrl && playCustomSound(customSoundUrl, volume)) {
+        return;
+    }
     playTone(659.25, 100, volume, 'sine'); // E5 note
 };
 
 /**
  * A short, higher-pitched beep for general notifications like halfway point or restart.
  */
-export const playNotificationSound = (volume: number) => {
+export const playNotificationSound = (volume: number, customSoundUrl?: string) => {
+    if (customSoundUrl && playCustomSound(customSoundUrl, volume)) {
+        return;
+    }
     playTone(880, 100, volume, 'triangle'); // A5 note
 };
 
 /**
  * A very short, high-pitched tick for countdowns.
  */
-export const playTickSound = (volume: number) => {
+export const playTickSound = (volume: number, customSoundUrl?: string) => {
+    if (customSoundUrl && playCustomSound(customSoundUrl, volume)) {
+        return;
+    }
     playTone(1200, 80, volume, 'sine');
 };
 
 /**
  * A distinct, two-tone sound for final events like countdown end.
  */
-export const playEndSound = (volume: number) => {
+export const playEndSound = (volume: number, customSoundUrl?: string) => {
+    if (customSoundUrl && playCustomSound(customSoundUrl, volume)) {
+        return;
+    }
     const context = getAudioContext();
     if (!context) return;
     

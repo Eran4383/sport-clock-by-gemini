@@ -1,6 +1,8 @@
 
 
 
+
+
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Settings } from './useSettings';
 import { playNotificationSound, playEndSound, playTickSound, playStartSound } from '../utils/sound';
@@ -51,7 +53,7 @@ export const useCountdown = (initialDuration: number, restDuration: number, sett
 
     const remaining = endTimeRef.current - performance.now();
     const currentSettings = settingsRef.current;
-    const { allSoundsEnabled, isMuted, volume, stealthModeEnabled } = currentSettings;
+    const { allSoundsEnabled, isMuted, volume, stealthModeEnabled, customSounds } = currentSettings;
     const canPlaySound = allSoundsEnabled && !isMuted && !stealthModeEnabled;
 
     // Handle end of a phase (running or resting)
@@ -62,7 +64,7 @@ export const useCountdown = (initialDuration: number, restDuration: number, sett
         
         // Play the end sound as soon as ANY countdown hits zero.
         if (canPlaySound && currentSettings.playSoundAtEnd && (currentPhase === 'running' || currentPhase === 'resting')) {
-            playEndSound(volume);
+            playEndSound(volume, customSounds?.end?.dataUrl);
         }
 
         // Use a timeout to allow the '0' to render for a full second before transitioning.
@@ -99,7 +101,7 @@ export const useCountdown = (initialDuration: number, restDuration: number, sett
             // After transitioning, restart the animation loop
             if (phaseRef.current !== 'stopped') {
                 if (canPlaySound && currentSettings.playSoundOnRestart) {
-                    playStartSound(volume);
+                    playStartSound(volume, customSounds?.start?.dataUrl);
                 }
                 animationFrameRef.current = requestAnimationFrame(animate);
             }
@@ -114,13 +116,13 @@ export const useCountdown = (initialDuration: number, restDuration: number, sett
     // Halfway sound logic for the running phase
     const isCurrentlyResting = phaseRef.current === 'resting' || isRestStepRef.current;
     if (!isCurrentlyResting && currentPhase === 'running' && canPlaySound && currentSettings.playSoundAtHalfway && !halfwaySoundPlayedRef.current && remaining <= durationMsRef.current / 2) {
-        playNotificationSound(volume);
+        playNotificationSound(volume, customSounds?.notification?.dataUrl);
         halfwaySoundPlayedRef.current = true;
     }
 
     const currentSecond = Math.ceil(remaining / 1000);
     if (canPlaySound && currentSecond <= 3 && currentSecond > 0 && lastSecondPlayedRef.current !== currentSecond) {
-        playTickSound(volume);
+        playTickSound(volume, customSounds?.tick?.dataUrl);
         lastSecondPlayedRef.current = currentSecond;
     }
 
@@ -135,9 +137,9 @@ export const useCountdown = (initialDuration: number, restDuration: number, sett
       const currentSecond = Math.ceil(timeLeftOnPauseRef.current / 1000);
       lastSecondPlayedRef.current = currentSecond > 3 ? null : currentSecond;
 
-      const { allSoundsEnabled, isMuted, volume, playSoundOnRestart, stealthModeEnabled } = settingsRef.current;
+      const { allSoundsEnabled, isMuted, volume, playSoundOnRestart, stealthModeEnabled, customSounds } = settingsRef.current;
       if (allSoundsEnabled && !isMuted && !stealthModeEnabled && playSoundOnRestart && timeLeftOnPauseRef.current >= durationMsRef.current) {
-         playStartSound(volume);
+         playStartSound(volume, customSounds?.start?.dataUrl);
       }
       if (!animationFrameRef.current) {
           animationFrameRef.current = requestAnimationFrame(animate);
@@ -174,9 +176,9 @@ export const useCountdown = (initialDuration: number, restDuration: number, sett
     timeLeftOnPauseRef.current = durationMsRef.current;
     endTimeRef.current = performance.now() + durationMsRef.current;
     
-    const { allSoundsEnabled, isMuted, volume, playSoundOnRestart, stealthModeEnabled } = settingsRef.current;
+    const { allSoundsEnabled, isMuted, volume, playSoundOnRestart, stealthModeEnabled, customSounds } = settingsRef.current;
     if (allSoundsEnabled && !isMuted && !stealthModeEnabled && playSoundOnRestart) {
-        playStartSound(volume);
+        playStartSound(volume, customSounds?.start?.dataUrl);
     }
     
     setPhase('running');
@@ -204,9 +206,9 @@ export const useCountdown = (initialDuration: number, restDuration: number, sett
     }
 
     if (wasActive) {
-      const { allSoundsEnabled, isMuted, volume, playSoundOnRestart, stealthModeEnabled } = settingsRef.current;
+      const { allSoundsEnabled, isMuted, volume, playSoundOnRestart, stealthModeEnabled, customSounds } = settingsRef.current;
       if (allSoundsEnabled && !isMuted && !stealthModeEnabled && playSoundOnRestart) {
-        playStartSound(volume);
+        playStartSound(volume, customSounds?.start?.dataUrl);
       }
       endTimeRef.current = performance.now() + newDurationMs;
       setPhase('running');

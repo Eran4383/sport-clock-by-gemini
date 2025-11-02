@@ -1,9 +1,15 @@
 
 
+
 import { useState, useEffect, useCallback } from 'react';
 import { WorkoutStep } from '../types';
 import { getLocalSettings, saveLocalSettings } from '../services/storageService';
 import { useLogger } from '../contexts/LoggingContext';
+
+export interface CustomSound {
+  name: string;
+  dataUrl: string;
+}
 
 export interface Settings {
   showTimer: boolean;
@@ -33,6 +39,12 @@ export interface Settings {
   showRestTitleOnDefaultCountdown: boolean;
   preWorkoutCountdownDuration: number;
   settingsCategoryOrder: string[];
+  customSounds?: {
+    start?: CustomSound;
+    end?: CustomSound;
+    notification?: CustomSound;
+    tick?: CustomSound;
+  };
   isWarmupEnabled: boolean;
   warmupSteps: WorkoutStep[];
   restAfterWarmupDuration: number;
@@ -66,7 +78,8 @@ const defaultSettings: Settings = {
   restBackgroundColor: '#FFFFFF',
   showRestTitleOnDefaultCountdown: true,
   preWorkoutCountdownDuration: 10,
-  settingsCategoryOrder: ['sounds', 'countdown', 'stopwatch', 'workoutDisplay', 'displaySizes', 'displayColors', 'developer'],
+  settingsCategoryOrder: ['sounds', 'customSounds', 'countdown', 'stopwatch', 'workoutDisplay', 'displaySizes', 'displayColors', 'developer'],
+  customSounds: {},
   isWarmupEnabled: false,
   warmupSteps: [],
   restAfterWarmupDuration: 15,
@@ -78,6 +91,19 @@ const getInitialSettings = (): Settings => {
   // Ensure the developer category is present for existing users
   if (localSettings && !localSettings.settingsCategoryOrder?.includes('developer')) {
     localSettings.settingsCategoryOrder = [...(localSettings.settingsCategoryOrder || defaultSettings.settingsCategoryOrder), 'developer'];
+  }
+  // Ensure the customSounds category is present for existing users
+  if (localSettings && !localSettings.settingsCategoryOrder?.includes('customSounds')) {
+      const soundsIndex = localSettings.settingsCategoryOrder?.indexOf('sounds') ?? -1;
+      if (soundsIndex > -1) {
+          localSettings.settingsCategoryOrder?.splice(soundsIndex + 1, 0, 'customSounds');
+      } else {
+          localSettings.settingsCategoryOrder = [
+              'sounds', 
+              'customSounds', 
+              ...(localSettings.settingsCategoryOrder || defaultSettings.settingsCategoryOrder)
+          ];
+      }
   }
   return localSettings ? { ...defaultSettings, ...localSettings } : defaultSettings;
 };

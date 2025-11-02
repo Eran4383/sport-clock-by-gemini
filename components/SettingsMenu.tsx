@@ -1,7 +1,11 @@
 
 
+
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+// FIX: Module '"../contexts/SettingsContext"' has no exported member 'CustomSound'. Import it from hooks/useSettings instead.
 import { useSettings } from '../contexts/SettingsContext';
+import { CustomSound } from '../hooks/useSettings';
 import { playNotificationSound } from '../utils/sound';
 import { useLogger } from '../contexts/LoggingContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -56,6 +60,70 @@ const RangeSlider: React.FC<{
         </div>
     </div>
 );
+
+const CustomSoundUploader: React.FC<{
+  label: string;
+  sound?: CustomSound;
+  onUpload: (sound: CustomSound) => void;
+  onReset: () => void;
+}> = ({ label, sound, onUpload, onReset }) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) { // 2MB limit
+      alert("File is too large. Please select a file smaller than 2MB.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      onUpload({ name: file.name, dataUrl });
+    };
+    reader.onerror = () => {
+      alert("Failed to read file.");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-white">{label}</span>
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-gray-400 truncate max-w-[100px]" title={sound?.name ?? 'Default'}>
+          {sound?.name ?? 'Default'}
+        </span>
+        <input
+          type="file"
+          accept="audio/*"
+          ref={fileInputRef}
+          onChange={handleFileChange}
+          className="hidden"
+        />
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          className="px-3 py-1 text-sm bg-gray-600 hover:bg-gray-500 rounded-md"
+        >
+          Change
+        </button>
+        <button
+          onClick={onReset}
+          disabled={!sound}
+          className="p-2 text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+          title="Reset to default"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 9a9 9 0 0114.13-5.23M20 15a9 9 0 01-14.13 5.23" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+};
 
 export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean) => void; }> = ({ isOpen, setIsOpen }) => {
   const { settings, updateSettings } = useSettings();
@@ -337,6 +405,11 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
     };
   }, [draggedInfo, overIndex, settings.settingsCategoryOrder, updateSettings]);
 
+  const handleResetSound = (soundType: 'start' | 'end' | 'notification' | 'tick') => {
+    const newSounds = { ...settings.customSounds };
+    delete newSounds[soundType];
+    updateSettings({ customSounds: newSounds });
+  };
 
   const categories: Record<string, { title: string, content: React.ReactNode }> = {
     sounds: {
@@ -376,6 +449,38 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
             <Toggle id="playSoundAtEnd" label="Play at end" checked={settings.playSoundAtEnd} onChange={(e) => updateSettings({ playSoundAtEnd: e.target.checked })} disabled={!settings.allSoundsEnabled} />
             <Toggle id="playSoundOnRestart" label="Play on restart" checked={settings.playSoundOnRestart} onChange={(e) => updateSettings({ playSoundOnRestart: e.target.checked })} disabled={!settings.allSoundsEnabled} />
           </div>
+      )
+    },
+    customSounds: {
+      title: "Custom Sounds",
+      content: (
+        <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
+          <p className="text-xs text-gray-400">Upload audio files (mp3, wav, etc. under 2MB) for workout events.</p>
+          <CustomSoundUploader
+            label="Start/Restart"
+            sound={settings.customSounds?.start}
+            onUpload={(sound) => updateSettings({ customSounds: { ...settings.customSounds, start: sound } })}
+            onReset={() => handleResetSound('start')}
+          />
+          <CustomSoundUploader
+            label="Halfway"
+            sound={settings.customSounds?.notification}
+            onUpload={(sound) => updateSettings({ customSounds: { ...settings.customSounds, notification: sound } })}
+            onReset={() => handleResetSound('notification')}
+          />
+          <CustomSoundUploader
+            label="Last 3 Seconds"
+            sound={settings.customSounds?.tick}
+            onUpload={(sound) => updateSettings({ customSounds: { ...settings.customSounds, tick: sound } })}
+            onReset={() => handleResetSound('tick')}
+          />
+          <CustomSoundUploader
+            label="End of Interval"
+            sound={settings.customSounds?.end}
+            onUpload={(sound) => updateSettings({ customSounds: { ...settings.customSounds, end: sound } })}
+            onReset={() => handleResetSound('end')}
+          />
+        </div>
       )
     },
     countdown: {
