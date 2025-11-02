@@ -118,18 +118,29 @@ export const WorkoutLog: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
     const workoutsByDay = useMemo(() => {
         const map = new Map<number, WorkoutLogEntry[]>();
-        const currentYear = currentDate.getFullYear();
-        const currentMonth = currentDate.getMonth();
+        const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+        const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
 
         for (const entry of workoutHistory) {
-            if (entry && entry.date) {
-                const entryDate = new Date(entry.date);
-                if (!isNaN(entryDate.getTime()) && entryDate.getFullYear() === currentYear && entryDate.getMonth() === currentMonth) {
-                    const dayOfMonth = entryDate.getDate();
-                    const dayEntries = map.get(dayOfMonth) || [];
-                    dayEntries.push(entry);
-                    map.set(dayOfMonth, dayEntries);
-                }
+            // Defensive checks for data integrity
+            if (!entry || !entry.date || typeof entry.date !== 'string') {
+                continue;
+            }
+
+            const entryDate = new Date(entry.date);
+
+            // Check for invalid date strings that result in an invalid Date object
+            if (isNaN(entryDate.getTime())) {
+                continue;
+            }
+            
+            // Check if the entry's date falls within the currently viewed month.
+            // This is more robust than comparing year/month numbers separately.
+            if (entryDate >= startOfMonth && entryDate < endOfMonth) {
+                const dayOfMonth = entryDate.getDate();
+                const dayEntries = map.get(dayOfMonth) || [];
+                dayEntries.push(entry);
+                map.set(dayOfMonth, dayEntries);
             }
         }
         return map;
