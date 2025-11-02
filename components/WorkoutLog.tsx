@@ -117,20 +117,21 @@ export const WorkoutLog: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     }, [currentDate]);
 
     const workoutsByDay = useMemo(() => {
-        const map = new Map<number, typeof workoutHistory>();
-        const year = currentDate.getFullYear();
-        const month = currentDate.getMonth();
+        const map = new Map<number, WorkoutLogEntry[]>();
+        const currentYear = currentDate.getFullYear();
+        const currentMonth = currentDate.getMonth();
 
-        workoutHistory.forEach(entry => {
-            const entryDate = new Date(entry.date);
-            if (entryDate.getFullYear() === year && entryDate.getMonth() === month) {
-                const day = entryDate.getDate();
-                if (!map.has(day)) {
-                    map.set(day, []);
+        for (const entry of workoutHistory) {
+            if (entry && entry.date) {
+                const entryDate = new Date(entry.date);
+                if (!isNaN(entryDate.getTime()) && entryDate.getFullYear() === currentYear && entryDate.getMonth() === currentMonth) {
+                    const dayOfMonth = entryDate.getDate();
+                    const dayEntries = map.get(dayOfMonth) || [];
+                    dayEntries.push(entry);
+                    map.set(dayOfMonth, dayEntries);
                 }
-                map.get(day)!.push(entry);
             }
-        });
+        }
         return map;
     }, [workoutHistory, currentDate]);
     
@@ -189,7 +190,7 @@ export const WorkoutLog: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     <button onClick={() => changeMonth(1)} className="p-2 rounded-full hover:bg-gray-600">&gt;</button>
                 </div>
                 <div className="grid grid-cols-7 gap-1 text-sm text-gray-400 mb-2">
-                    {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => <div key={day} className="text-center">{day}</div>)}
+                    {['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'].map(day => <div key={day} className="text-center">{day}</div>)}
                 </div>
                 <div className="grid grid-cols-7 gap-1">
                     {calendarDays}
