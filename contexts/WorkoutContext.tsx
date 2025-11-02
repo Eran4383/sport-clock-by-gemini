@@ -460,7 +460,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
       }
   }, [user, logAction]);
   
-  const logWorkoutCompletion = useCallback((
+  const logWorkoutCompletion = useCallback(async (
     planName: string, 
     durationMs: number, 
     steps: WorkoutStep[], 
@@ -479,52 +479,66 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     };
     logAction('WORKOUT_LOGGED', { planName, duration: newEntry.durationSeconds, performedStepCount: performedSteps.length });
 
-    // Sanitize the object to remove undefined values before sending to Firestore.
     const sanitizedEntry = JSON.parse(JSON.stringify(newEntry));
 
-    if (user) {
-        const historyRef = doc(db, 'users', user.uid, 'history', newEntry.id);
-        setDoc(historyRef, sanitizedEntry).catch(e => {
-            logAction('ERROR_LOG_SAVE_FIRESTORE', { message: (e as Error).message });
-            console.error("Failed to save workout log to Firestore:", e)
-        });
-    } else {
+    const saveLocally = () => {
         setWorkoutHistory(prev => {
             const newHistory = [newEntry, ...prev];
             saveLocalHistory(newHistory);
             return newHistory;
         });
+    };
+
+    if (user) {
+        try {
+            const historyRef = doc(db, 'users', user.uid, 'history', newEntry.id);
+            await setDoc(historyRef, sanitizedEntry);
+        } catch (e) {
+            logAction('ERROR_LOG_SAVE_FIRESTORE', { message: (e as Error).message });
+            console.error("Failed to save workout log to Firestore:", e);
+            // Fallback to local storage if Firestore fails
+            saveLocally();
+        }
+    } else {
+        saveLocally();
     }
   }, [user, logAction]);
   
-  const logManualSession = useCallback((name: string, durationMs: number, performedSteps: PerformedStep[]) => {
+  const logManualSession = useCallback(async (name: string, durationMs: number, performedSteps: PerformedStep[]) => {
     const now = new Date();
     const newEntry: WorkoutLogEntry = {
         id: now.toISOString(),
         date: now.toISOString(),
         planName: name,
         durationSeconds: Math.round(durationMs / 1000),
-        steps: performedSteps.map(p => p.step), // Extract original steps from performed steps
-        planIds: ['manual_session'], // Special ID for manual sessions
+        steps: performedSteps.map(p => p.step),
+        planIds: ['manual_session'],
         performedSteps: performedSteps,
     };
     logAction('MANUAL_WORKOUT_LOGGED', { planName: name, duration: newEntry.durationSeconds, performedStepCount: performedSteps.length });
     
-    // Sanitize the object to remove undefined values before sending to Firestore.
     const sanitizedEntry = JSON.parse(JSON.stringify(newEntry));
 
-    if (user) {
-        const historyRef = doc(db, 'users', user.uid, 'history', newEntry.id);
-        setDoc(historyRef, sanitizedEntry).catch(e => {
-            logAction('ERROR_LOG_SAVE_FIRESTORE', { message: (e as Error).message });
-            console.error("Failed to save manual workout log to Firestore:", e)
-        });
-    } else {
+    const saveLocally = () => {
         setWorkoutHistory(prev => {
             const newHistory = [newEntry, ...prev];
             saveLocalHistory(newHistory);
             return newHistory;
         });
+    };
+
+    if (user) {
+        try {
+            const historyRef = doc(db, 'users', user.uid, 'history', newEntry.id);
+            await setDoc(historyRef, sanitizedEntry);
+        } catch (e) {
+            logAction('ERROR_LOG_SAVE_FIRESTORE', { message: (e as Error).message });
+            console.error("Failed to save manual workout log to Firestore:", e);
+            // Fallback to local storage if Firestore fails
+            saveLocally();
+        }
+    } else {
+        saveLocally();
     }
   }, [user, logAction]);
 
