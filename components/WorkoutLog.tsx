@@ -101,61 +101,55 @@ const WorkoutLogDetailModal: React.FC<{
 
 export const WorkoutLog: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const { workoutHistory, clearWorkoutHistory } = useWorkout();
-    const [currentDate, setCurrentDate] = useState(new Date());
+    // This date is the source of truth for the displayed month, treated as UTC.
+    const [displayDate, setDisplayDate] = useState(new Date());
     const [selectedEntry, setSelectedEntry] = useState<WorkoutLogEntry | null>(null);
 
+    const year = displayDate.getUTCFullYear();
+    const month = displayDate.getUTCMonth(); // 0-indexed
+
     const daysInMonth = useMemo(() => {
-        const year = currentDate.getFullYear();
-        const month = currentDate.getMonth();
-        return new Date(year, month + 1, 0).getDate();
-    }, [currentDate]);
+        // Get the last day of the current UTC month by asking for day 0 of the next month.
+        return new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+    }, [year, month]);
 
     const firstDayOfMonth = useMemo(() => {
-        const year = currentDate.getFullYear();
-        const month = currentDate.getMonth();
-        return new Date(year, month, 1).getDay();
-    }, [currentDate]);
+        // Get the day of the week (0=Sun) for the 1st of the UTC month.
+        const firstOfMonthTimestamp = Date.UTC(year, month, 1);
+        return new Date(firstOfMonthTimestamp).getDay();
+    }, [year, month]);
 
     const workoutsByDay = useMemo(() => {
         const map = new Map<number, WorkoutLogEntry[]>();
-        const calendarYear = currentDate.getFullYear();
-        const calendarMonth = currentDate.getMonth(); // 0-indexed month
 
         for (const entry of workoutHistory) {
-            // Defensive checks for data integrity
-            if (!entry || !entry.date || typeof entry.date !== 'string') {
-                continue;
-            }
-
-            const entryDate = new Date(entry.date);
-
-            // Check for invalid date strings that result in an invalid Date object
-            if (isNaN(entryDate.getTime())) {
-                continue;
-            }
+            if (!entry?.date || typeof entry.date !== 'string') continue;
             
-            // Compare the UTC components of the entry's date with the calendar's date.
-            // This avoids all local timezone conversion issues.
-            if (entryDate.getUTCFullYear() === calendarYear && entryDate.getUTCMonth() === calendarMonth) {
-                const dayOfMonth = entryDate.getUTCDate(); // Use UTC day
+            const entryDate = new Date(entry.date);
+            if (isNaN(entryDate.getTime())) continue;
+
+            // Strict UTC comparison to avoid timezone bugs.
+            if (entryDate.getUTCFullYear() === year && entryDate.getUTCMonth() === month) {
+                const dayOfMonth = entryDate.getUTCDate();
                 const dayEntries = map.get(dayOfMonth) || [];
                 dayEntries.push(entry);
                 map.set(dayOfMonth, dayEntries);
             }
         }
         return map;
-    }, [workoutHistory, currentDate]);
+    }, [workoutHistory, year, month]);
     
     const [selectedDay, setSelectedDay] = useState<number | null>(null);
     const selectedDayWorkouts = selectedDay ? workoutsByDay.get(selectedDay) : null;
 
     const changeMonth = (delta: number) => {
-        setCurrentDate(prev => {
-            const newDate = new Date(prev);
-            newDate.setMonth(prev.getMonth() + delta);
+        setSelectedDay(null); // Reset selection when changing month
+        setDisplayDate(prev => {
+            const newDate = new Date(prev.getTime());
+            // Set the UTC month to the current UTC month + delta
+            newDate.setUTCMonth(newDate.getUTCMonth() + delta);
             return newDate;
         });
-        setSelectedDay(null);
     };
 
     const calendarDays = [];
@@ -197,7 +191,7 @@ export const WorkoutLog: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             <div className="bg-gray-700/50 p-4 rounded-lg">
                 <div className="flex justify-between items-center mb-4">
                     <button onClick={() => changeMonth(-1)} className="p-2 rounded-full hover:bg-gray-600">&lt;</button>
-                    <h3 className="text-lg font-semibold">{currentDate.toLocaleString('default', { month: 'long', year: 'numeric' })}</h3>
+                    <h3 className="text-lg font-semibold">{displayDate.toLocaleString('default', { month: 'long', year: 'numeric', timeZone: 'UTC' })}</h3>
                     <button onClick={() => changeMonth(1)} className="p-2 rounded-full hover:bg-gray-600">&gt;</button>
                 </div>
                 <div className="grid grid-cols-7 gap-1 text-sm text-gray-400 mb-2">
@@ -211,7 +205,7 @@ export const WorkoutLog: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             <div className="mt-4">
                 {selectedDayWorkouts ? (
                     <div>
-                        <h4 className="font-bold text-lg mb-2">Workouts for {currentDate.toLocaleString('default', { month: 'long' })} {selectedDay}</h4>
+                        <h4 className="font-bold text-lg mb-2">Workouts for {displayDate.toLocaleString('default', { month: 'long', timeZone: 'UTC' })} {selectedDay}</h4>
                         <ul className="space-y-2 max-h-48 overflow-y-auto">
                             {selectedDayWorkouts.map(entry => (
                                 <li 
