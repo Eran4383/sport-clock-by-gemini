@@ -118,8 +118,8 @@ export const WorkoutLog: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
     const workoutsByDay = useMemo(() => {
         const map = new Map<number, WorkoutLogEntry[]>();
-        const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
-        const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
+        const calendarYear = currentDate.getFullYear();
+        const calendarMonth = currentDate.getMonth(); // 0-indexed month
 
         for (const entry of workoutHistory) {
             // Defensive checks for data integrity
@@ -134,10 +134,10 @@ export const WorkoutLog: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 continue;
             }
             
-            // Check if the entry's date falls within the currently viewed month.
-            // This is more robust than comparing year/month numbers separately.
-            if (entryDate >= startOfMonth && entryDate < endOfMonth) {
-                const dayOfMonth = entryDate.getDate();
+            // Compare the UTC components of the entry's date with the calendar's date.
+            // This avoids all local timezone conversion issues.
+            if (entryDate.getUTCFullYear() === calendarYear && entryDate.getUTCMonth() === calendarMonth) {
+                const dayOfMonth = entryDate.getUTCDate(); // Use UTC day
                 const dayEntries = map.get(dayOfMonth) || [];
                 dayEntries.push(entry);
                 map.set(dayOfMonth, dayEntries);
