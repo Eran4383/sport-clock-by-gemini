@@ -11,6 +11,14 @@ import { db } from '../services/firebase';
 import { collection, doc, writeBatch, query, orderBy, setDoc, deleteDoc, onSnapshot, Unsubscribe, getDocs } from 'firebase/firestore';
 import { useLogger } from './LoggingContext';
 
+const ACK_FINGERPRINT_KEY = 'acknowledgedGuestDataFingerprint';
+
+const getGuestDataFingerprint = (plans: WorkoutPlan[], history: WorkoutLogEntry[]): string => {
+    const planIds = plans.map(p => p.id).sort().join(',');
+    const historyIds = history.map(h => h.id).sort().join(',');
+    return `${planIds}|${historyIds}`;
+};
+
 export interface ActiveWorkout {
   plan: WorkoutPlan; // This can be a "meta-plan" if multiple plans are selected
   currentStepIndex: number;
@@ -140,6 +148,14 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
             const remoteHistoryIds = new Set(remoteHistoryCache.map(h => h.id));
             const newGuestHistory = localHistory.filter(h => !remoteHistoryIds.has(h.id));
 
+            const guestDataFingerprint = getGuestDataFingerprint(newGuestPlans, newGuestHistory);
+            const acknowledgedFingerprint = localStorage.getItem(ACK_FINGERPRINT_KEY);
+
+            if (guestDataFingerprint === acknowledgedFingerprint) {
+                 logAction('GUEST_DATA_ACKNOWLEDGED');
+                 return;
+            }
+
             if (newGuestPlans.length > 0 || newGuestHistory.length > 0) {
                 logAction('GUEST_DATA_DETECTED', { planCount: newGuestPlans.length, historyCount: newGuestHistory.length });
                 setGuestPlansToMerge(newGuestPlans);
@@ -227,10 +243,12 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
   
   const handleDiscardGuestData = useCallback(() => {
     logAction('GUEST_DATA_DISCARDED');
+    const fingerprint = getGuestDataFingerprint(guestPlansToMerge, guestHistoryToMerge);
+    localStorage.setItem(ACK_FINGERPRINT_KEY, fingerprint);
     setShowGuestMergeModal(false);
     setGuestPlansToMerge([]);
     setGuestHistoryToMerge([]);
-  }, [logAction]);
+  }, [logAction, guestPlansToMerge, guestHistoryToMerge]);
 
   const handleMergeGuestData = useCallback(async (options: GuestMergeOptions) => {
     logAction('GUEST_DATA_MERGE_ATTEMPT', options);
@@ -273,6 +291,9 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         await batch.commit();
         logAction('GUEST_DATA_MERGE_SUCCESS');
         
+        const fingerprint = getGuestDataFingerprint(guestPlansToMerge, guestHistoryToMerge);
+        localStorage.setItem(ACK_FINGERPRINT_KEY, fingerprint);
+
         if (mergePlans && plansToUpload.length > 0) {
             saveLocalPlans([...plans, ...plansToUpload]);
         }
@@ -289,7 +310,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         setGuestHistoryToMerge([]);
         setIsSyncing(false);
     }
-  }, [user, plans, guestHistoryToMerge, workoutHistory, handleDiscardGuestData, logAction]);
+  }, [user, plans, guestHistoryToMerge, guestPlansToMerge, workoutHistory, handleDiscardGuestData, logAction]);
 
   const savePlan = useCallback(async (planToSave: WorkoutPlan) => {
       logAction('PLAN_SAVE_ATTEMPT', { planId: planToSave.id, planName: planToSave.name });

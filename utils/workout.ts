@@ -22,11 +22,16 @@ export const parseStepName = (name: string): { name: string; set?: { current: nu
 
 
 /**
- * Extracts the base name of an exercise. This function now uses the new parsing logic
- * for backward compatibility but is superseded by simply accessing `step.name` on migrated steps.
+ * Extracts the base name of an exercise, stripping any set information like "(Set 1/3)" or "(סט 2)".
+ * This is crucial for correctly grouping exercises for circuit mode.
  */
 export const getBaseExerciseName = (name: string): string => {
-  return parseStepName(name).name;
+  // Regex handles variations like "(Set 1)", "(סט 1)", "(Set 1/3)", "(סט 1/3)"
+  const match = name.match(/(.+?)\s*\((?:Set|סט)\s*\d+(?:\/\d+)?\)/i);
+  if (match) {
+    return match[1].trim();
+  }
+  return name; // Return original name if no set info is found
 };
 
 /**
@@ -79,25 +84,38 @@ export const migratePlanToV2 = (plan: any): WorkoutPlan | null => {
 
 /**
  * Re-orders a list of workout steps from a linear to a circuit structure.
- * This logic is now simpler as it relies on the base name directly.
+ * This logic has been rewritten to be more robust and handle various plan structures correctly.
  */
 export const generateCircuitSteps = (steps: WorkoutStep[]): WorkoutStep[] => {
   if (!steps || steps.length === 0) return [];
+  
+  // Guard clause: If there's only one type of exercise, shuffling is pointless.
+  const uniqueExerciseNames = new Set(
+    steps
+      .filter(s => s.type === 'exercise')
+      .map(s => getBaseExerciseName(s.name))
+  );
+
+  if (uniqueExerciseNames.size <= 1) {
+    return steps;
+  }
 
   const exerciseGroups = new Map<string, WorkoutStep[][]>();
   const exerciseOrder: string[] = [];
 
-  let i = 0;
-  while (i < steps.length) {
+  // Group steps into blocks of [exercise] or [exercise, rest].
+  for (let i = 0; i < steps.length; /* i is incremented inside the loop */) {
     const currentStep = steps[i];
     if (currentStep.type === 'exercise') {
-      const baseName = currentStep.name; // Use the base name directly
+      const baseName = getBaseExerciseName(currentStep.name);
       
       let setBlock: WorkoutStep[] = [currentStep];
+      let stepsInBlock = 1;
       
+      // Look ahead for an associated rest step.
       if (i + 1 < steps.length && steps[i + 1].type === 'rest') {
         setBlock.push(steps[i + 1]);
-        i++;
+        stepsInBlock = 2;
       }
       
       if (!exerciseGroups.has(baseName)) {
@@ -106,8 +124,9 @@ export const generateCircuitSteps = (steps: WorkoutStep[]): WorkoutStep[] => {
       }
       exerciseGroups.get(baseName)!.push(setBlock);
       
-      i++;
+      i += stepsInBlock;
     } else {
+      // Orphan rest steps are ignored in circuit mode.
       i++;
     }
   }
@@ -120,6 +139,7 @@ export const generateCircuitSteps = (steps: WorkoutStep[]): WorkoutStep[] => {
     }
   });
 
+  // Rebuild the steps array in circuit order.
   for (let setIndex = 0; setIndex < maxSets; setIndex++) {
     for (const baseName of exerciseOrder) {
       const sets = exerciseGroups.get(baseName);
