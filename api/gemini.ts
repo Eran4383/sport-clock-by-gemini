@@ -130,9 +130,14 @@ const handleExerciseInfoRequest = async (exerciseName: string, force_refresh: bo
     return { status: 200, body: finalData };
 }
 
-const handleChatRequest = async (history: any[], message: string) => {
+const handleChatRequest = async (history: any[], message: string, profileContext?: string) => {
     const ai = new GoogleGenAI({ apiKey: geminiApiKey! });
     
+    let finalMessage = message;
+    if (history.length === 0 && profileContext) {
+        finalMessage = `(My User Profile for context: ${profileContext})\n\n${message}`;
+    }
+
     const chat = ai.chats.create({
         model: 'gemini-2.5-flash',
         history,
@@ -145,6 +150,10 @@ const handleChatRequest = async (history: any[], message: string) => {
 2.  **Generate the Plan:** Once you have enough information, generate the plan. It could be a workout plan, a physiotherapy routine, a set of daily activities for occupational therapy, etc.
 3.  **Provide a Summary:** FIRST, provide a friendly, human-readable summary of the plan you've created. This summary should appear as regular text.
 4.  **Provide the JSON:** AFTER the summary, you MUST provide the plan as a single, valid JSON object enclosed in a markdown code block (\`\`\`json ... \`\`\`). Do NOT include any other text after the JSON block.
+
+**User Profile:**
+- At the start of a new conversation, the user might provide their profile information in parentheses like "(My User Profile for context: ...)".
+- This information is persistent. You MUST use it to tailor the plan and MUST NOT ask for this information again (e.g., don't ask about equipment if it's already listed).
 
 **JSON Rules:**
 - The JSON MUST conform to the TypeScript interface provided below.
@@ -175,7 +184,7 @@ interface WorkoutPlan {
         },
     });
 
-    const response = await chat.sendMessage({ message });
+    const response = await chat.sendMessage({ message: finalMessage });
     return { status: 200, body: { responseText: response.text } };
 };
 
@@ -200,11 +209,11 @@ export default async function handler(req: any, res: any) {
       let result;
       if (chatRequest) {
           // Handle AI Planner Chat Request
-          const { history, message } = chatRequest;
+          const { history, message, profileContext } = chatRequest;
           if (!message || typeof message !== 'string') {
               return res.status(400).json({ message: 'A valid message is required for chat requests.' });
           }
-          result = await handleChatRequest(history || [], message);
+          result = await handleChatRequest(history || [], message, profileContext);
       } else if (checkCache && Array.isArray(checkCache)) {
           // Handle server-side cache check
           const keys = checkCache.map(name => `exercise:${name.trim().toLowerCase()}`);

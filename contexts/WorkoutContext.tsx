@@ -385,6 +385,19 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     
     if (source === 'ai') {
         newPlan.steps = processAndFormatAiSteps(newPlan.steps);
+        // FIX: Sanitize AI-generated steps to prevent invalid states like time-based exercises with 0 duration.
+        newPlan.steps = newPlan.steps.map(step => {
+            if (step.type === 'exercise' && !step.isRepBased && (!step.duration || step.duration <= 0)) {
+                // This is an invalid time-based step. Convert it to a rep-based step as a fallback.
+                return {
+                    ...step,
+                    isRepBased: true,
+                    reps: 10, // A sensible default for reps.
+                    duration: 0,
+                };
+            }
+            return step;
+        });
     }
     
     savePlan(newPlan);
