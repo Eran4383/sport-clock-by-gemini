@@ -130,20 +130,7 @@ const handleExerciseInfoRequest = async (exerciseName: string, force_refresh: bo
     return { status: 200, body: finalData };
 }
 
-const handleChatRequest = async (history: any[], message: string, profileContext?: string) => {
-    const ai = new GoogleGenAI({ apiKey: geminiApiKey! });
-    
-    let finalMessage = message;
-    if (history.length === 0 && profileContext) {
-        finalMessage = `(My User Profile for context: ${profileContext})\n\n${message}`;
-    }
-
-    const chat = ai.chats.create({
-        model: 'gemini-2.5-flash',
-        history,
-        config: {
-            safetySettings: safetySettings,
-            systemInstruction: `You are a world-class expert in human performance and rehabilitation, with deep knowledge in sports science, physiotherapy, and occupational therapy. Your primary goal is to help users create safe, effective, and personalized plans.
+const baseSystemInstruction = `You are a world-class expert in human performance and rehabilitation, with deep knowledge in sports science, physiotherapy, and occupational therapy. Your primary goal is to help users create safe, effective, and personalized plans.
 
 **Interaction Flow:**
 1.  **Be Conversational:** Act like a personal coach or therapist. If the user's request is vague (e.g., "give me a plan"), you MUST ask clarifying questions before creating a plan. Ask about their goals, available time, physical condition, available equipment, etc.
@@ -152,8 +139,8 @@ const handleChatRequest = async (history: any[], message: string, profileContext
 4.  **Provide the JSON:** AFTER the summary, you MUST provide the plan as a single, valid JSON object enclosed in a markdown code block (\`\`\`json ... \`\`\`). Do NOT include any other text after the JSON block.
 
 **User Profile:**
-- At the start of a new conversation, the user might provide their profile information in parentheses like "(My User Profile for context: ...)".
-- This information is persistent. You MUST use it to tailor the plan and MUST NOT ask for this information again (e.g., don't ask about equipment if it's already listed).
+- The user's profile information may be provided below.
+- This information is persistent for the entire conversation. If it exists, you MUST use it to tailor the plan and you MUST NOT ask for information that is already provided in the profile (e.g., don't ask for equipment if it's already listed).
 
 **JSON Rules:**
 - The JSON MUST conform to the TypeScript interface provided below.
@@ -180,11 +167,26 @@ interface WorkoutPlan {
   executionMode?: 'linear' | 'circuit';
 }
 \`\`\`
-`,
+`;
+
+const handleChatRequest = async (history: any[], message: string, profileContext?: string) => {
+    const ai = new GoogleGenAI({ apiKey: geminiApiKey! });
+    
+    let finalSystemInstruction = baseSystemInstruction;
+    if (profileContext) {
+        finalSystemInstruction += `\n\n--- IMPORTANT USER PROFILE ---\n${profileContext}\n--- END USER PROFILE ---`;
+    }
+
+    const chat = ai.chats.create({
+        model: 'gemini-2.5-flash',
+        history,
+        config: {
+            safetySettings: safetySettings,
+            systemInstruction: finalSystemInstruction,
         },
     });
 
-    const response = await chat.sendMessage({ message: finalMessage });
+    const response = await chat.sendMessage({ message });
     return { status: 200, body: { responseText: response.text } };
 };
 
