@@ -136,7 +136,7 @@ const AppContent: React.FC = () => {
     countdownDuration, 
     settings.countdownRestDuration, 
     settings,
-    isWorkoutActive ? () => nextStepWithTime(StepStatus.Completed) : undefined,
+    (isWorkoutActive && !isRepStep) ? () => nextStepWithTime(StepStatus.Completed) : undefined,
     // Pass a unique key for each step and restart to ensure the countdown hook resets correctly
     isWorkoutActive ? `${currentStep.id}-${activeWorkout.currentStepIndex}-${activeWorkout.stepRestartKey || 0}` : undefined,
     isRestStep
