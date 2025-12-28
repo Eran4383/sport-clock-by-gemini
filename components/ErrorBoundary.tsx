@@ -1,4 +1,5 @@
-import React, { ErrorInfo, ReactNode } from 'react';
+
+import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { useLogger } from '../contexts/LoggingContext';
 
 const CRASH_FLAG_KEY = 'app_crash_detected';
@@ -12,10 +13,8 @@ interface State {
   hasError: boolean;
 }
 
+// Fixed ErrorBoundaryInternal by explicitly using React.Component and ensuring types are inherited correctly.
 class ErrorBoundaryInternal extends React.Component<Props, State> {
-  // FIX: Added a constructor to correctly initialize component state and call super(props)
-  // to make `this.props` available throughout the component. This resolves errors where
-  // `this.state` and `this.props` were not accessible.
   constructor(props: Props) {
     super(props);
     this.state = { hasError: false };
@@ -63,6 +62,6 @@ class ErrorBoundaryInternal extends React.Component<Props, State> {
 // Wrapper component to inject the logger context function into the class component
 export const ErrorBoundary: React.FC<{children: ReactNode}> = ({ children }) => {
     const { logError } = useLogger();
-    // FIX: Passed the `children` prop down to `ErrorBoundaryInternal` to satisfy its required props.
+    // Explicitly pass children as a prop to satisfy TypeScript validation
     return <ErrorBoundaryInternal logError={logError}>{children}</ErrorBoundaryInternal>;
 };
