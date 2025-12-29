@@ -1,4 +1,3 @@
-
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { useLogger } from '../contexts/LoggingContext';
 
@@ -13,8 +12,7 @@ interface State {
   hasError: boolean;
 }
 
-// Fixed ErrorBoundaryInternal by explicitly using React.Component and ensuring types are inherited correctly.
-class ErrorBoundaryInternal extends React.Component<Props, State> {
+class ErrorBoundaryInternal extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
     this.state = { hasError: false };
@@ -63,5 +61,5 @@ class ErrorBoundaryInternal extends React.Component<Props, State> {
 export const ErrorBoundary: React.FC<{children: ReactNode}> = ({ children }) => {
     const { logError } = useLogger();
     // Explicitly pass children as a prop to satisfy TypeScript validation
-    return <ErrorBoundaryInternal logError={logError}>{children}</ErrorBoundaryInternal>;
+    return <ErrorBoundaryInternal logError={logError} children={children} />;
 };

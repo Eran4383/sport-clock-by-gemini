@@ -1,4 +1,5 @@
 
+
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useMemo, useRef } from 'react';
 import { WorkoutPlan, WorkoutStep, WorkoutLogEntry, StepStatus, PerformedStep } from '../types';
 import { prefetchExercises } from '../services/geminiService';
@@ -58,8 +59,8 @@ interface WorkoutContextType {
   handleMergeGuestData: (options: GuestMergeOptions) => void;
   handleDiscardGuestData: () => void;
   clearImportNotification: () => void;
-  savePlan: (plan: WorkoutPlan) => Promise<void>;
-  importPlan: (plan: WorkoutPlan, source?: string) => Promise<void>;
+  savePlan: (plan: WorkoutPlan) => void;
+  importPlan: (plan: WorkoutPlan, source?: string) => void;
   deletePlan: (planId: string) => void;
   reorderPlans: (reorderedPlans: WorkoutPlan[]) => void;
   startWorkout: (planIds: string[]) => void;
@@ -184,9 +185,6 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
             remotePlansCache = snapshot.docs.map(doc => migratePlanToV2(doc.data())).filter((p): p is WorkoutPlan => !!p);
             setPlans(remotePlansCache);
             
-            // Sync to local storage even when authenticated to act as a fast local cache
-            saveLocalPlans(remotePlansCache);
-            
             if (!plansListenerDone) {
                 plansListenerDone = true;
                 checkAndTriggerMergeModal();
@@ -204,9 +202,6 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
             const localOnlyHistory = localHistory.filter(h => !remoteHistoryIds.has(h.id));
             const combinedHistory = [...remoteHistoryCache, ...localOnlyHistory].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
             setWorkoutHistory(combinedHistory);
-            
-            // Sync history to local storage too
-            saveLocalHistory(combinedHistory);
             
             if (!historyListenerDone) {
                 historyListenerDone = true;
@@ -244,7 +239,6 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         const remoteSnapshot = await getDocs(query(plansCollection, orderBy('order', 'asc')));
         const remotePlans = remoteSnapshot.docs.map(doc => migratePlanToV2(doc.data())).filter((p): p is WorkoutPlan => !!p);
         setPlans(remotePlans);
-        saveLocalPlans(remotePlans);
         logAction('SYNC_FORCE_SUCCESS', { planCount: remotePlans.length });
     } catch (error) {
         logAction('ERROR_SYNC_FORCE', { message: (error as Error).message });
@@ -337,7 +331,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         setGuestHistoryToMerge([]);
         setIsSyncing(false);
     }
-  }, [user, plans, guestHistoryToMerge, guestHistoryToMerge, guestPlansToMerge, workoutHistory, handleDiscardGuestData, logAction]);
+  }, [user, plans, guestHistoryToMerge, guestPlansToMerge, workoutHistory, handleDiscardGuestData, logAction]);
 
   const savePlan = useCallback(async (planToSave: WorkoutPlan) => {
       logAction('PLAN_SAVE_ATTEMPT', { planId: planToSave.id, planName: planToSave.name });
@@ -360,8 +354,9 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
               newPlans = plansWithOrder.map(p => p.id === migratedPlan.id ? migratedPlan : p);
           }
 
-          // Always save locally to ensure fast refresh and offline capability
-          saveLocalPlans(newPlans);
+          if (authStatusRef.current === 'unauthenticated') {
+              saveLocalPlans(newPlans);
+          }
           
           return newPlans;
       });
@@ -370,7 +365,6 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
           try {
               const planRef = doc(db, 'users', user.uid, 'plans', migratedPlan.id);
               await setDoc(planRef, migratedPlan, { merge: true });
-              logAction('PLAN_SAVE_FIRESTORE_SUCCESS', { planId: migratedPlan.id });
           } catch (error) {
               logAction('ERROR_PLAN_SAVE_FIRESTORE', { planId: migratedPlan.id, message: (error as Error).message });
               console.error("Failed to save plan to Firestore:", error);
@@ -385,7 +379,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
       }
   }, [user, logAction]);
   
-  const importPlan = useCallback(async (planToImport: WorkoutPlan, source: string = 'file') => {
+  const importPlan = useCallback((planToImport: WorkoutPlan, source: string = 'file') => {
     logAction('PLAN_IMPORT_ATTEMPT', { planName: planToImport.name, source });
     const migratedPlan = migratePlanToV2(planToImport);
     if (!migratedPlan) {
@@ -419,13 +413,14 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     
     if (source === 'ai') {
         newPlan.steps = processAndFormatAiSteps(newPlan.steps);
-        // Sanitize AI-generated steps to prevent invalid states
+        // FIX: Sanitize AI-generated steps to prevent invalid states like time-based exercises with 0 duration.
         newPlan.steps = newPlan.steps.map(step => {
             if (step.type === 'exercise' && !step.isRepBased && (!step.duration || step.duration <= 0)) {
+                // This is an invalid time-based step. Convert it to a rep-based step as a fallback.
                 return {
                     ...step,
                     isRepBased: true,
-                    reps: 10,
+                    reps: 10, // A sensible default for reps.
                     duration: 0,
                 };
             }
@@ -433,7 +428,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         });
     }
     
-    await savePlan(newPlan);
+    savePlan(newPlan);
 
     setImportNotification({
         message: 'תוכנית אימונים יובאה בהצלחה!',
@@ -491,9 +486,11 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         try {
             const planRef = doc(db, 'users', user.uid, 'plans', planId);
             await deleteDoc(planRef);
+            // On success, the onSnapshot listener will update the UI.
         } catch (error) {
             logAction('ERROR_PLAN_DELETE_FIRESTORE', { planId, message: (error as Error).message });
             console.error("Failed to delete plan from Firestore:", error);
+            // On failure, inform the user clearly.
             setImportNotification({
                 message: 'מחיקה נכשלה',
                 planName: 'אין לך הרשאות למחוק תוכנית זו.',
@@ -511,7 +508,10 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
       logAction('PLANS_REORDERED', { count: reorderedPlans.length });
       const plansWithOrder = reorderedPlans.map((p, i) => ({ ...p, order: i }));
       setPlans(plansWithOrder);
-      saveLocalPlans(plansWithOrder);
+
+      if (authStatusRef.current === 'unauthenticated') {
+          saveLocalPlans(plansWithOrder);
+      }
 
       if (user) {
         try {

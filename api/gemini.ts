@@ -78,8 +78,7 @@ const handleExerciseInfoRequest = async (exerciseName: string, force_refresh: bo
         `;
         
         const textResponse = await ai.models.generateContent({
-            // Using gemini-3-flash-preview for basic text tasks like fetching exercise info.
-            model: 'gemini-3-flash-preview',
+            model: 'gemini-2.5-flash',
             contents: textGenerationPrompt,
             config: {
                 responseMimeType: "application/json",
@@ -146,7 +145,7 @@ const baseSystemInstruction = `You are a world-class expert in human performance
 **JSON Rules:**
 - The JSON MUST conform to the TypeScript interface provided below.
 - The \`type\` for steps can be 'exercise' for physical movements or 'rest' for breaks. Use these categories broadly. For example, a physiotherapy stretch is an 'exercise'.
-- **CRITICAL:** The \`name\` property for each step MUST ONLY contain the base name of the activity (e.g., "Push-ups", "Push-ups", "Gentle Wrist Stretches"). DO NOT include set counts, reps, or durations in the activity name itself.
+- **CRITICAL:** The \`name\` property for each step MUST ONLY contain the base name of the activity (e.g., "Squats", "Push-ups", "Gentle Wrist Stretches"). DO NOT include set counts, reps, or durations in the activity name itself.
 
 **Language:**
 - You MUST respond in the same language as the user's last message. This includes all conversational text, the plan summary, and all strings within the JSON object (like \`name\` fields for the plan and its steps).
@@ -179,8 +178,7 @@ const handleChatRequest = async (history: any[], message: string, profileContext
     }
 
     const chat = ai.chats.create({
-        // Using gemini-3-pro-preview for complex reasoning task (workout plan generation).
-        model: 'gemini-3-pro-preview',
+        model: 'gemini-2.5-flash',
         history,
         config: {
             safetySettings: safetySettings,

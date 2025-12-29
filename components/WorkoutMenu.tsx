@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo, useLayoutEffect } from 'react';
 import { useWorkout } from '../contexts/WorkoutContext';
 import { WorkoutPlan, WorkoutStep } from '../types';
@@ -979,6 +978,9 @@ const PlanList: React.FC<{
     const files = event.target.files;
     if (!files || files.length === 0) return;
 
+    // FIX: Add explicit type `(file: File)` to forEach callback to prevent incorrect type inference.
+    // This resolves errors where `file` was treated as `unknown` or `{}`, causing issues with
+    // accessing `file.name` and passing `file` to `reader.readAsText`.
     Array.from(files).forEach((file: File) => {
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -2334,7 +2336,7 @@ const AiPlannerModal: React.FC<{
                     planJson.isSmartPlan = true;
                     planJson.color = '#a855f7';
                     
-                    await importPlan(planJson, 'ai');
+                    importPlan(planJson, 'ai');
                     
                     finalMessages.push({ role: 'model', parts: [{ text: '', isPlanLink: true, planName: planJson.name }]});
                     
@@ -2380,14 +2382,14 @@ const AiPlannerModal: React.FC<{
             <div className="flex-grow overflow-y-auto mb-4 space-y-4 pr-2">
                  {messages.length === 0 && (
                     <div className="text-center text-gray-400 p-8" dir="rtl">
-                        <p className="text-lg">ברוכים הבאים לממתכנן האימונים החכם!</p>
+                        <p className="text-lg">ברוכים הבאים למתכנן האימונים החכם!</p>
                         <p className="mt-2">תאר את האימון שברצונך לבנות. לדוגמה:</p>
                         <em className="block mt-2">"צור לי תוכנית אימון למתחילים באורך 20 דקות לכל הגוף."</em>
                     </div>
                 )}
                 {messages.map((msg, index) => (
                     <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-prose p-3 rounded-lg select-text ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-200'}`}>
+                        <div className={`max-w-prose p-3 rounded-lg ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-200'}`}>
                             {msg.parts.map((part, partIndex) => 
                                 part.isPlanLink ? (
                                     <div key={partIndex} dir="auto">
@@ -2397,7 +2399,7 @@ const AiPlannerModal: React.FC<{
                                         </button>
                                     </div>
                                 ) : (
-                                    <p key={partIndex} className="whitespace-pre-wrap select-text" dir="auto">{part.text}</p>
+                                    <p key={partIndex} className="whitespace-pre-wrap" dir="auto">{part.text}</p>
                                 )
                             )}
                         </div>
@@ -2425,12 +2427,8 @@ const AiPlannerModal: React.FC<{
                     rows={1}
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => {
-                        // Support multi-line on mobile/desktop. 
-                        // Desktop: Enter to send, Shift+Enter for newline.
-                        // Mobile/Small screen: Let Enter be a newline (standard behavioral fallback for mobile textareas),
-                        // and use the explicit Send button for sending.
-                        if (e.key === 'Enter' && !e.shiftKey && window.innerWidth > 768) {
+                    onKeyPress={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
                             e.preventDefault();
                             handleSend();
                         }
