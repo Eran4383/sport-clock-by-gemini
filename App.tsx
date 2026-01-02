@@ -1,5 +1,4 @@
 
-
 import React, { useMemo, useEffect, useRef, useState, useCallback } from 'react';
 import { CountdownDisplay } from './components/CountdownDisplay';
 import { CountdownControls } from './components/CountdownControls';
@@ -68,6 +67,38 @@ const AppContent: React.FC = () => {
   const [manualSessionLog, setManualSessionLog] = useState<PerformedStep[]>([]);
   const [isLoggingModalOpen, setIsLoggingModalOpen] = useState(false);
   const prevCycleCount = useRef(0);
+
+  // Wake Lock state and timer
+  const wakeLockRef = useRef<any>(null);
+  const wakeLockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const requestWakeLock = useCallback(async () => {
+    if ('wakeLock' in navigator && settings.keepScreenOnDuringWorkout) {
+      try {
+        wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+        logAction('WAKE_LOCK_ACQUIRED');
+        
+        // Listen for browser-triggered release (e.g., visibility change)
+        wakeLockRef.current.addEventListener('release', () => {
+          logAction('WAKE_LOCK_RELEASE_EVENT');
+          wakeLockRef.current = null;
+        });
+      } catch (err: any) {
+        logAction('ERROR_WAKE_LOCK', { message: err.message });
+      }
+    }
+  }, [settings.keepScreenOnDuringWorkout, logAction]);
+
+  const releaseWakeLock = useCallback(() => {
+    if (wakeLockRef.current) {
+      wakeLockRef.current.release().then(() => {
+        wakeLockRef.current = null;
+        logAction('WAKE_LOCK_RELEASED_MANUALLY');
+      }).catch((err: any) => {
+        logAction('ERROR_WAKE_LOCK_RELEASE', { message: err.message });
+      });
+    }
+  }, [logAction]);
 
   // Check for crash flag on initial app load
   useEffect(() => {
@@ -141,6 +172,51 @@ const AppContent: React.FC = () => {
     isWorkoutActive ? `${currentStep.id}-${activeWorkout.currentStepIndex}-${activeWorkout.stepRestartKey || 0}` : undefined,
     isRestStep
   );
+
+  // Wake Lock management logic
+  useEffect(() => {
+    if (isWorkoutActive && settings.keepScreenOnDuringWorkout) {
+      if (wakeLockTimerRef.current) {
+        clearTimeout(wakeLockTimerRef.current);
+        wakeLockTimerRef.current = null;
+      }
+      requestWakeLock();
+    } else if (workoutCompleted && settings.keepScreenOnDuringWorkout) {
+      // Keep on for 60 seconds after completion as requested
+      if (!wakeLockTimerRef.current) {
+        logAction('WAKE_LOCK_RELEASE_SCHEDULED', { delay: 60000 });
+        wakeLockTimerRef.current = setTimeout(() => {
+          releaseWakeLock();
+          wakeLockTimerRef.current = null;
+        }, 60000);
+      }
+    } else {
+      // Aborted, toggled off, or not in workout
+      if (wakeLockTimerRef.current) {
+        clearTimeout(wakeLockTimerRef.current);
+        wakeLockTimerRef.current = null;
+      }
+      releaseWakeLock();
+    }
+
+    return () => {
+      // Components might unmount
+      if (wakeLockTimerRef.current) {
+        clearTimeout(wakeLockTimerRef.current);
+      }
+    };
+  }, [isWorkoutActive, workoutCompleted, settings.keepScreenOnDuringWorkout, requestWakeLock, releaseWakeLock, logAction]);
+
+  // Visibility change handling for Wake Lock
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && isWorkoutActive && settings.keepScreenOnDuringWorkout) {
+        requestWakeLock();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [isWorkoutActive, settings.keepScreenOnDuringWorkout, requestWakeLock]);
 
   // Track manual session cycles
   useEffect(() => {

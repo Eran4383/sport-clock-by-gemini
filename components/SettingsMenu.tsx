@@ -1,7 +1,4 @@
 
-
-
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 // FIX: Module '"../contexts/SettingsContext"' has no exported member 'CustomSound'. Import it from hooks/useSettings instead.
 import { useSettings } from '../contexts/SettingsContext';
@@ -522,6 +519,7 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
       content: (
         <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
           <Toggle id="showNextExercise" label="Show Next Exercise" checked={settings.showNextExercise} onChange={(e) => updateSettings({ showNextExercise: e.target.checked })} />
+          <Toggle id="keepScreenOnToggle" label="השאר מסך דלוק בזמן אימון" checked={settings.keepScreenOnDuringWorkout} onChange={(e) => updateSettings({ keepScreenOnDuringWorkout: e.target.checked })} />
         </div>
       )
     },

@@ -1,7 +1,4 @@
 
-
-
-
 import { useState, useEffect, useCallback } from 'react';
 import { WorkoutStep } from '../types';
 import { getLocalSettings, saveLocalSettings } from '../services/storageService';
@@ -50,6 +47,7 @@ export interface Settings {
   warmupSteps: WorkoutStep[];
   restAfterWarmupDuration: number;
   showLogSessionButton: boolean;
+  keepScreenOnDuringWorkout: boolean;
   userProfile?: {
     birthDate?: string; // ISO string like "YYYY-MM-DD"
     fitnessLevel?: 'beginner' | 'intermediate' | 'advanced';
@@ -90,6 +88,7 @@ const defaultSettings: Settings = {
   warmupSteps: [],
   restAfterWarmupDuration: 15,
   showLogSessionButton: true,
+  keepScreenOnDuringWorkout: true,
   userProfile: {
     birthDate: '',
     fitnessLevel: 'intermediate',
