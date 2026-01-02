@@ -13,28 +13,26 @@ interface State {
   hasError: boolean;
 }
 
-// Fixed ErrorBoundaryInternal by explicitly extending React.Component and declaring the state property
-// to ensure that the TypeScript compiler recognizes 'props' and 'state'.
-class ErrorBoundaryInternal extends React.Component<Props, State> {
-  // Explicitly declared state property with a property initializer.
-  public state: State = {
+/**
+ * Internal class-based ErrorBoundary to use lifecycle methods.
+ * Fixed by extending Component directly and ensuring props/state are correctly typed.
+ */
+class ErrorBoundaryInternal extends Component<Props, State> {
+  // Fix: Explicitly declare state using property initializer for better compatibility with TypeScript class inheritance.
+  state: State = {
     hasError: false
   };
 
-  constructor(props: Props) {
-    super(props);
-  }
-
-  public static getDerivedStateFromError(_: Error): State {
-    // Update state so the next render will show the fallback UI.
+  // Standard static method for error boundaries to update state.
+  static getDerivedStateFromError(_: Error): State {
     return { hasError: true };
   }
 
-  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+  // Fix: Accessing logError via this.props which is inherited from the base Component class.
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("Uncaught error:", error, errorInfo);
-    // logError is accessed through this.props, which is inherited from React.Component
     this.props.logError(error, errorInfo.componentStack || '');
-    // Set a flag in localStorage so we can detect this crash on the next app load.
+    
     try {
         localStorage.setItem(CRASH_FLAG_KEY, 'true');
     } catch (e) {
@@ -42,8 +40,7 @@ class ErrorBoundaryInternal extends React.Component<Props, State> {
     }
   }
 
-  public render() {
-    // hasError is accessed through this.state, which is inherited from React.Component
+  render() {
     if (this.state.hasError) {
       return (
         <div className="h-screen w-screen bg-red-900 text-white flex flex-col items-center justify-center p-4 text-center">
@@ -62,14 +59,16 @@ class ErrorBoundaryInternal extends React.Component<Props, State> {
       );
     }
 
-    // children is accessed through this.props, which is inherited from React.Component
+    // Fix: Correctly returning children from this.props which is now recognized by the compiler.
     return this.props.children;
   }
 }
 
-// Wrapper component to inject the logger context function into the class component
+/**
+ * Functional wrapper for the ErrorBoundary to consume hooks.
+ */
 export const ErrorBoundary: React.FC<{children: ReactNode}> = ({ children }) => {
     const { logError } = useLogger();
-    // Pass children and logError as props to the class-based internal component.
-    return <ErrorBoundaryInternal logError={logError}>{children}</ErrorBoundaryInternal>;
+    // Fix: Explicitly passing children as a prop to satisfy TypeScript's requirement for the Props interface in the internal component.
+    return <ErrorBoundaryInternal logError={logError} children={children} />;
 };

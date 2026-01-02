@@ -268,7 +268,8 @@ const AppContent: React.FC = () => {
       }
   }, [countdown.cycleCount]);
 
-  const isPastHalfway = settings.showCountdown && countdown.isRunning && countdown.timeLeft <= countdownDuration / 2 && countdown.timeLeft > 0;
+  // Fix: background color should not depend on isRunning
+  const isPastHalfway = settings.showCountdown && countdown.timeLeft <= countdownDuration / 2 && countdown.timeLeft > 0;
 
   // This effect will always keep the ref up-to-date with the latest non-null activeWorkout
   useEffect(() => {
@@ -613,7 +614,8 @@ const AppContent: React.FC = () => {
       return 'white'; // Default for invalid colors
   };
   
-  const isResting = (isWorkoutActive && currentStep.type === 'rest') || (!isWorkoutActive && countdown.isResting && settings.showRestTitleOnDefaultCountdown);
+  // Use isRestPhase for color logic to persist during pause
+  const isResting = (isWorkoutActive && currentStep.type === 'rest') || (!isWorkoutActive && countdown.isRestPhase && settings.showRestTitleOnDefaultCountdown);
 
   if (workoutCompleted) {
     bgColor = '#6ee7b7'; // A light green color for completion
@@ -732,7 +734,7 @@ const AppContent: React.FC = () => {
                 }
                 
                 // Title for the default countdown rest (no workout active)
-                if (!isWorkoutActive && countdown.isResting && settings.showRestTitleOnDefaultCountdown) {
+                if (!isWorkoutActive && countdown.isRestPhase && settings.showRestTitleOnDefaultCountdown) {
                     return <p className="text-8xl font-bold" dir="rtl">מנוחה</p>;
                 }
 
