@@ -1,11 +1,12 @@
 
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+
+import React, { ErrorInfo, ReactNode, Component } from 'react';
 import { useLogger } from '../contexts/LoggingContext';
 
 const CRASH_FLAG_KEY = 'app_crash_detected';
 
 interface Props {
-  children: ReactNode;
+  children?: ReactNode;
   logError: (error: Error, componentStack: string) => void;
 }
 
@@ -18,17 +19,18 @@ interface State {
  * Fixed by extending Component directly and ensuring props/state are correctly typed.
  */
 class ErrorBoundaryInternal extends Component<Props, State> {
-  // Fix: Explicitly declare state using property initializer for better compatibility with TypeScript class inheritance.
-  state: State = {
+  public state: State = {
     hasError: false
   };
+  
+  constructor(props: Props) {
+      super(props);
+  }
 
-  // Standard static method for error boundaries to update state.
   static getDerivedStateFromError(_: Error): State {
     return { hasError: true };
   }
 
-  // Fix: Accessing logError via this.props which is inherited from the base Component class.
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("Uncaught error:", error, errorInfo);
     this.props.logError(error, errorInfo.componentStack || '');
@@ -59,7 +61,6 @@ class ErrorBoundaryInternal extends Component<Props, State> {
       );
     }
 
-    // Fix: Correctly returning children from this.props which is now recognized by the compiler.
     return this.props.children;
   }
 }
@@ -69,6 +70,5 @@ class ErrorBoundaryInternal extends Component<Props, State> {
  */
 export const ErrorBoundary: React.FC<{children: ReactNode}> = ({ children }) => {
     const { logError } = useLogger();
-    // Fix: Explicitly passing children as a prop to satisfy TypeScript's requirement for the Props interface in the internal component.
-    return <ErrorBoundaryInternal logError={logError} children={children} />;
+    return <ErrorBoundaryInternal logError={logError}>{children}</ErrorBoundaryInternal>;
 };

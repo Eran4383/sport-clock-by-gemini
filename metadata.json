@@ -1,5 +1,5 @@
 {
   "name": "Copy of Copy of Copy of Copy of Copy of Copy of Copy of Advanced Sports Clock - אחרון לפני הוספת מסד נתונים היברידי",
-  "description": "1. שונה השם של החימום לעברית. 2. תוקן הבאג בסוף אימון בטן.\n__מתחיל לבדוק גרסה חדשה עם אפשרות לדיווח באגים---\n-גירסה שבה המודל יבדוק ויתקן את כל הקוד-\n**גרסת גיטהאב אחרונה**\nמתחילים לנסות לחבר לחשבון גוגל\nהעתק של גירסה ישנה - לעבוד אחרי מחיקת קבצים בגיטאהב",
+  "description": "v3.7.4: Updated Pin icon to a standard push pin style (SVG) in the workout list.",
   "requestFramePermissions": []
 }

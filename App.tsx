@@ -22,6 +22,7 @@ import { StepStatus, PerformedStep, WorkoutStep } from './types';
 import { LoggingProvider, useLogger } from './contexts/LoggingContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { CrashNotification } from './components/CrashNotification';
+import { getExerciseInfo } from './services/geminiService';
 
 const CRASH_FLAG_KEY = 'app_crash_detected';
 
@@ -67,6 +68,8 @@ const AppContent: React.FC = () => {
   const [manualSessionLog, setManualSessionLog] = useState<PerformedStep[]>([]);
   const [isLoggingModalOpen, setIsLoggingModalOpen] = useState(false);
   const prevCycleCount = useRef(0);
+  
+  const [instructionText, setInstructionText] = useState<string | null>(null);
 
   // Wake Lock state and timer
   const wakeLockRef = useRef<any>(null);
@@ -267,6 +270,47 @@ const AppContent: React.FC = () => {
           prevCycleCount.current = 0;
       }
   }, [countdown.cycleCount]);
+
+  // Logic to fetch short instructions
+  useEffect(() => {
+    if (!settings.showExerciseInstructions || !isWorkoutActive || !currentStep) {
+        setInstructionText(null);
+        return;
+    }
+
+    // Determine which step to show instructions for:
+    // If resting, show upcoming step (preparation).
+    // If exercising, show current step (execution).
+    const targetStep = (currentStep.type === 'rest') ? nextUpcomingStep : currentStep;
+    
+    if (!targetStep || targetStep.type !== 'exercise') {
+        setInstructionText(null);
+        return;
+    }
+
+    // PRIORITY 1: Check if the user/AI defined a specific tip for this step.
+    if (targetStep.tip && targetStep.tip.trim().length > 0) {
+        setInstructionText(targetStep.tip);
+        return;
+    }
+
+    // PRIORITY 2: Fallback to the generic service.
+    // Use cached service to get info. This relies on prefetch being done in WorkoutMenu or PlanList.
+    getExerciseInfo(targetStep.name).then(info => {
+        if (info.tips && info.tips.length > 0) {
+            setInstructionText(info.tips[0]);
+        } else if (info.instructions) {
+            // Fallback to first line of instructions if no tips
+            setInstructionText(info.instructions.split('\n')[0].substring(0, 100) + (info.instructions.length > 100 ? '...' : ''));
+        } else {
+            setInstructionText(null);
+        }
+    }).catch(() => {
+        setInstructionText(null);
+    });
+
+  }, [currentStep, nextUpcomingStep, settings.showExerciseInstructions, isWorkoutActive]);
+
 
   // Fix: background color should not depend on isRunning
   const isPastHalfway = settings.showCountdown && countdown.timeLeft <= countdownDuration / 2 && countdown.timeLeft > 0;
@@ -769,6 +813,15 @@ const AppContent: React.FC = () => {
               {isWorkoutPaused ? 'PAUSED' : (isCountdownPaused ? `${getStepDisplayName(currentStep)} (Paused)` : getStepDisplayName(currentStep))}
             </p>
           )}
+        </div>
+        
+        {/* Short Instruction Display */}
+        <div className="text-center mt-2 min-h-[2rem] px-4 max-w-2xl">
+            {settings.showExerciseInstructions && instructionText && (
+                <p className="text-lg text-yellow-300 font-medium animate-fadeIn" dir="auto">
+                    💡 {instructionText}
+                </p>
+            )}
         </div>
       </main>
 

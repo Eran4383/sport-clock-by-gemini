@@ -146,9 +146,10 @@ const baseSystemInstruction = `You are a world-class expert in human performance
 - The JSON MUST conform to the TypeScript interface provided below.
 - The \`type\` for steps can be 'exercise' for physical movements or 'rest' for breaks. Use these categories broadly. For example, a physiotherapy stretch is an 'exercise'.
 - **CRITICAL:** The \`name\` property for each step MUST ONLY contain the base name of the activity (e.g., "Squats", "Push-ups", "Gentle Wrist Stretches"). DO NOT include set counts, reps, or durations in the activity name itself.
+- **IMPORTANT:** Populate the optional \`tip\` field for exercises. This should be a VERY short instruction (max 50 characters) displayed during the workout (e.g., "Keep back straight", "Exhale on effort").
 
 **Language:**
-- You MUST respond in the same language as the user's last message. This includes all conversational text, the plan summary, and all strings within the JSON object (like \`name\` fields for the plan and its steps).
+- You MUST respond in the same language as the user's last message. This includes all conversational text, the plan summary, and all strings within the JSON object (like \`name\` and \`tip\` fields).
 
 **Workout Plan Interface:**
 \`\`\`typescript
@@ -159,6 +160,7 @@ interface WorkoutStep {
   isRepBased: boolean; // true for reps, false for time-based
   duration: number; // Duration in seconds (if not rep-based)
   reps: number; // Number of reps (if rep-based)
+  tip?: string; // Optional short tip/instruction, MAX 50 characters.
 }
 
 interface WorkoutPlan {

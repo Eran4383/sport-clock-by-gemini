@@ -48,6 +48,7 @@ export interface Settings {
   restAfterWarmupDuration: number;
   showLogSessionButton: boolean;
   keepScreenOnDuringWorkout: boolean;
+  showExerciseInstructions: boolean; // New setting
   userProfile?: {
     birthDate?: string; // ISO string like "YYYY-MM-DD"
     fitnessLevel?: 'beginner' | 'intermediate' | 'advanced';
@@ -89,6 +90,7 @@ const defaultSettings: Settings = {
   restAfterWarmupDuration: 15,
   showLogSessionButton: true,
   keepScreenOnDuringWorkout: true,
+  showExerciseInstructions: true, // Default to true or false based on preference
   userProfile: {
     birthDate: '',
     fitnessLevel: 'intermediate',

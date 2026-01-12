@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 // FIX: Module '"../contexts/SettingsContext"' has no exported member 'CustomSound'. Import it from hooks/useSettings instead.
 import { useSettings } from '../contexts/SettingsContext';
@@ -7,6 +8,8 @@ import { playNotificationSound } from '../utils/sound';
 import { useLogger } from '../contexts/LoggingContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useWorkout } from '../contexts/WorkoutContext';
+
+const VERSION = 'v3.7.2';
 
 const Toggle: React.FC<{
   id: string;
@@ -158,7 +161,6 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
     }
   }, [settings.preWorkoutCountdownDuration]);
 
-  // Auto-close logic
   useEffect(() => {
     if (!isOpen && closeTimerRef.current) {
       clearTimeout(closeTimerRef.current);
@@ -171,7 +173,6 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
     };
   }, [isOpen]);
 
-  // Effect to handle wheel events on number inputs without scrolling the parent
   useEffect(() => {
     const handleWheel = (
       e: WheelEvent,
@@ -238,7 +239,6 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
      setLocalPreWorkoutCountdownStr(finalValue.toString());
      updateSettings({ preWorkoutCountdownDuration: finalValue });
   };
-
 
   const handleClose = () => {
     handleDurationBlur();
@@ -313,7 +313,6 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
     });
   };
 
-  // --- Drag and drop state and logic ---
   const [draggedInfo, setDraggedInfo] = useState<{
     index: number;
     id: string;
@@ -327,7 +326,7 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
   const categoryRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   const handleMouseDown = (e: React.MouseEvent<HTMLHeadingElement>, index: number, key: string) => {
-    if (e.button !== 0) return; // Only left-click
+    if (e.button !== 0) return;
     e.preventDefault();
     
     const target = e.currentTarget.parentElement?.parentElement;
@@ -519,6 +518,7 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
       content: (
         <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
           <Toggle id="showNextExercise" label="Show Next Exercise" checked={settings.showNextExercise} onChange={(e) => updateSettings({ showNextExercise: e.target.checked })} />
+          <Toggle id="showInstructions" label="Show Short Instructions" checked={settings.showExerciseInstructions} onChange={(e) => updateSettings({ showExerciseInstructions: e.target.checked })} />
           <Toggle id="keepScreenOnToggle" label="השאר מסך דלוק בזמן אימון" checked={settings.keepScreenOnDuringWorkout} onChange={(e) => updateSettings({ keepScreenOnDuringWorkout: e.target.checked })} />
         </div>
       )
@@ -586,7 +586,7 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
               width: draggedInfo.elementWidth,
               boxShadow: '0 10px 20px rgba(0,0,0,0.2)',
               transform: 'scale(1.02)',
-              background: 'rgb(31 41 55)', // solid gray-800
+              background: 'rgb(31 41 55)',
               borderRadius: '0.5rem',
             }}
           >
@@ -634,7 +634,10 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
       >
         <div className="p-6 overflow-y-auto h-full">
           <div className="flex justify-between items-center mb-8">
-            <h2 className="text-2xl font-bold text-white">Settings</h2>
+            <div>
+              <h2 className="text-2xl font-bold text-white">Settings</h2>
+              <p className="text-xs text-gray-500 mt-1">{VERSION}</p>
+            </div>
             <div className="flex items-center gap-2">
               <button 
                 onClick={() => setIsPinned(!isPinned)}
@@ -658,12 +661,12 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
               
               let transform = 'translateY(0px)';
               if (draggedInfo && overIndex !== null && draggedInfo.index !== overIndex) {
-                  const draggedHeight = draggedInfo.elementHeight + 32; // 32 is space-y-8 (2rem)
-                  if (draggedInfo.index < overIndex) { // Dragging down
+                  const draggedHeight = draggedInfo.elementHeight + 32;
+                  if (draggedInfo.index < overIndex) {
                       if (index > draggedInfo.index && index <= overIndex) {
                           transform = `translateY(-${draggedHeight}px)`;
                       }
-                  } else { // Dragging up
+                  } else {
                       if (index < draggedInfo.index && index >= overIndex) {
                           transform = `translateY(${draggedHeight}px)`;
                       }
