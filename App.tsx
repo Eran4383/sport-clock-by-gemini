@@ -1,4 +1,5 @@
 
+
 import React, { useMemo, useEffect, useRef, useState, useCallback } from 'react';
 import { CountdownDisplay } from './components/CountdownDisplay';
 import { CountdownControls } from './components/CountdownControls';
@@ -744,7 +745,7 @@ const AppContent: React.FC = () => {
             onClose={() => setIsLoggingModalOpen(false)}
         />
       )}
-      <SettingsMenu isOpen={isSettingsOpen} setIsOpen={setIsSettingsOpen} />
+      <SettingsMenu isOpen={isSettingsOpen} setIsOpen={setIsSettingsOpen} isWorkoutOpen={isWorkoutOpen} />
       <WorkoutMenu isOpen={isWorkoutOpen} setIsOpen={setIsWorkoutOpen} />
       <main onDoubleClick={toggleFullScreen} className="flex-grow flex flex-col items-center justify-center w-full max-w-4xl mx-auto min-h-0">
         {/* TOP TITLE CONTAINER - reserves space to prevent layout shift */}

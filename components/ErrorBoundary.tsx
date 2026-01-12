@@ -1,6 +1,4 @@
-
-
-import React, { ErrorInfo, ReactNode, Component } from 'react';
+import React, { ErrorInfo, ReactNode } from 'react';
 import { useLogger } from '../contexts/LoggingContext';
 
 const CRASH_FLAG_KEY = 'app_crash_detected';
@@ -18,13 +16,12 @@ interface State {
  * Internal class-based ErrorBoundary to use lifecycle methods.
  * Fixed by extending Component directly and ensuring props/state are correctly typed.
  */
-class ErrorBoundaryInternal extends Component<Props, State> {
-  public state: State = {
-    hasError: false
-  };
-  
+class ErrorBoundaryInternal extends React.Component<Props, State> {
   constructor(props: Props) {
-      super(props);
+    super(props);
+    this.state = {
+      hasError: false
+    };
   }
 
   static getDerivedStateFromError(_: Error): State {

@@ -1731,11 +1731,41 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
         setIsPinned(false);
     };
 
+    const touchStartX = useRef<number | null>(null);
+    const touchEndX = useRef<number | null>(null);
+    const minSwipeDistance = 50;
+
+    const handleTouchStart = (e: React.TouchEvent) => {
+        touchEndX.current = null;
+        touchStartX.current = e.touches[0].clientX;
+    };
+
+    const handleTouchMove = (e: React.TouchEvent) => {
+        touchEndX.current = e.touches[0].clientX;
+    };
+
+    const handleTouchEnd = () => {
+        if (!touchStartX.current || !touchEndX.current) return;
+        // Swipe Left (End < Start) means distance is negative.
+        // We want Start - End > minSwipeDistance
+        const distance = touchStartX.current - touchEndX.current;
+        if (distance > minSwipeDistance) {
+            handleClose();
+        }
+        touchStartX.current = null;
+        touchEndX.current = null;
+    };
+
     return (
         <>
             {isOpen && <div className="fixed inset-0 bg-black/50 z-40" onClick={() => !isPinned && handleClose()}></div>}
             
-            <div className={`fixed top-0 left-0 h-full w-full max-w-md bg-gray-800/90 backdrop-blur-md shadow-2xl z-50 transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+            <div 
+                className={`fixed top-0 left-0 h-full w-full max-w-md bg-gray-800/90 backdrop-blur-md shadow-2xl z-50 transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+            >
                 <div className="flex flex-col h-full p-4 overflow-hidden">
                     {/* Header is handled inside components mostly, or consistent here */}
                     {view === 'list' && (
