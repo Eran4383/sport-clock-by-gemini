@@ -34,6 +34,7 @@ export interface Settings {
   backgroundColor: string;
   halfwayColor: string;
   restBackgroundColor: string;
+  tipColor: string; // New setting for tip text color
   showRestTitleOnDefaultCountdown: boolean;
   preWorkoutCountdownDuration: number;
   settingsCategoryOrder: string[];
@@ -48,9 +49,9 @@ export interface Settings {
   restAfterWarmupDuration: number;
   showLogSessionButton: boolean;
   keepScreenOnDuringWorkout: boolean;
-  showExerciseInstructions: boolean; // New setting
+  showExerciseInstructions: boolean; 
   userProfile?: {
-    birthDate?: string; // ISO string like "YYYY-MM-DD"
+    birthDate?: string; 
     fitnessLevel?: 'beginner' | 'intermediate' | 'advanced';
     equipment?: { name: string; available: boolean }[];
   };
@@ -81,6 +82,7 @@ const defaultSettings: Settings = {
   backgroundColor: '#000000',
   halfwayColor: '#FF0000',
   restBackgroundColor: '#FFFFFF',
+  tipColor: '#FDE047', // Default yellow-300
   showRestTitleOnDefaultCountdown: true,
   preWorkoutCountdownDuration: 10,
   settingsCategoryOrder: ['sounds', 'customSounds', 'countdown', 'stopwatch', 'workoutDisplay', 'displaySizes', 'displayColors', 'developer'],
@@ -90,7 +92,7 @@ const defaultSettings: Settings = {
   restAfterWarmupDuration: 15,
   showLogSessionButton: true,
   keepScreenOnDuringWorkout: true,
-  showExerciseInstructions: true, // Default to true or false based on preference
+  showExerciseInstructions: true,
   userProfile: {
     birthDate: '',
     fitnessLevel: 'intermediate',
@@ -104,6 +106,12 @@ const defaultSettings: Settings = {
 
 const getInitialSettings = (): Settings => {
   const localSettings = getLocalSettings();
+  
+  // Backwards compatibility for existing users who don't have tipColor yet
+  if (localSettings && !localSettings.tipColor) {
+      localSettings.tipColor = defaultSettings.tipColor;
+  }
+
   // Ensure the developer category is present for existing users
   if (localSettings && !localSettings.settingsCategoryOrder?.includes('developer')) {
     localSettings.settingsCategoryOrder = [...(localSettings.settingsCategoryOrder || defaultSettings.settingsCategoryOrder), 'developer'];
