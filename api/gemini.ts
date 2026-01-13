@@ -181,7 +181,9 @@ const handleChatRequest = async (history: any[], message: string, profileContext
         finalSystemInstruction += `\n\n--- IMPORTANT USER PROFILE ---\n${profileContext}\n--- END USER PROFILE ---`;
     }
 
-    // FIX: Using 'gemini-3-pro-preview' for complex text reasoning tasks.
+    // FIX: Using 'gemini-3-flash-preview' for general chat
+    // (Using flash for faster responses, but system prompt asks for complex logic - let's stick to system prompt request if needed or use gemini-3-pro-preview if quality drops)
+    // The previous instruction was to use Pro for complex.
     const chat = ai.chats.create({
         model: 'gemini-3-pro-preview',
         history,

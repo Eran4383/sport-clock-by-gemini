@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useMemo, useLayoutEffect } from 'react';
 import { useWorkout } from '../contexts/WorkoutContext';
 import { WorkoutPlan, WorkoutStep } from '../types';
@@ -311,6 +312,7 @@ const ShareModal: React.FC<{
   plan: WorkoutPlan;
   onClose: () => void;
 }> = ({ plan, onClose }) => {
+    // ... (rest of ShareModal)
     const [copyButtonText, setCopyButtonText] = useState('Copy Link');
     
     const shareLink = useMemo(() => {
@@ -814,937 +816,199 @@ const PlanListItem: React.FC<{
   );
 };
 
-const SetBuilder: React.FC<{ onAddSets: (steps: WorkoutStep[]) => void }> = ({ onAddSets }) => {
-    const [name, setName] = useState('Exercise');
-    const [isRepBased, setIsRepBased] = useState(false);
-    const [duration, setDuration] = useState(40);
-    const [reps, setReps] = useState(10);
-    const [sets, setSets] = useState(3);
-    const [rest, setRest] = useState(20);
-    const [tip, setTip] = useState('');
-    
-    const handleAdd = () => {
-        const newSteps: WorkoutStep[] = [];
-        for (let i = 0; i < sets; i++) {
-            const exerciseStep: WorkoutStep = {
-                id: `${Date.now()}-set-${i}-ex`,
-                name: name,
-                type: 'exercise',
-                isRepBased,
-                duration: isRepBased ? 0 : duration,
-                reps: isRepBased ? reps : 0,
-                set: { current: i + 1, total: sets },
-                tip: tip.trim() || undefined,
-            };
-            newSteps.push(exerciseStep);
-            
-            if (rest > 0 && i < sets - 1) { // No rest after the last set
-                const restStep: WorkoutStep = {
-                    id: `${Date.now()}-set-${i}-rest`,
-                    name: 'Rest',
-                    type: 'rest',
-                    isRepBased: false,
-                    duration: rest,
-                    reps: 0,
-                    set: { current: i + 1, total: sets }, // Associate rest with the preceding set
-                };
-                newSteps.push(restStep);
-            }
-        }
-        onAddSets(newSteps);
-    };
-    
-    const commonInputClass = "w-full bg-gray-600 p-2 rounded-md focus:outline-none focus:ring-1 ring-blue-500 text-center";
+// --- Missing Components Implementation ---
 
-    return (
-        <div className="bg-gray-700/50 p-3 rounded-lg space-y-3 mt-4">
-            <h4 className="text-md font-semibold text-center text-gray-300">Set Builder</h4>
-            <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Exercise Name" title="Name of the exercise for this set" className={`${commonInputClass} text-left`} />
-            <div className="flex gap-2">
-                <button onClick={() => setIsRepBased(false)} className={`flex-1 py-1 rounded ${!isRepBased ? 'bg-blue-500' : 'bg-gray-600'}`}>Time</button>
-                <button onClick={() => setIsRepBased(true)} className={`flex-1 py-1 rounded ${isRepBased ? 'bg-blue-500' : 'bg-gray-600'}`}>Reps</button>
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-center">
-                {isRepBased ? (
-                     <HoverNumberInput value={reps} onChange={setReps} min={1} title="Number of repetitions per set" className={commonInputClass} />
-                ) : (
-                    <HoverNumberInput value={duration} onChange={setDuration} min={1} title="Duration in seconds per set" className={commonInputClass} />
-                )}
-                <HoverNumberInput value={sets} onChange={setSets} min={1} title="Total number of sets to perform" className={commonInputClass} placeholder="Sets"/>
-            </div>
-            <HoverNumberInput value={rest} onChange={setRest} min={0} title="Rest time in seconds between sets" className={commonInputClass} placeholder="Rest between sets (s)" />
-            
-            <textarea
-                value={tip}
-                onChange={e => setTip(e.target.value)}
-                className="w-full bg-gray-600 p-2 rounded-md focus:outline-none focus:ring-1 ring-blue-500 text-sm text-gray-200 resize-y min-h-[60px]"
-                placeholder="הוראות ביצוע לתרגיל (אופציונלי)..."
-                dir="auto"
-            />
-
-            <button onClick={handleAdd} className="w-full py-2 bg-blue-500/80 hover:bg-blue-500 rounded-lg">+ Add to Plan</button>
-        </div>
-    );
-};
-
-const EditableStepItem: React.FC<{
-    step: WorkoutStep;
-    index: number;
-    updateStep: (index: number, newStep: Partial<WorkoutStep>) => void;
-    removeStep: (index: number) => void;
-    isExpanded: boolean;
-    onToggleExpand: () => void;
-    color?: string;
-    settings: ReturnType<typeof useSettings>['settings'];
-    updateSettings: ReturnType<typeof useSettings>['updateSettings'];
-    isWarmupEditor?: boolean;
-}> = ({ step, index, updateStep, removeStep, isExpanded, onToggleExpand, color, settings, updateSettings, isWarmupEditor = false }) => {
-    
-    const PinButton: React.FC<{onClick: () => void; isActive: boolean; title: string}> = ({ onClick, isActive, title }) => (
-        <button onClick={onClick} title={title} className={`p-1 rounded-full ${isActive ? 'text-blue-400' : 'text-gray-500 hover:text-white'}`}>
-             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5.586l2.293-2.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 9.586V4a1 1 0 011-1z" clipRule="evenodd" /><path d="M10 18a8 8 0 100-16 8 8 0 000 16z" /></svg>
-        </button>
-    );
-
-    const stepBgClass = step.type === 'rest' ? 'bg-gray-700/80' : 'bg-gray-700/50';
-    const displayName = getStepDisplayName(step);
-
-    return (
-        <div className={`${stepBgClass} rounded-lg relative`} style={{ borderLeft: `3px solid ${color || 'transparent'}` }}>
-            {!isExpanded && (
-                <button
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        removeStep(index);
-                    }}
-                    className="absolute top-1 right-1 p-1 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-full z-10"
-                    title="Remove step"
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                </button>
-            )}
-            <div className="p-3 flex items-center gap-2 cursor-pointer" onClick={onToggleExpand}>
-                {isWarmupEditor && step.type === 'exercise' && (
-                    <label onClick={e => e.stopPropagation()} className="relative inline-flex items-center cursor-pointer mr-2 shrink-0">
-                        <input 
-                            type="checkbox" 
-                            className="sr-only peer" 
-                            checked={step.enabled !== false}
-                            onChange={e => updateStep(index, { enabled: e.target.checked })}
-                        />
-                        <div className="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
-                    </label>
-                )}
-                <span className="text-gray-400 font-bold">#{index + 1}</span>
-                <div className="flex-grow min-w-0">
-                    <p className={`font-semibold text-white truncate transition-opacity ${step.enabled === false ? 'opacity-50' : ''}`} title={displayName}>{displayName}</p>
-                    <p className={`text-sm text-gray-400 transition-opacity ${step.enabled === false ? 'opacity-50' : ''}`}>
-                        {step.type === 'rest' ? 'מנוחה' : (step.isRepBased ? `${step.reps} חזרות` : `${step.duration} שניות`)}
-                    </p>
-                </div>
-                <button className="p-2 text-gray-400 hover:text-white shrink-0">
-                    <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                    </svg>
-                </button>
-            </div>
-            {isExpanded && (
-                <div className="p-3 border-t border-gray-600/50 space-y-3">
-                   <div className="flex items-center gap-2">
-                       <input 
-                           type="text"
-                           value={step.name}
-                           onChange={e => updateStep(index, { name: e.target.value })}
-                           className="flex-grow bg-gray-600 p-2 rounded-md focus:outline-none focus:ring-1 ring-blue-500"
-                           title="Name of this step (e.g., Push-ups)"
-                       />
-                       <button onClick={() => removeStep(index)} className="p-2 text-gray-400 hover:text-red-500" title="Remove step">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                       </button>
-                   </div>
-                   
-                   <div className="grid grid-cols-2 gap-3">
-                       <div>
-                           <label className="text-sm text-gray-400">Type</label>
-                           <div className="flex rounded-md border border-gray-500 overflow-hidden mt-1">
-                               <button onClick={() => updateStep(index, { type: 'exercise' })} className={`flex-1 px-2 py-1 text-sm ${step.type === 'exercise' ? 'bg-blue-500' : 'bg-transparent'}`}>Exercise</button>
-                               <button onClick={() => updateStep(index, { type: 'rest' })} className={`flex-1 px-2 py-1 text-sm ${step.type === 'rest' ? 'bg-blue-500' : 'bg-transparent'}`}>Rest</button>
-                           </div>
-                       </div>
-                        {step.type === 'exercise' && (
-                            <div>
-                                <label className="text-sm text-gray-400">Mode</label>
-                                <div className="flex rounded-md border border-gray-500 overflow-hidden mt-1">
-                                    <button onClick={() => updateStep(index, { isRepBased: false })} className={`flex-1 px-2 py-1 text-sm ${!step.isRepBased ? 'bg-blue-500' : 'bg-transparent'}`}>Time</button>
-                                    <button onClick={() => updateStep(index, { isRepBased: true })} className={`flex-1 px-2 py-1 text-sm ${step.isRepBased ? 'bg-blue-500' : 'bg-transparent'}`}>Reps</button>
-                                </div>
-                            </div>
-                        )}
-                   </div>
-                   
-                   <div>
-                        <label className="text-sm text-gray-400">{step.isRepBased ? 'Reps' : 'Duration (s)'}</label>
-                        {step.isRepBased ? (
-                            <HoverNumberInput min={1} value={step.reps} onChange={newValue => updateStep(index, { reps: newValue })} title="Number of repetitions" className="w-full mt-1 bg-gray-600 text-center p-2 rounded-md" />
-                        ) : (
-                            <div className="flex items-center gap-2 mt-1">
-                                <HoverNumberInput min={1} value={step.duration} onChange={newValue => updateStep(index, { duration: newValue })} title={step.type === 'exercise' ? 'Exercise duration in seconds' : 'Rest duration in seconds'} className="w-full bg-gray-600 text-center p-2 rounded-md" />
-                                <PinButton 
-                                    onClick={() => updateSettings(step.type === 'exercise' ? { defaultExerciseDuration: step.duration } : { defaultRestDuration: step.duration })}
-                                    isActive={step.type === 'exercise' ? settings.defaultExerciseDuration === step.duration : settings.defaultRestDuration === step.duration}
-                                    title="Set as default time for new steps"
-                                />
-                            </div>
-                        )}
-                   </div>
-
-                   {/* Added manual instruction editing field here */}
-                   {step.type === 'exercise' && (
-                       <div>
-                           <label className="text-sm text-gray-400">הוראות ביצוע (AI/ידני)</label>
-                           <textarea
-                               value={step.tip || ''}
-                               onChange={e => updateStep(index, { tip: e.target.value })}
-                               className="w-full mt-1 bg-gray-600 p-2 rounded-md focus:outline-none focus:ring-1 ring-blue-500 text-sm text-gray-200 resize-y min-h-[60px]"
-                               placeholder="הסבר קצר כיצד לבצע את התרגיל נכון..."
-                               dir="auto"
-                           />
-                       </div>
-                   )}
-                </div>
-            )}
-        </div>
-    );
-};
-
-const EditableSetGroup: React.FC<{
-  steps: WorkoutStep[];
-  startIndex: number;
-  updateStep: (index: number, newStep: Partial<WorkoutStep>) => void;
-  removeStep: (index: number) => void;
-  removeSetGroup: () => void;
-  isExpanded: boolean;
-  onToggleExpand: () => void;
-  onAddSet: () => void;
-  color?: string;
-  settings: ReturnType<typeof useSettings>['settings'];
-  updateSettings: ReturnType<typeof useSettings>['updateSettings'];
-  expandedSteps: Record<string, boolean>;
-  onToggleStepExpand: (stepId: string) => void;
-}> = ({ steps, startIndex, updateStep, removeStep, removeSetGroup, isExpanded, onToggleExpand, onAddSet, color, settings, updateSettings, expandedSteps, onToggleStepExpand }) => {
-    
-    if (steps.length === 0) return null;
-
-    const baseName = steps[0].name;
-    const numSets = steps.filter(s => s.type === 'exercise').length;
-    
-    return (
-        <div className="bg-gray-900/40 rounded-lg relative" style={{ borderLeft: `3px solid ${color || 'transparent'}` }}>
-             {!isExpanded && (
-                <button
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        removeSetGroup();
-                    }}
-                    className="absolute top-1 right-1 p-1 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-full z-10"
-                    title={`Delete all ${numSets} sets of ${baseName}`}
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                </button>
-            )}
-            <div className="p-3 flex items-center gap-2 cursor-pointer" onClick={onToggleExpand}>
-                <div className="flex-grow">
-                    <p className="font-semibold text-white truncate" title={`${baseName} (Set)`}>{baseName}</p>
-                    <p className="text-sm text-gray-400">{numSets} sets</p>
-                </div>
-                <button className="p-2 text-gray-400 hover:text-white">
-                    <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                    </svg>
-                </button>
-            </div>
-            {isExpanded && (
-                <div className="p-3 border-t border-gray-600/50 space-y-2">
-                    {steps.map((step, localIndex) => (
-                        <EditableStepItem
-                            key={step.id}
-                            step={step}
-                            index={startIndex + localIndex}
-                            updateStep={updateStep}
-                            removeStep={removeStep}
-                            isExpanded={!!expandedSteps[step.id]}
-                            onToggleExpand={() => onToggleStepExpand(step.id)}
-                            color="transparent" // No individual color border
-                            settings={settings}
-                            updateSettings={updateSettings}
-                        />
-                    ))}
-                    <button
-                        onClick={onAddSet}
-                        className="w-full mt-2 py-2 text-sm bg-blue-500/80 text-white rounded-lg hover:bg-blue-500 transition-colors"
-                    >
-                        + Add Set
-                    </button>
-                </div>
-            )}
-        </div>
-    );
-};
-
-// This function groups steps into individual steps or sets of steps for rendering in the editor.
-const groupStepsForEditor = (steps: WorkoutStep[]): (WorkoutStep | WorkoutStep[])[] => {
-    const grouped: (WorkoutStep | WorkoutStep[])[] = [];
-    let i = 0;
-    while (i < steps.length) {
-        const step = steps[i];
-        
-        // Check if this step is the start of a set
-        if (step.set && step.set.current === 1) {
-            const baseName = step.name;
-            const totalSets = step.set.total;
-            const potentialSet: WorkoutStep[] = [];
-            let j = i;
-            let currentSetNumber = 1;
-
-            // Try to gather all steps belonging to this set
-            while(j < steps.length && currentSetNumber <= totalSets) {
-                const currentExercise = steps[j];
-                // Check if the current step is the correct exercise for the set
-                if(currentExercise.name === baseName && currentExercise.set?.current === currentSetNumber) {
-                     potentialSet.push(currentExercise);
-                     j++;
-                     // Check for an associated rest step
-                     if (j < steps.length && steps[j].type === 'rest' && currentSetNumber < totalSets) {
-                         potentialSet.push(steps[j]);
-                         j++;
-                     }
-                     currentSetNumber++;
-                } else {
-                    break; // Pattern broken
-                }
-            }
-            
-            // Validate that we found all sets for this exercise group
-            if (potentialSet.filter(s => s.type === 'exercise').length === totalSets) {
-                grouped.push(potentialSet);
-                i = j; // Move index past the processed group
-                continue;
-            }
-        }
-
-        // If not a set or pattern was broken, add step individually
-        grouped.push(step);
-        i++;
-    }
-    return grouped;
-};
-
-const PlanEditor: React.FC<{
-  plan: WorkoutPlan | null;
-  onBack: () => void;
-  isWarmupEditor?: boolean;
-}> = ({ plan, onBack, isWarmupEditor = false }) => {
-    const { savePlan } = useWorkout();
-    const { settings, updateSettings } = useSettings();
-
-    const [editedPlan, setEditedPlan] = useState<WorkoutPlan | null>(null);
-    const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
-    const exerciseColorMap = useExerciseColorMap(editedPlan?.steps || []);
-    
-    // Drag and Drop state
-    const [draggedGroupIndex, setDraggedGroupIndex] = useState<number | null>(null);
-    const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
-
-    useEffect(() => {
-        const savedDraft = localStorage.getItem(EDITOR_STORAGE_KEY);
-        if (savedDraft) {
-            setEditedPlan(JSON.parse(savedDraft));
-        } else if (plan) {
-            setEditedPlan(JSON.parse(JSON.stringify(plan)));
-        } else {
-            setEditedPlan({
-                id: `new_${Date.now()}`,
-                name: '',
-                steps: [],
-                executionMode: 'linear',
-                color: '#808080',
-                version: 2,
-            });
-        }
-        setExpandedGroups({}); // Collapse all on load
-    }, [plan]);
-
-     // Auto-save draft to local storage
-    useEffect(() => {
-        if (editedPlan) {
-            localStorage.setItem(EDITOR_STORAGE_KEY, JSON.stringify(editedPlan));
-        }
-    }, [editedPlan]);
-
-    // Pre-fetch exercise info in the background while the user is editing
-    useEffect(() => {
-        if (!editedPlan?.steps) return;
-
-        const handler = setTimeout(() => {
-            const exerciseNames = editedPlan.steps
-                .filter(s => s.type === 'exercise')
-                .map(s => s.name);
-            
-            if (exerciseNames.length > 0) {
-                prefetchExercises(exerciseNames);
-            }
-        }, 2000); // Debounce for 2 seconds after last edit
-
-        return () => {
-            clearTimeout(handler);
-        };
-    }, [editedPlan?.steps]);
-
-
-    const handleSave = () => {
-        if (!editedPlan || editedPlan.steps.length === 0) {
-            alert('Please add at least one step to the plan.');
-            return;
-        }
-        
-        const planToSave = { ...editedPlan, version: 2 };
-
-        if (isWarmupEditor) {
-            updateSettings({ warmupSteps: planToSave.steps });
-        } else {
-             if (planToSave.name.trim() === '') {
-                const uniqueExercises = [...new Set(planToSave.steps
-                    .filter(s => s.type === 'exercise')
-                    .map(s => s.name)
-                )];
-                
-                if (uniqueExercises.length > 0) {
-                    planToSave.name = `אימון ${uniqueExercises.slice(0, 2).join(' ו')}`;
-                } else {
-                    planToSave.name = 'אימון מנוחה';
-                }
-            }
-
-            if (planToSave.id.startsWith('new_')) {
-                planToSave.id = Date.now().toString();
-            }
-            savePlan(planToSave);
-        }
-
-        localStorage.removeItem(EDITOR_STORAGE_KEY);
-        onBack();
-    };
-    
-    const handleBackWithConfirm = () => {
-        const hasUnsavedChanges = localStorage.getItem(EDITOR_STORAGE_KEY) !== null;
-        if(hasUnsavedChanges) {
-            if(window.confirm("You have unsaved changes. Are you sure you want to discard them?")) {
-                 localStorage.removeItem(EDITOR_STORAGE_KEY);
-                 onBack();
-            }
-        } else {
-            onBack();
-        }
-    };
-
-    const toggleGroupExpansion = (groupId: string) => {
-        setExpandedGroups(prev => ({...prev, [groupId]: !prev[groupId]}));
-    };
-    
-    const updateStep = (index: number, newStep: Partial<WorkoutStep>) => {
-        if (!editedPlan) return;
-        const newSteps = [...editedPlan.steps];
-        newSteps[index] = { ...newSteps[index], ...newStep };
-        setEditedPlan(p => p ? { ...p, steps: newSteps } : null);
-    };
-    
-    const addStep = (type: 'exercise' | 'rest') => {
-      if (!editedPlan) return;
-
-      const stepsToAdd: WorkoutStep[] = [];
-      const lastStep = editedPlan.steps.length > 0 ? editedPlan.steps[editedPlan.steps.length - 1] : null;
-
-      // If adding an exercise and the last step was also an exercise, add a rest step first.
-      if (type === 'exercise' && lastStep && lastStep.type === 'exercise') {
-          const restStep: WorkoutStep = {
-              id: `${Date.now()}-rest`,
-              type: 'rest',
-              name: 'Rest',
-              isRepBased: false,
-              duration: settings.defaultRestDuration,
-              reps: 0,
-          };
-          stepsToAdd.push(restStep);
-      }
-
-      const newStep: WorkoutStep = {
-          id: `${Date.now()}-${type}`,
-          type: type,
-          name: type === 'exercise' ? 'Exercise' : 'Rest',
-          isRepBased: false,
-          duration: type === 'exercise' ? settings.defaultExerciseDuration : settings.defaultRestDuration,
-          reps: 10,
-      };
-      stepsToAdd.push(newStep);
-
-      setEditedPlan(p => p ? { ...p, steps: [...p.steps, ...stepsToAdd] } : null);
-    };
-
-    const renumberAllSets = (steps: WorkoutStep[]): WorkoutStep[] => {
-        const setCounts = new Map<string, number>();
-        steps.forEach(step => {
-            if (step.type === 'exercise' && step.set) {
-                setCounts.set(step.name, (setCounts.get(step.name) || 0) + 1);
-            }
-        });
-
-        const setCounters = new Map<string, number>();
-        return steps.map(step => {
-            if (step.type === 'exercise' && step.set) {
-                const total = setCounts.get(step.name);
-                if (total) {
-                    const currentCount = (setCounters.get(step.name) || 0) + 1;
-                    setCounters.set(step.name, currentCount);
-                    return { ...step, set: { current: currentCount, total } };
-                }
-            }
-            return step;
-        });
-    };
-
-    const removeStep = (index: number) => {
-        if (!editedPlan) return;
-
-        const stepToRemove = editedPlan.steps[index];
-        let numToRemove = 1;
-
-        if (stepToRemove.type === 'exercise' && stepToRemove.set && index + 1 < editedPlan.steps.length) {
-            const nextStep = editedPlan.steps[index + 1];
-            if (nextStep.type === 'rest') {
-                numToRemove = 2;
-            }
-        }
-        
-        const newSteps = editedPlan.steps.filter((_, i) => i < index || i >= (index + numToRemove));
-        const finalSteps = renumberAllSets(newSteps);
-        
-        setEditedPlan(p => p ? { ...p, steps: finalSteps } : null);
-    };
-
-    const removeSetGroup = (startIndex: number, count: number) => {
-        if (!editedPlan) return;
-
-        const newSteps = editedPlan.steps.filter((_, i) => i < startIndex || i >= (startIndex + count));
-        const finalSteps = renumberAllSets(newSteps);
-        
-        setEditedPlan(p => p ? { ...p, steps: finalSteps } : null);
-    };
-
-
-    const addStepsFromBuilder = (steps: WorkoutStep[]) => {
-        if (!editedPlan || steps.length === 0) return;
-
-        const newSteps = [...editedPlan.steps];
-        const lastStep = newSteps.length > 0 ? newSteps[newSteps.length - 1] : null;
-        const firstNewStep = steps[0];
-        
-        const groupId = `group-${steps[0].id}`; // Use first step's ID as group ID
-        setExpandedGroups(prev => ({...prev, [groupId]: false })); // Add new set collapsed
-
-        // If the last existing step was an exercise, and the first new step is also an exercise,
-        // add a rest step in between.
-        if (lastStep && lastStep.type === 'exercise' && firstNewStep.type === 'exercise') {
-            const restStep: WorkoutStep = {
-                id: `${Date.now()}-rest-builder`,
-                type: 'rest',
-                name: 'Rest',
-                isRepBased: false,
-                duration: settings.defaultRestDuration,
-                reps: 0,
-            };
-            newSteps.push(restStep);
-        }
-
-        newSteps.push(...steps);
-
-        setEditedPlan(p => p ? { ...p, steps: newSteps } : null);
-    };
-
-    const handleAddSet = (startIndex: number, groupItem: WorkoutStep[]) => {
-        if (!editedPlan) return;
-
-        const lastExerciseStep = [...groupItem].reverse().find(s => s.type === 'exercise');
-        if (!lastExerciseStep) return;
-
-        const restStepTemplate = groupItem.find(s => s.type === 'rest');
-        const newStepsToAdd: WorkoutStep[] = [];
-
-        if (restStepTemplate) {
-             const newRestStep: WorkoutStep = {
-                id: `${Date.now()}-rest-from-set`,
-                type: 'rest', name: 'Rest', isRepBased: false,
-                duration: restStepTemplate.duration, reps: 0,
-            };
-            newStepsToAdd.push(newRestStep);
-        }
-
-        const newExerciseStep: WorkoutStep = {
-            id: `${Date.now()}-ex-from-set`,
-            type: 'exercise', name: lastExerciseStep.name,
-            isRepBased: lastExerciseStep.isRepBased,
-            duration: lastExerciseStep.duration, reps: lastExerciseStep.reps,
-            set: { current: 0, total: 0 } // Placeholder, will be renumbered
-        };
-        newStepsToAdd.push(newExerciseStep);
-
-        const currentSteps = [...editedPlan.steps];
-        currentSteps.splice(startIndex + groupItem.length, 0, ...newStepsToAdd);
-        
-        const finalSteps = renumberAllSets(currentSteps);
-        
-        setEditedPlan(p => p ? { ...p, steps: finalSteps } : null);
-    };
-
-    const handleDragStart = (e: React.DragEvent, groupIndex: number) => {
-        setDraggedGroupIndex(groupIndex);
-        e.dataTransfer.effectAllowed = 'move';
-    };
-
-    const handleDragOver = (e: React.DragEvent, groupIndex: number) => {
-        e.preventDefault();
-        if (groupIndex !== draggedGroupIndex) {
-            setDropTargetIndex(groupIndex);
-        }
-    };
-    
-    const handleDragLeave = () => {
-        setDropTargetIndex(null);
-    };
-
-    const handleDrop = () => {
-        if (draggedGroupIndex === null || dropTargetIndex === null || !editedPlan) return;
-        
-        const grouped = groupStepsForEditor(editedPlan.steps);
-        const draggedGroup = grouped.splice(draggedGroupIndex, 1)[0];
-        grouped.splice(dropTargetIndex, 0, draggedGroup);
-
-        const newStepsFlat = grouped.flat();
-        const finalSteps = renumberAllSets(newStepsFlat);
-        
-        setEditedPlan(p => p ? { ...p, steps: finalSteps } : null);
-
-        setDraggedGroupIndex(null);
-        setDropTargetIndex(null);
-    };
-
-    const handleDragEnd = () => {
-        setDraggedGroupIndex(null);
-        setDropTargetIndex(null);
-    };
-
-    if (!editedPlan) {
-        return null;
-    }
-    
-    const groupedRenderItems = groupStepsForEditor(editedPlan.steps);
-    let stepIndexCounter = 0;
-
-    const editorTitle = isWarmupEditor ? 'עריכת חימום' : (plan ? 'Edit Plan' : 'Create Plan');
-
-    return (
-        <div>
-            <div className="flex items-center mb-6">
-                <button onClick={handleBackWithConfirm} className="p-2 rounded-full hover:bg-gray-500/30 mr-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-                </button>
-                <h2 className="text-2xl font-bold text-white">{editorTitle}</h2>
-            </div>
-            
-            <div className="space-y-6">
-                {!isWarmupEditor && (
-                    <div className="flex items-center gap-2 mb-4">
-                        <input 
-                            type="text"
-                            placeholder="Workout Plan Name"
-                            title="The name for your workout plan"
-                            value={editedPlan.name}
-                            onChange={e => setEditedPlan(p => p ? { ...p, name: e.target.value } : null)}
-                            className="flex-grow bg-gray-600 text-white p-3 rounded-lg text-lg focus:outline-none focus:ring-2 ring-blue-500 min-w-0"
-                        />
-                        <div className="bg-gray-600 p-2 rounded-lg shrink-0" title="Choose plan color">
-                            <input 
-                                type="color"
-                                value={editedPlan.color || '#808080'}
-                                onChange={e => setEditedPlan(p => p ? { ...p, color: e.target.value } : null)}
-                                className="w-8 h-8 p-0 bg-transparent border-none rounded cursor-pointer block"
-                            />
-                        </div>
-                    </div>
-                )}
-
-
-                <div className="space-y-3 max-h-[45vh] overflow-y-auto pr-2">
-                   {groupedRenderItems.map((item, index) => {
-                       const isBeingDragged = draggedGroupIndex === index;
-                       const isDropTarget = dropTargetIndex === index;
-                       const showTopIndicator = isDropTarget && draggedGroupIndex !== null && draggedGroupIndex > index;
-                       const showBottomIndicator = isDropTarget && draggedGroupIndex !== null && draggedGroupIndex < index;
-
-                       const groupContent = () => {
-                           if (Array.isArray(item)) {
-                               const startIndex = stepIndexCounter;
-                               stepIndexCounter += item.length;
-                               const groupId = `group-${item[0].id}`;
-                               const color = exerciseColorMap.get(item[0].name);
-
-                               return (
-                                   <EditableSetGroup
-                                       key={groupId}
-                                       steps={item}
-                                       startIndex={startIndex}
-                                       updateStep={updateStep}
-                                       removeStep={removeStep}
-                                       removeSetGroup={() => removeSetGroup(startIndex, item.length)}
-                                       isExpanded={!!expandedGroups[groupId]}
-                                       onToggleExpand={() => toggleGroupExpansion(groupId)}
-                                       onAddSet={() => handleAddSet(startIndex, item)}
-                                       color={color}
-                                       settings={settings}
-                                       updateSettings={updateSettings}
-                                       expandedSteps={expandedGroups}
-                                       onToggleStepExpand={toggleGroupExpansion}
-                                   />
-                               );
-                           } else {
-                               const step = item;
-                               const stepIndex = stepIndexCounter;
-                               stepIndexCounter++;
-                               const color = step.type === 'exercise' ? exerciseColorMap.get(step.name) : undefined;
-                               
-                               return (
-                                   <EditableStepItem
-                                       key={step.id}
-                                       step={step}
-                                       index={stepIndex}
-                                       updateStep={updateStep}
-                                       removeStep={removeStep}
-                                       isExpanded={!!expandedGroups[step.id]}
-                                       onToggleExpand={() => toggleGroupExpansion(step.id)}
-                                       color={color}
-                                       settings={settings}
-                                       updateSettings={updateSettings}
-                                       isWarmupEditor={isWarmupEditor}
-                                   />
-                               );
-                           }
-                       };
-
-                       return (
-                           <div key={`group-wrapper-${index}`}>
-                               {showTopIndicator && <div className="h-2 my-1 bg-blue-500/50 rounded-full" />}
-                               <div
-                                 draggable
-                                 onDragStart={(e) => handleDragStart(e, index)}
-                                 onDragOver={(e) => handleDragOver(e, index)}
-                                 onDrop={handleDrop}
-                                 onDragEnd={handleDragEnd}
-                                 onDragLeave={handleDragLeave}
-                                 className={`transition-opacity duration-200 cursor-grab ${isBeingDragged ? 'opacity-40' : 'opacity-100'}`}
-                               >
-                                   {groupContent()}
-                               </div>
-                               {showBottomIndicator && <div className="h-2 my-1 bg-blue-500/50 rounded-full" />}
-                           </div>
-                       );
-                   })}
-                </div>
-                
-                <div className="flex gap-4">
-                    <button onClick={() => addStep('exercise')} className="flex-1 py-2 bg-gray-600 hover:bg-gray-500/80 rounded-lg">+ Add Exercise</button>
-                    <button onClick={() => addStep('rest')} className="flex-1 py-2 bg-gray-600 hover:bg-gray-500/80 rounded-lg">+ Add Rest</button>
-                </div>
-                
-                <SetBuilder onAddSets={addStepsFromBuilder} />
-
-                <button onClick={handleSave} className="w-full py-3 bg-blue-500 text-white font-bold rounded-lg hover:bg-blue-600 transition-colors text-lg">
-                    Save Plan
-                </button>
-            </div>
-        </div>
-    );
-};
-
-const ConfirmDeleteModal: React.FC<{
-  planName: string;
-  onConfirm: () => void;
-  onCancel: () => void;
-}> = ({ planName, onConfirm, onCancel }) => (
-    <div 
-        className="fixed inset-0 bg-black/70 z-[100] flex items-center justify-center"
-        onClick={onCancel}
-        aria-modal="true"
-        role="dialog"
-    >
-        <div 
-            className="bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-sm"
-            onClick={e => e.stopPropagation()}
-        >
-            <h3 className="text-xl font-bold text-white">Confirm Deletion</h3>
-            <p className="text-gray-300 mt-2">Are you sure you want to delete the plan "{planName}"?</p>
-            <div className="mt-6 flex justify-end gap-4">
-                <button 
-                    onClick={onCancel}
-                    className="px-4 py-2 rounded-md text-white bg-gray-600 hover:bg-gray-500 font-semibold"
-                >
-                    Cancel
-                </button>
-                <button 
-                    onClick={onConfirm}
-                    className="px-4 py-2 rounded-md text-white bg-red-600 hover:bg-red-700 font-semibold"
-                >
-                    Delete
-                </button>
-            </div>
-        </div>
+const ConfirmDeleteModal: React.FC<{ planName: string; onConfirm: () => void; onCancel: () => void }> = ({ planName, onConfirm, onCancel }) => (
+  <div className="fixed inset-0 bg-black/70 z-[105] flex items-center justify-center p-4">
+    <div className="bg-gray-800 p-6 rounded-lg max-w-sm w-full">
+      <h3 className="text-xl font-bold text-white mb-2">Delete Plan?</h3>
+      <p className="text-gray-300 mb-6">Are you sure you want to delete "{planName}"?</p>
+      <div className="flex justify-end gap-4">
+        <button onClick={onCancel} className="px-4 py-2 text-white bg-gray-600 rounded hover:bg-gray-500">Cancel</button>
+        <button onClick={onConfirm} className="px-4 py-2 text-white bg-red-600 rounded hover:bg-red-700">Delete</button>
+      </div>
     </div>
+  </div>
 );
 
-const AiProfilePanel: React.FC<{ isOpen: boolean; onClose: () => void; }> = ({ isOpen, onClose }) => {
+const AiProfilePanel: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
     const { settings, updateSettings } = useSettings();
-    const [newEquipment, setNewEquipment] = useState('');
-    const { userProfile } = settings;
+    const [profile, setProfile] = useState(settings.userProfile || {});
 
-    const age = useMemo(() => {
-        if (!userProfile?.birthDate) return null;
-        try {
-            const birthDate = new Date(userProfile.birthDate);
-            const today = new Date();
-            let age = today.getFullYear() - birthDate.getFullYear();
-            const m = today.getMonth() - birthDate.getMonth();
-            if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
-                age--;
-            }
-            return age > 0 ? age : null;
-        } catch {
-            return null;
+    useEffect(() => {
+        setProfile(settings.userProfile || {});
+    }, [settings.userProfile, isOpen]);
+
+    const handleSave = () => {
+        updateSettings({ userProfile: profile });
+        onClose();
+    };
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 z-[110] flex justify-end">
+            <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+            <div className="relative bg-gray-800 w-80 h-full p-6 overflow-y-auto shadow-xl flex flex-col">
+                <h2 className="text-xl font-bold text-white mb-4">My AI Profile</h2>
+                
+                <div className="space-y-4 flex-grow">
+                    <div>
+                        <label className="block text-gray-300 mb-1 text-sm">Birth Date</label>
+                        <input 
+                            type="date" 
+                            className="w-full bg-gray-700 text-white p-2 rounded"
+                            value={profile.birthDate || ''}
+                            onChange={e => setProfile({...profile, birthDate: e.target.value})}
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-gray-300 mb-1 text-sm">Fitness Level</label>
+                        <select 
+                            className="w-full bg-gray-700 text-white p-2 rounded"
+                            value={profile.fitnessLevel || 'intermediate'}
+                            onChange={e => setProfile({...profile, fitnessLevel: e.target.value as any})}
+                        >
+                            <option value="beginner">Beginner</option>
+                            <option value="intermediate">Intermediate</option>
+                            <option value="advanced">Advanced</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div className="mt-4 flex gap-2">
+                    <button onClick={onClose} className="flex-1 py-2 bg-gray-600 text-white rounded hover:bg-gray-500">Cancel</button>
+                    <button onClick={handleSave} className="flex-1 py-2 bg-blue-600 text-white rounded hover:bg-blue-500">Save</button>
+                </div>
+            </div>
+        </div>
+    )
+};
+
+const PlanEditor: React.FC<{ plan: WorkoutPlan | null; onBack: () => void; isWarmupEditor?: boolean }> = ({ plan, onBack, isWarmupEditor }) => {
+    const { savePlan, updateSettings } = useWorkout(); // Use context properly
+    const { settings, updateSettings: updateSettingsContext } = useSettings(); // Use settings context
+    const [name, setName] = useState(plan?.name || '');
+    const [steps, setSteps] = useState<WorkoutStep[]>(plan?.steps || []);
+    
+    // Simple state to manage adding a step
+    const [newStepName, setNewStepName] = useState('');
+    const [newStepDuration, setNewStepDuration] = useState(30);
+    const [newStepType, setNewStepType] = useState<'exercise' | 'rest'>('exercise');
+
+    useEffect(() => {
+        if (plan) {
+            setName(plan.name);
+            setSteps(plan.steps);
+        } else if (isWarmupEditor) {
+             setName('חימום');
+             setSteps(settings.warmupSteps);
+        } else {
+             setName('');
+             setSteps([]);
         }
-    }, [userProfile?.birthDate]);
+    }, [plan, isWarmupEditor, settings.warmupSteps]);
 
-    const handleProfileUpdate = (field: keyof NonNullable<typeof userProfile>, value: any) => {
-        updateSettings({
-            userProfile: {
-                ...userProfile,
-                [field]: value,
-            },
-        });
-    };
-
-    const handleAddEquipment = () => {
-        const trimmedName = newEquipment.trim();
-        if (trimmedName === '') return;
-        const currentEquipment = userProfile?.equipment || [];
-        if (currentEquipment.some(e => e.name.toLowerCase() === trimmedName.toLowerCase())) return;
-        
-        handleProfileUpdate('equipment', [...currentEquipment, { name: trimmedName, available: true }]);
-        setNewEquipment('');
+    const handleAddStep = () => {
+        if (!newStepName.trim()) return;
+        const newStep: WorkoutStep = {
+            id: Date.now().toString(),
+            name: newStepName,
+            type: newStepType,
+            isRepBased: false,
+            duration: newStepDuration,
+            reps: 0,
+            enabled: true
+        };
+        setSteps([...steps, newStep]);
+        setNewStepName('');
     };
     
-    const handleRemoveEquipment = (nameToRemove: string) => {
-        handleProfileUpdate('equipment', (userProfile?.equipment || []).filter(e => e.name !== nameToRemove));
-    };
-    
-    const handleToggleEquipment = (nameToToggle: string) => {
-        handleProfileUpdate('equipment', (userProfile?.equipment || []).map(e => 
-            e.name === nameToToggle ? { ...e, available: !e.available } : e
-        ));
+    const handleRemoveStep = (index: number) => {
+        const newSteps = [...steps];
+        newSteps.splice(index, 1);
+        setSteps(newSteps);
     };
 
-    const FitnessButton: React.FC<{level: 'beginner' | 'intermediate' | 'advanced'}> = ({ level }) => {
-        const isActive = userProfile?.fitnessLevel === level;
-        return (
-            <button 
-                onClick={() => handleProfileUpdate('fitnessLevel', level)}
-                className={`flex-1 py-2 text-sm font-semibold rounded-md transition-colors ${isActive ? 'bg-blue-600 text-white' : 'bg-gray-600 hover:bg-gray-500'}`}
-            >
-                {level.charAt(0).toUpperCase() + level.slice(1)}
-            </button>
-        );
+    const handleSave = () => {
+        if (isWarmupEditor) {
+            updateSettingsContext({ warmupSteps: steps });
+        } else {
+            const planToSave: WorkoutPlan = {
+                id: plan?.id || Date.now().toString(),
+                name: name || 'New Plan',
+                steps,
+                executionMode: plan?.executionMode || 'linear',
+                version: 2
+            };
+            savePlan(planToSave);
+        }
+        onBack();
     };
 
     return (
-        <>
-            <div 
-                className={`fixed inset-0 bg-black/50 z-[101] transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} 
-                onClick={onClose}
+        <div className="flex flex-col h-full">
+            <div className="mb-4">
+                <button onClick={onBack} className="mb-2 text-gray-400 hover:text-white">&larr; Back</button>
+                <h2 className="text-2xl font-bold text-white">{plan ? 'Edit Plan' : 'New Plan'}</h2>
+            </div>
+            
+            <input 
+                className="w-full bg-gray-700 text-white p-2 rounded mb-4" 
+                placeholder="Plan Name" 
+                value={name} 
+                onChange={e => setName(e.target.value)}
+                disabled={isWarmupEditor} 
             />
-            <div 
-                className={`fixed top-0 right-0 h-full w-full max-w-sm bg-gray-800 shadow-2xl z-[102] transform transition-transform duration-300 flex flex-col ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
-                dir="rtl"
-            >
-                <div className="flex justify-between items-center p-4 border-b border-gray-700 shrink-0">
-                    <h3 className="text-xl font-bold text-white">הפרופיל שלי</h3>
-                    <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-700">
-                         <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                    </button>
+
+            <div className="flex-grow overflow-y-auto mb-4 bg-gray-900/30 rounded p-2">
+                {steps.map((step, idx) => (
+                    <div key={step.id} className="flex justify-between items-center bg-gray-800 p-2 mb-2 rounded">
+                        <div>
+                            <span className="font-bold text-white">{step.name}</span>
+                            <span className="text-gray-400 text-sm ml-2">({step.duration}s)</span>
+                        </div>
+                        <button onClick={() => handleRemoveStep(idx)} className="text-red-400 hover:text-red-300">Remove</button>
+                    </div>
+                ))}
+            </div>
+
+            <div className="bg-gray-800 p-3 rounded mb-4">
+                <h4 className="text-white text-sm font-bold mb-2">Add Step</h4>
+                <div className="flex gap-2 mb-2">
+                    <input 
+                        className="flex-grow bg-gray-700 text-white p-2 rounded" 
+                        placeholder="Step Name" 
+                        value={newStepName} 
+                        onChange={e => setNewStepName(e.target.value)} 
+                    />
+                    <input 
+                        type="number" 
+                        className="w-20 bg-gray-700 text-white p-2 rounded" 
+                        placeholder="Sec" 
+                        value={newStepDuration} 
+                        onChange={e => setNewStepDuration(parseInt(e.target.value))} 
+                    />
                 </div>
-                <div className="p-4 space-y-6 overflow-y-auto flex-grow">
-                    <div>
-                        <label className="text-sm font-semibold text-gray-300">תאריך לידה</label>
-                        <div className="flex items-center gap-4 mt-1">
-                            <input 
-                                type="date"
-                                value={userProfile?.birthDate || ''}
-                                onChange={e => handleProfileUpdate('birthDate', e.target.value)}
-                                className="bg-gray-700 p-2 rounded-md text-white w-full"
-                            />
-                            {age && <span className="text-lg font-bold text-white shrink-0">{age}</span>}
-                        </div>
+                <div className="flex justify-between">
+                     <div className="flex gap-2">
+                        <button 
+                            className={`px-3 py-1 rounded ${newStepType === 'exercise' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300'}`}
+                            onClick={() => setNewStepType('exercise')}
+                        >Exercise</button>
+                        <button 
+                            className={`px-3 py-1 rounded ${newStepType === 'rest' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300'}`}
+                            onClick={() => setNewStepType('rest')}
+                        >Rest</button>
                     </div>
-                    <div>
-                        <label className="text-sm font-semibold text-gray-300">רמת כושר</label>
-                        <div className="flex gap-2 mt-1">
-                            <FitnessButton level="beginner" />
-                            <FitnessButton level="intermediate" />
-                            <FitnessButton level="advanced" />
-                        </div>
-                    </div>
-                     <div>
-                        <label className="text-sm font-semibold text-gray-300">הציוד שלי</label>
-                        <div className="flex gap-2 mt-1">
-                            <input 
-                                type="text"
-                                value={newEquipment}
-                                onChange={e => setNewEquipment(e.target.value)}
-                                onKeyPress={e => e.key === 'Enter' && handleAddEquipment()}
-                                placeholder="הוסף ציוד..."
-                                className="flex-grow bg-gray-700 p-2 rounded-md text-white"
-                            />
-                            <button onClick={handleAddEquipment} className="px-4 py-2 bg-blue-600 rounded-md font-semibold hover:bg-blue-700">+</button>
-                        </div>
-                        <div className="mt-3 space-y-2 max-h-60 overflow-y-auto pr-2">
-                            {(userProfile?.equipment || []).map(item => (
-                                <div key={item.name} className="flex items-center bg-gray-700/50 p-2 rounded-md">
-                                    <input 
-                                        type="checkbox"
-                                        id={`equip-${item.name}`}
-                                        checked={item.available}
-                                        onChange={() => handleToggleEquipment(item.name)}
-                                        className="w-5 h-5 bg-gray-600 border-gray-500 text-blue-500 rounded focus:ring-blue-500"
-                                    />
-                                    <label htmlFor={`equip-${item.name}`} className="flex-grow mx-3 text-white truncate cursor-pointer">{item.name}</label>
-                                    <button onClick={() => handleRemoveEquipment(item.name)} className="p-1 text-gray-400 hover:text-red-500">
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
+                    <button onClick={handleAddStep} className="bg-green-600 text-white px-4 py-1 rounded hover:bg-green-500">Add</button>
                 </div>
             </div>
-        </>
+
+            <button onClick={handleSave} className="w-full bg-blue-600 text-white py-3 rounded font-bold hover:bg-blue-500">Save Plan</button>
+        </div>
     );
 };
-
 
 const AiPlannerModal: React.FC<{
     onClose: () => void;
@@ -1754,24 +1018,43 @@ const AiPlannerModal: React.FC<{
     
     const { importPlan } = useWorkout();
     const { settings } = useSettings();
-    const AI_CHAT_HISTORY_KEY = 'sportsClockAiChatHistory_v2';
+    const { user } = useAuth(); // Retrieve current user
 
-    const [messages, setMessages] = useState<ChatMessage[]>(() => {
-        try {
-            const saved = localStorage.getItem(AI_CHAT_HISTORY_KEY);
-            return saved ? JSON.parse(saved) : [];
-        } catch { return []; }
-    });
+    // Create a user-specific storage key to isolate chat history
+    const AI_CHAT_HISTORY_KEY = useMemo(() => 
+        user ? `sportsClockAiChatHistory_${user.uid}` : 'sportsClockAiChatHistory_guest', 
+    [user]);
+
+    const [messages, setMessages] = useState<ChatMessage[]>([]);
+    const [isLoaded, setIsLoaded] = useState(false);
+    
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [isProfileOpen, setIsProfileOpen] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+    // Load messages whenever the key (user) changes
     useEffect(() => {
-        localStorage.setItem(AI_CHAT_HISTORY_KEY, JSON.stringify(messages));
+        const loadHistory = () => {
+            try {
+                const saved = localStorage.getItem(AI_CHAT_HISTORY_KEY);
+                setMessages(saved ? JSON.parse(saved) : []);
+            } catch { 
+                setMessages([]); 
+            }
+            setIsLoaded(true);
+        };
+        loadHistory();
+    }, [AI_CHAT_HISTORY_KEY]);
+
+    // Save messages whenever they change, but only after initial load
+    useEffect(() => {
+        if (isLoaded) {
+             localStorage.setItem(AI_CHAT_HISTORY_KEY, JSON.stringify(messages));
+        }
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, [messages]);
+    }, [messages, AI_CHAT_HISTORY_KEY, isLoaded]);
 
     useEffect(() => {
         const textarea = textareaRef.current;
@@ -1968,7 +1251,6 @@ const ImportTextModal: React.FC<{ onImport: (text: string) => void; onCancel: ()
     const textAreaRef = useRef<HTMLTextAreaElement>(null);
 
     useEffect(() => {
-        // Auto-focus the textarea when the modal appears
         textAreaRef.current?.focus();
     }, []);
     
@@ -2015,7 +1297,6 @@ const PlanList: React.FC<{
   const { user, authStatus, signIn, signOut } = useAuth();
   
   const [selectedPlanIds, setSelectedPlanIds] = useState<string[]>([]);
-  // Split state for drag and drop to support two lists
   const dragSource = useRef<{ index: number, listType: 'pinned' | 'unpinned' } | null>(null);
   const [dragTarget, setDragTarget] = useState<{ index: number, listType: 'pinned' | 'unpinned' } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -2030,7 +1311,6 @@ const PlanList: React.FC<{
   const planRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const lastScrolledPlanId = useRef<string | null>(null);
 
-  // Memoize sorted lists to ensure stability
   const pinnedPlans = useMemo(() => plans.filter(p => p.isPinned), [plans]);
   const unpinnedPlans = useMemo(() => plans.filter(p => !p.isPinned), [plans]);
 
@@ -2044,10 +1324,8 @@ const PlanList: React.FC<{
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Effect to scroll to a newly imported plan
   useEffect(() => {
     if (recentlyImportedPlanId && recentlyImportedPlanId !== lastScrolledPlanId.current) {
-        // Use a timeout to allow the DOM to update and the modal to close
         setTimeout(() => {
             const element = planRefs.current[recentlyImportedPlanId];
             if (element) {
@@ -2066,7 +1344,7 @@ const PlanList: React.FC<{
     setRefreshFeedback('Checking server for missing exercises...');
     const allExerciseNames = plans.flatMap(plan => plan.steps)
                                   .filter(step => step.type === 'exercise')
-                                  .map(step => step.name); // Already base name
+                                  .map(step => step.name);
     
     const result = await prefetchExercises(allExerciseNames);
     
@@ -2173,10 +1451,9 @@ const PlanList: React.FC<{
   const handleJsonImport = (jsonText: string, source: string) => {
     try {
         const importedPlan = JSON.parse(jsonText);
-        // Basic validation
         if (importedPlan && typeof importedPlan.name === 'string' && Array.isArray(importedPlan.steps)) {
             importPlan(importedPlan, source);
-            setIsImportTextVisible(false); // Close modal on success
+            setIsImportTextVisible(false);
         } else {
             throw new Error("Invalid plan structure.");
         }
@@ -2193,7 +1470,6 @@ const PlanList: React.FC<{
 
   const onDragOver = (e: React.DragEvent, index: number, listType: 'pinned' | 'unpinned') => {
     e.preventDefault();
-    // Only allow dropping in the same list type
     if (!dragSource.current || dragSource.current.listType !== listType) return;
 
     if (!dragTarget || dragTarget.index !== index || dragTarget.listType !== listType) {
@@ -2211,15 +1487,12 @@ const PlanList: React.FC<{
         return;
     }
     
-    // We are reordering within the same visual list (pinned or unpinned)
     const sourceList = listType === 'pinned' ? [...pinnedPlans] : [...unpinnedPlans];
     const otherList = listType === 'pinned' ? unpinnedPlans : pinnedPlans;
     
     const [movedItem] = sourceList.splice(dragSource.current.index, 1);
     sourceList.splice(index, 0, movedItem);
     
-    // Reconstruct full list to save order
-    // Order matters: if 'pinned' changed, put it first then 'unpinned'.
     const newFullList = listType === 'pinned' 
         ? [...sourceList, ...otherList] 
         : [...otherList, ...sourceList];
@@ -2243,7 +1516,6 @@ const PlanList: React.FC<{
     <div>
       {sharingPlan && <ShareModal plan={sharingPlan} onClose={() => setSharingPlan(null)} />}
       <div className="flex justify-between items-center mb-4">
-        {/* Left Side: Auth display (Guest only) */}
         <div>
            {authStatus !== 'authenticated' && (
             <div className="flex flex-col items-center">
@@ -2266,7 +1538,6 @@ const PlanList: React.FC<{
            )}
         </div>
 
-        {/* Right Side: Action buttons & logged-in user display */}
         <div className="flex items-center gap-2">
             {isSyncing && (
                 <div className="p-2" title="Syncing...">

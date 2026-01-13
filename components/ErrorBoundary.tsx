@@ -16,12 +16,8 @@ interface State {
 /**
  * Internal class-based ErrorBoundary to use lifecycle methods.
  */
-// FIX: Using React.Component and adding a constructor ensures that TypeScript correctly recognizes this.props.
 class ErrorBoundaryInternal extends React.Component<Props, State> {
-  constructor(props: Props) {
-    super(props);
-    this.state = { hasError: false };
-  }
+  state: State = { hasError: false };
 
   static getDerivedStateFromError(_: Error): State {
     return { hasError: true };
@@ -29,7 +25,6 @@ class ErrorBoundaryInternal extends React.Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("Uncaught error:", error, errorInfo);
-    // FIX: Accessing logError via this.props is now correctly typed.
     this.props.logError(error, errorInfo.componentStack || '');
     
     try {
@@ -58,7 +53,6 @@ class ErrorBoundaryInternal extends React.Component<Props, State> {
       );
     }
 
-    // FIX: Accessing children via this.props is now correctly typed.
     return this.props.children;
   }
 }

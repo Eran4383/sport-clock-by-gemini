@@ -1,5 +1,4 @@
 
-
 import { getBaseExerciseName } from '../utils/workout';
 import { getLocalCache, saveToLocalCache, clearExerciseFromLocalCache } from './storageService';
 
@@ -141,7 +140,10 @@ export async function getExerciseInfo(exerciseName: string, forceRefresh = false
             if (data.instructions && Array.isArray(data.tips)) {
                 return data as ExerciseInfo;
             }
-            throw new Error(data.message || 'Failed to fetch exercise info from the server.');
+            // Throw with status code if possible for better handling
+            const error = new Error(data.message || 'Failed to fetch exercise info from the server.');
+            (error as any).status = res.status;
+            throw error;
         }
 
         // 3. Save successful response to local cache before returning
@@ -149,12 +151,22 @@ export async function getExerciseInfo(exerciseName: string, forceRefresh = false
 
         return data as ExerciseInfo;
 
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error fetching exercise info from server:", error);
         if (error instanceof TypeError) { // Network error
              return getGenericErrorResponse("לא ניתן להתחבר לשרת. אנא בדוק את חיבור האינטררנט שלך.");
         }
+        
+        // Pass specific error messages through
         const errorMessage = error instanceof Error ? error.message : "אירעה שגיאה לא ידועה.";
+        
+        // Return a structured error response for specific status codes if needed by UI components
+        if (error.status === 429) {
+             const quotaError = getGenericErrorResponse(errorMessage);
+             quotaError.instructions = "מכסת ה-API היומית נוצלה.";
+             return quotaError;
+        }
+
         return getGenericErrorResponse(errorMessage);
     }
 }
@@ -228,13 +240,37 @@ export async function prefetchExercises(exerciseNames: string[]): Promise<{ succ
         try {
             // Force refresh is true to ensure it fetches from Gemini/YT and populates the KV cache.
             // It will also populate the local cache via the saveToLocalCache call inside getExerciseInfo.
-            await getExerciseInfo(name, true);
+            const result = await getExerciseInfo(name, true);
+            
+            // Check if the result indicates a quota error (even if it didn't throw in getExerciseInfo)
+            if (result.instructions && result.instructions.includes("מכסת שימוש")) {
+                 console.warn("Quota exceeded detected in response. Stopping prefetch.");
+                 failedNames.push(name);
+                 // Add remaining names to failed list
+                 const currentIndex = namesToFetch.indexOf(name);
+                 if (currentIndex > -1) {
+                     failedNames.push(...namesToFetch.slice(currentIndex + 1));
+                 }
+                 break;
+            }
+
             successCount++;
             // Add a delay to be cautious with the API's rate limit.
             await new Promise(resolve => setTimeout(resolve, 2000)); // 2-second delay
-        } catch (e) {
+        } catch (e: any) {
             console.error(`Failed to prefetch exercise "${name}":`, e);
             failedNames.push(name);
+            
+            // Stop if quota exceeded based on status code
+            if (e.status === 429) {
+                 console.warn("Quota exceeded (429). Stopping prefetch.");
+                 // Add remaining names to failed list
+                 const currentIndex = namesToFetch.indexOf(name);
+                 if (currentIndex > -1) {
+                     failedNames.push(...namesToFetch.slice(currentIndex + 1));
+                 }
+                 break; 
+            }
         }
     }
     
