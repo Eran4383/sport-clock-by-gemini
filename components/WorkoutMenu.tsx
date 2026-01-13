@@ -988,6 +988,20 @@ const EditableStepItem: React.FC<{
                             </div>
                         )}
                    </div>
+
+                   {/* Added manual instruction editing field here */}
+                   {step.type === 'exercise' && (
+                       <div>
+                           <label className="text-sm text-gray-400">הוראות ביצוע (AI/ידני)</label>
+                           <textarea
+                               value={step.tip || ''}
+                               onChange={e => updateStep(index, { tip: e.target.value })}
+                               className="w-full mt-1 bg-gray-600 p-2 rounded-md focus:outline-none focus:ring-1 ring-blue-500 text-sm text-gray-200 resize-y min-h-[60px]"
+                               placeholder="הסבר קצר כיצד לבצע את התרגיל נכון..."
+                               dir="auto"
+                           />
+                       </div>
+                   )}
                 </div>
             )}
         </div>
