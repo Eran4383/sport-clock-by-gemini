@@ -819,8 +819,8 @@ const AppContent: React.FC = () => {
         {/* Short Instruction Display */}
         <div className="text-center mt-2 min-h-[2rem] px-4 max-w-2xl">
             {settings.showExerciseInstructions && instructionText && (
-                <p className="text-lg font-medium animate-fadeIn" style={{ color: settings.tipColor }} dir="auto">
-                    💡 {instructionText}
+                <p className="font-medium animate-fadeIn" style={{ color: settings.tipColor, fontSize: `${settings.tipFontSize / 100 * 1.125}rem` }} dir="auto">
+                    {instructionText}
                 </p>
             )}
         </div>

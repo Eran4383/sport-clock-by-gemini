@@ -34,7 +34,8 @@ export interface Settings {
   backgroundColor: string;
   halfwayColor: string;
   restBackgroundColor: string;
-  tipColor: string; // New setting for tip text color
+  tipColor: string;
+  tipFontSize: number; // New setting for tip font size percentage
   showRestTitleOnDefaultCountdown: boolean;
   preWorkoutCountdownDuration: number;
   settingsCategoryOrder: string[];
@@ -83,6 +84,7 @@ const defaultSettings: Settings = {
   halfwayColor: '#FF0000',
   restBackgroundColor: '#FFFFFF',
   tipColor: '#FDE047', // Default yellow-300
+  tipFontSize: 100, // Default 100% scale
   showRestTitleOnDefaultCountdown: true,
   preWorkoutCountdownDuration: 10,
   settingsCategoryOrder: ['sounds', 'customSounds', 'countdown', 'stopwatch', 'workoutDisplay', 'displaySizes', 'displayColors', 'developer'],
@@ -107,9 +109,14 @@ const defaultSettings: Settings = {
 const getInitialSettings = (): Settings => {
   const localSettings = getLocalSettings();
   
-  // Backwards compatibility for existing users who don't have tipColor yet
-  if (localSettings && !localSettings.tipColor) {
-      localSettings.tipColor = defaultSettings.tipColor;
+  // Backwards compatibility for existing users who don't have tipColor or tipFontSize yet
+  if (localSettings) {
+      if (!localSettings.tipColor) {
+          localSettings.tipColor = defaultSettings.tipColor;
+      }
+      if (!localSettings.tipFontSize) {
+          localSettings.tipFontSize = defaultSettings.tipFontSize;
+      }
   }
 
   // Ensure the developer category is present for existing users

@@ -16,11 +16,8 @@ interface State {
  * Internal class-based ErrorBoundary to use lifecycle methods.
  * Fixed by extending Component directly and ensuring props/state are correctly typed.
  */
-class ErrorBoundaryInternal extends Component<Props, State> {
-  constructor(props: Props) {
-    super(props);
-    this.state = { hasError: false };
-  }
+class ErrorBoundaryInternal extends React.Component<Props, State> {
+  state: State = { hasError: false };
 
   static getDerivedStateFromError(_: Error): State {
     return { hasError: true };

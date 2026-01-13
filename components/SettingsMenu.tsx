@@ -7,7 +7,7 @@ import { useLogger } from '../contexts/LoggingContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useWorkout } from '../contexts/WorkoutContext';
 
-const VERSION = 'v3.7.7';
+const VERSION = 'v3.7.11';
 
 const Toggle: React.FC<{
   id: string;
@@ -529,6 +529,7 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
           <RangeSlider id="stopwatchSize" label="Stopwatch" value={settings.stopwatchSize} onChange={e => updateSettings({ stopwatchSize: parseInt(e.target.value, 10) })} />
           <RangeSlider id="countdownControlsSize" label="Countdown Controls" value={settings.countdownControlsSize} onChange={e => updateSettings({ countdownControlsSize: parseInt(e.target.value, 10) })} />
           <RangeSlider id="stopwatchControlsSize" label="Stopwatch Controls" value={settings.stopwatchControlsSize} onChange={e => updateSettings({ stopwatchControlsSize: parseInt(e.target.value, 10) })} />
+          <RangeSlider id="tipFontSize" label="Tip Text Size" value={settings.tipFontSize} onChange={e => updateSettings({ tipFontSize: parseInt(e.target.value, 10) })} />
         </div>
       )
     },
