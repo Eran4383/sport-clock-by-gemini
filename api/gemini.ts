@@ -1,9 +1,7 @@
 
-
 import { GoogleGenAI, Type, HarmCategory, HarmBlockThreshold } from "@google/genai";
 import { kv } from "@vercel/kv";
 
-const geminiApiKey = process.env.API_KEY;
 const youtubeApiKey = process.env.YOUTUBE_API_KEY;
 
 const safetySettings = [
@@ -27,7 +25,8 @@ const safetySettings = [
 
 
 const handleExerciseInfoRequest = async (exerciseName: string, force_refresh: boolean) => {
-    const ai = new GoogleGenAI({ apiKey: geminiApiKey! });
+    // FIX: Using process.env.API_KEY directly as required by the SDK guidelines.
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
     const normalizedExerciseName = exerciseName.trim().toLowerCase();
     const exerciseCacheKey = `exercise:${normalizedExerciseName}`;
 
@@ -78,8 +77,9 @@ const handleExerciseInfoRequest = async (exerciseName: string, force_refresh: bo
           Return ONLY a single, valid JSON object with the specified structure. Do not include video information.
         `;
         
+        // FIX: Using 'gemini-3-flash-preview' for basic text tasks.
         const textResponse = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3-flash-preview',
             contents: textGenerationPrompt,
             config: {
                 responseMimeType: "application/json",
@@ -147,7 +147,7 @@ const baseSystemInstruction = `You are a world-class expert in human performance
 - The JSON MUST conform to the TypeScript interface provided below.
 - The \`type\` for steps can be 'exercise' for physical movements or 'rest' for breaks. Use these categories broadly. For example, a physiotherapy stretch is an 'exercise'.
 - **CRITICAL:** The \`name\` property for each step MUST ONLY contain the base name of the activity (e.g., "Squats", "Push-ups", "Gentle Wrist Stretches"). DO NOT include set counts, reps, or durations in the activity name itself.
-- **IMPORTANT:** Populate the optional \`tip\` field for exercises. This should be a VERY short instruction (max 50 characters) displayed during the workout. **IT MUST DESCRIBE THE ACTION EXECUTION (HOW TO DO IT), NOT GENERIC SAFETY ADVICE.** Example: Use "Lower chest to floor" instead of "Keep back straight". Use "Drive knees outward" instead of "Be careful".
+- **IMPORTANT:** You MUST populate the optional \`tip\` field for every step of type 'exercise'. This should be a VERY short instruction (max 50 characters) displayed during the workout. **IT MUST DESCRIBE THE ACTION EXECUTION (HOW TO DO IT), NOT GENERIC SAFETY ADVICE.** Example: Use "Lower chest to floor" instead of "Keep back straight". Use "Drive knees outward" instead of "Be careful".
 
 **Language:**
 - You MUST respond in the same language as the user's last message. This includes all conversational text, the plan summary, and all strings within the JSON object (like \`name\` and \`tip\` fields).
@@ -161,7 +161,7 @@ interface WorkoutStep {
   isRepBased: boolean; // true for reps, false for time-based
   duration: number; // Duration in seconds (if not rep-based)
   reps: number; // Number of reps (if rep-based)
-  tip?: string; // Optional short tip/instruction on execution mechanics, MAX 50 characters.
+  tip: string; // REQUIRED for type 'exercise'. Short tip on execution mechanics, MAX 50 characters.
 }
 
 interface WorkoutPlan {
@@ -173,15 +173,17 @@ interface WorkoutPlan {
 `;
 
 const handleChatRequest = async (history: any[], message: string, profileContext?: string) => {
-    const ai = new GoogleGenAI({ apiKey: geminiApiKey! });
+    // FIX: Using process.env.API_KEY directly as required.
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
     
     let finalSystemInstruction = baseSystemInstruction;
     if (profileContext) {
         finalSystemInstruction += `\n\n--- IMPORTANT USER PROFILE ---\n${profileContext}\n--- END USER PROFILE ---`;
     }
 
+    // FIX: Using 'gemini-3-pro-preview' for complex text reasoning tasks.
     const chat = ai.chats.create({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3-pro-preview',
         history,
         config: {
             safetySettings: safetySettings,
@@ -200,7 +202,8 @@ export default async function handler(req: any, res: any) {
     return res.status(405).end(`Method ${req.method} Not Allowed`);
   }
 
-  if (!geminiApiKey) {
+  // FIX: Accessing API key via process.env directly.
+  if (!process.env.API_KEY) {
     console.error(`API_KEY (for Gemini) is not configured on the server.`);
     return res.status(500).json({ 
         message: `The Gemini API key (API_KEY) is not configured. Please set it in your project's environment variables.`,
@@ -290,7 +293,7 @@ export default async function handler(req: any, res: any) {
 
     // Check for Quota Exceeded error
     if (statusCode === 429 || errorPayload.status === 'RESOURCE_EXHAUSTED') {
-        const userFriendlyMessage = "מכסת השימוש היומית ב-API נוצלה. שירותי הבינה המלאכותית יחזרו לפעול מחר.";
+        const userFriendlyMessage = "מכסת שימוש היומית ב-API נוצלה. שירותי הבינה המלאכותית יחזרו לפעול מחר.";
         const technicalDetails = `פרטים טכניים: ${errorPayload.message}`;
 
         const clientError = chatRequest 

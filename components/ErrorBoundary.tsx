@@ -1,4 +1,5 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+
+import React, { ErrorInfo, ReactNode } from 'react';
 import { useLogger } from '../contexts/LoggingContext';
 
 const CRASH_FLAG_KEY = 'app_crash_detected';
@@ -15,8 +16,12 @@ interface State {
 /**
  * Internal class-based ErrorBoundary to use lifecycle methods.
  */
-class ErrorBoundaryInternal extends Component<Props, State> {
-  public state: State = { hasError: false };
+// FIX: Using React.Component and adding a constructor ensures that TypeScript correctly recognizes this.props.
+class ErrorBoundaryInternal extends React.Component<Props, State> {
+  constructor(props: Props) {
+    super(props);
+    this.state = { hasError: false };
+  }
 
   static getDerivedStateFromError(_: Error): State {
     return { hasError: true };
@@ -24,6 +29,7 @@ class ErrorBoundaryInternal extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("Uncaught error:", error, errorInfo);
+    // FIX: Accessing logError via this.props is now correctly typed.
     this.props.logError(error, errorInfo.componentStack || '');
     
     try {
@@ -52,6 +58,7 @@ class ErrorBoundaryInternal extends Component<Props, State> {
       );
     }
 
+    // FIX: Accessing children via this.props is now correctly typed.
     return this.props.children;
   }
 }
