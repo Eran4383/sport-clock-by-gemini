@@ -1,5 +1,3 @@
-
-
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { useLogger } from '../contexts/LoggingContext';
 
@@ -18,7 +16,7 @@ interface State {
  * Internal class-based ErrorBoundary to use lifecycle methods.
  * Fixed by extending Component directly and ensuring props/state are correctly typed.
  */
-class ErrorBoundaryInternal extends Component<Props, State> {
+class ErrorBoundaryInternal extends React.Component<Props, State> {
   state: State = { hasError: false };
 
   static getDerivedStateFromError(_: Error): State {
@@ -59,7 +57,7 @@ class ErrorBoundaryInternal extends Component<Props, State> {
   }
 }
 
-/**
+/***
  * Functional wrapper for the ErrorBoundary to consume hooks.
  */
 export const ErrorBoundary: React.FC<{children: ReactNode}> = ({ children }) => {
