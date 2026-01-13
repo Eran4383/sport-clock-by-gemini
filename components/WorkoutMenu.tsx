@@ -1,3 +1,5 @@
+
+
 import React, { useState, useEffect, useRef, useMemo, useLayoutEffect } from 'react';
 import { useWorkout } from '../contexts/WorkoutContext';
 import { WorkoutPlan, WorkoutStep } from '../types';
@@ -799,526 +801,6 @@ const PlanListItem: React.FC<{
   );
 };
 
-const ImportTextModal: React.FC<{ onImport: (text: string) => void; onCancel: () => void; }> = ({ onImport, onCancel }) => {
-    const [jsonText, setJsonText] = useState('');
-    const textAreaRef = useRef<HTMLTextAreaElement>(null);
-
-    useEffect(() => {
-        // Auto-focus the textarea when the modal appears
-        textAreaRef.current?.focus();
-    }, []);
-    
-    const handleImportClick = () => {
-        if (jsonText.trim()) {
-            onImport(jsonText);
-        }
-    };
-
-    return (
-        <div className="fixed inset-0 bg-black/70 z-[100] flex items-center justify-center" onClick={onCancel} aria-modal="true" role="dialog">
-            <div className="bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-lg" onClick={e => e.stopPropagation()}>
-                <h3 className="text-xl font-bold text-white">Import Plan from Text</h3>
-                <p className="text-gray-300 mt-2">Paste the JSON content of a workout plan below.</p>
-                <textarea
-                    ref={textAreaRef}
-                    value={jsonText}
-                    onChange={e => setJsonText(e.target.value)}
-                    className="w-full h-48 mt-4 p-2 bg-gray-900 text-gray-300 rounded-md font-mono text-sm focus:outline-none focus:ring-2 ring-blue-500"
-                    placeholder='{ "id": "...", "name": "...", "steps": [...] }'
-                />
-                <div className="mt-6 flex justify-end gap-4">
-                    <button onClick={onCancel} className="px-4 py-2 rounded-md text-white bg-gray-600 hover:bg-gray-500 font-semibold">Cancel</button>
-                    <button onClick={handleImportClick} className="px-4 py-2 rounded-md text-white bg-blue-600 hover:bg-blue-700 font-semibold">Import</button>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-const PlanList: React.FC<{
-  onSelectPlan: (plan: WorkoutPlan | string) => void;
-  onCreateNew: () => void;
-  onInitiateDelete: (planId: string) => void;
-  onShowLog: () => void;
-  onInspectExercise: (exerciseName: string) => void;
-  onShowInfo: (plan: WorkoutPlan) => void;
-  isPinned: boolean;
-  onTogglePin: () => void;
-  onOpenAiPlanner: () => void;
-}> = ({ onSelectPlan, onCreateNew, onInitiateDelete, onShowLog, onInspectExercise, onShowInfo, isPinned, onTogglePin, onOpenAiPlanner }) => {
-  const { plans, reorderPlans, startWorkout, importPlan, activeWorkout, recentlyImportedPlanId, isSyncing, forceSync } = useWorkout();
-  const { settings, updateSettings } = useSettings();
-  const { user, authStatus, signIn, signOut } = useAuth();
-  
-  const [selectedPlanIds, setSelectedPlanIds] = useState<string[]>([]);
-  const dragItemIndex = useRef<number | null>(null);
-  const [dragTargetIndex, setDragTargetIndex] = useState<number | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [isImportTextVisible, setIsImportTextVisible] = useState(false);
-  const [sharingPlan, setSharingPlan] = useState<WorkoutPlan | null>(null);
-  const [refreshStatus, setRefreshStatus] = useState<'idle' | 'loading' | 'success' | 'partial' | 'error'>('idle');
-  const [refreshFeedback, setRefreshFeedback] = useState<string | null>(null);
-  const [isWarmupSettingsExpanded, setIsWarmupSettingsExpanded] = useState(false);
-  const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
-  const userDropdownRef = useRef<HTMLDivElement>(null);
-  
-  const planRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  const lastScrolledPlanId = useRef<string | null>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (userDropdownRef.current && !userDropdownRef.current.contains(event.target as Node)) {
-        setIsUserDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  // Effect to scroll to a newly imported plan
-  useEffect(() => {
-    if (recentlyImportedPlanId && recentlyImportedPlanId !== lastScrolledPlanId.current) {
-        // Use a timeout to allow the DOM to update and the modal to close
-        setTimeout(() => {
-            const element = planRefs.current[recentlyImportedPlanId];
-            if (element) {
-                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                lastScrolledPlanId.current = recentlyImportedPlanId;
-            }
-        }, 300);
-    }
-  }, [recentlyImportedPlanId]);
-
-
-  const handleRefreshAll = async () => {
-    if (refreshStatus === 'loading' || plans.length === 0) return;
-
-    setRefreshStatus('loading');
-    setRefreshFeedback('Checking server for missing exercises...');
-    const allExerciseNames = plans.flatMap(plan => plan.steps)
-                                  .filter(step => step.type === 'exercise')
-                                  .map(step => step.name); // Already base name
-    
-    const result = await prefetchExercises(allExerciseNames);
-    
-    if (result.failedCount === 0) {
-        setRefreshStatus('success');
-        setRefreshFeedback('All exercises are up to date!');
-    } else if (result.failedCount > 0 && result.successCount > 0) {
-        setRefreshStatus('partial');
-        setRefreshFeedback(`Failed to refresh: ${result.failedNames.join(', ')}`);
-    } else {
-        setRefreshStatus('error');
-        setRefreshFeedback(`Failed to refresh all missing exercises: ${result.failedNames.join(', ')}`);
-    }
-    
-    setTimeout(() => {
-        setRefreshStatus('idle');
-        setRefreshFeedback(null);
-    }, 8000);
-  };
-  
-  const getRefreshTooltip = () => {
-    if (refreshFeedback) return refreshFeedback;
-    switch (refreshStatus) {
-        case 'loading': return "Refreshing info in background...";
-        case 'success': return "All exercise info is up to date!";
-        default: return "Sync all exercises with the database";
-    }
-  };
-
-  const handleToggleSelection = (planId: string) => {
-    setSelectedPlanIds(prev =>
-      prev.includes(planId) ? prev.filter(id => id !== id) : [...prev, planId]
-    );
-  };
-  
-  const handleStartSelected = () => {
-      startWorkout(selectedPlanIds);
-      setSelectedPlanIds([]);
-  };
-  
-  const handleImportClick = () => {
-      fileInputRef.current?.click();
-  };
-
-  const handleShare = async (plan: WorkoutPlan) => {
-    try {
-        const planJson = JSON.stringify(plan);
-        const encoder = new TextEncoder();
-        const data = encoder.encode(planJson);
-        const binaryString = Array.from(data, byte => String.fromCharCode(byte)).join('');
-        const base64Data = btoa(binaryString);
-        
-        const url = new URL(window.location.href);
-        url.hash = `import=${base64Data}`;
-        url.search = '';
-        const shareableLink = url.toString();
-
-        const shareData = {
-            title: `Workout Plan: ${plan.name}`,
-            text: `Check out the "${plan.name}" workout plan!`,
-            url: shareableLink,
-        };
-
-        if (navigator.share) {
-            await navigator.share(shareData);
-        } else {
-            setSharingPlan(plan);
-        }
-    } catch (error) {
-        if ((error as DOMException).name !== 'AbortError') {
-            console.error("Share failed, falling back to modal:", error);
-            setSharingPlan(plan);
-        }
-    }
-  };
-  
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
-    if (!files || files.length === 0) return;
-
-    // FIX: Add explicit type `(file: File)` to forEach callback to prevent incorrect type inference.
-    // This resolves errors where `file` was treated as `unknown` or `{}`, causing issues with
-    // accessing `file.name` and passing `file` to `reader.readAsText`.
-    Array.from(files).forEach((file: File) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            try {
-                const text = e.target?.result as string;
-                handleJsonImport(text, 'file');
-            } catch (error) {
-                console.error("Failed to read file:", error);
-                alert(`Could not read the file: ${file.name}`);
-            }
-        };
-        reader.readAsText(file);
-    });
-
-    if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-    }
-  };
-
-  const handleJsonImport = (jsonText: string, source: string) => {
-    try {
-        const importedPlan = JSON.parse(jsonText);
-        // Basic validation
-        if (importedPlan && typeof importedPlan.name === 'string' && Array.isArray(importedPlan.steps)) {
-            importPlan(importedPlan, source);
-            setIsImportTextVisible(false); // Close modal on success
-        } else {
-            throw new Error("Invalid plan structure.");
-        }
-    } catch (error) {
-        console.error("Failed to import plan:", error);
-        alert("Could not import plan. The file may be corrupted or in the wrong format.");
-    }
-  };
-
-  const onDragStart = (e: React.DragEvent, index: number) => {
-    dragItemIndex.current = index;
-    e.dataTransfer.effectAllowed = 'move';
-  };
-
-  const onDragOver = (e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    if (index !== dragTargetIndex) {
-      setDragTargetIndex(index);
-    }
-    e.dataTransfer.dropEffect = 'move';
-  };
-
-  const onDrop = (e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    if (dragItemIndex.current === null || dragItemIndex.current === index) {
-      return;
-    }
-    const draggedItem = plans[dragItemIndex.current];
-    const newPlans = [...plans];
-    newPlans.splice(dragItemIndex.current, 1);
-    newPlans.splice(index, 0, draggedItem);
-    reorderPlans(newPlans);
-    dragItemIndex.current = null;
-    setDragTargetIndex(null);
-  };
-
-  const onDragEnd = () => {
-    dragItemIndex.current = null;
-    setDragTargetIndex(null);
-  };
-  
-  const onDragLeave = () => {
-    setDragTargetIndex(null);
-  };
-
-  return (
-    <div>
-      {sharingPlan && <ShareModal plan={sharingPlan} onClose={() => setSharingPlan(null)} />}
-      <div className="flex justify-between items-center mb-4">
-        {/* Left Side: Auth display (Guest only) */}
-        <div>
-           {authStatus !== 'authenticated' && (
-            <div className="flex flex-col items-center">
-              <p className="text-gray-400 text-xs mb-1">אורח</p>
-              <button
-                  onClick={signIn}
-                  className="bg-white text-gray-700 text-sm py-1 px-3 rounded-full border border-gray-200 shadow-sm hover:shadow-md transition-shadow flex items-center gap-2"
-                  aria-label="התחברות עם גוגל"
-              >
-                  <svg version="1.1" xmlns="http://www.w3.org/2000/svg" width="16px" height="16px" viewBox="0 0 48 48">
-                    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
-                    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
-                    <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
-                    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
-                    <path fill="none" d="M0 0h48v48H0z"></path>
-                  </svg>
-                  <span className="whitespace-nowrap">התחברות</span>
-              </button>
-            </div>
-           )}
-        </div>
-
-        {/* Right Side: Action buttons & logged-in user display */}
-        <div className="flex items-center gap-2">
-            {isSyncing && (
-                <div className="p-2" title="Syncing...">
-                    <svg className="animate-spin h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                </div>
-            )}
-            {user && (
-              <div className="relative" ref={userDropdownRef}>
-                <button onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)} className="flex items-center">
-                    <img
-                        src={user.photoURL!}
-                        alt="User profile"
-                        className="w-10 h-10 rounded-full border-2 border-gray-600 hover:border-blue-500 transition-colors"
-                    />
-                </button>
-                {isUserDropdownOpen && (
-                    <div className="absolute left-0 mt-2 w-56 bg-gray-700 rounded-md shadow-lg py-1 z-10 animate-fadeIn">
-                        <div className="px-4 py-2 text-sm text-gray-300 border-b border-gray-600">
-                            <p className="font-semibold text-white">{user.displayName}</p>
-                            <p className="truncate">{user.email}</p>
-                        </div>
-                        <button
-                            onClick={forceSync}
-                            className="flex items-center gap-3 w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-600/70"
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5" />
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M4 9a9 9 0 0114.13-5.23M20 15a9 9 0 01-14.13 5.23" />
-                            </svg>
-                            <span>Sync Data</span>
-                        </button>
-                        <button
-                            onClick={signOut}
-                            className="flex items-center gap-3 w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-500/20"
-                        >
-                           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                             <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                           </svg>
-                            <span>Sign Out</span>
-                        </button>
-                    </div>
-                )}
-              </div>
-            )}
-            <button
-                onClick={handleRefreshAll}
-                className={`p-2 rounded-full hover:bg-gray-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors`}
-                title={getRefreshTooltip()}
-                disabled={refreshStatus === 'loading' || !!activeWorkout}
-            >
-                {refreshStatus === 'loading' ? (
-                    <svg className="animate-spin h-6 w-6 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                ) : (
-                    <svg xmlns="http://www.w3.org/2000/svg" className={`h-6 w-6 ${
-                        refreshStatus === 'success' ? 'text-green-400' :
-                        refreshStatus === 'partial' ? 'text-yellow-400' :
-                        refreshStatus === 'error' ? 'text-red-400' :
-                        'text-gray-400'
-                    }`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 9a9 9 0 0114.13-5.23M20 15a9 9 0 01-14.13 5.23" />
-                    </svg>
-                )}
-            </button>
-            <button
-                onClick={onShowLog}
-                className="p-2 rounded-full hover:bg-gray-500/30 text-gray-400"
-                title="View Workout Log"
-            >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
-                </svg>
-            </button>
-            <button
-                onClick={() => setIsImportTextVisible(true)}
-                className="p-2 rounded-full hover:bg-gray-500/30 text-gray-400"
-                title="Import Plan from Text"
-                disabled={!!activeWorkout}
-            >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                </svg>
-            </button>
-            <button
-                onClick={handleImportClick}
-                className="p-2 rounded-full hover:bg-gray-500/30 text-gray-400"
-                title="Import Plan from File(s)"
-                disabled={!!activeWorkout}
-            >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-                    <line x1="12" y1="11" x2="12" y2="17"></line>
-                    <polyline points="9 14 12 11 15 14"></polyline>
-                </svg>
-            </button>
-            <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileChange}
-                accept=".json,application/json"
-                className="hidden"
-                multiple
-            />
-
-            <button 
-                onClick={onTogglePin}
-                className={`p-2 rounded-full hover:bg-gray-500/30 ${isPinned ? 'text-blue-400' : 'text-gray-400'}`}
-                title={isPinned ? 'Unpin Menu' : 'Pin Menu (Keep open during workout)'}
-            >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M10 3a1 1 0 01.707.293l3 3a1 1 0 01-1.414 1.414L10 5.414 7.707 7.707a1 1 0 01-1.414-1.414l3-3A1 1 0 0110 3zm-3.707 9.293a1 1 0 011.414 0L10 14.586l2.293-2.293a1 1 0 011.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" transform="rotate(45 10 10)" />
-                  {isPinned && <path d="M10 18a8 8 0 100-16 8 8 0 000 16z" opacity="0.1" />}
-                </svg>
-            </button>
-        </div>
-      </div>
-
-      {isImportTextVisible && <ImportTextModal onImport={(text) => handleJsonImport(text, 'text')} onCancel={() => setIsImportTextVisible(false)} />}
-      
-      {!activeWorkout && (
-          <>
-            <div className="flex gap-4 mb-4">
-                <button
-                    onClick={onOpenAiPlanner}
-                    className="flex-1 text-center py-1 bg-purple-600 text-white rounded-lg font-bold hover:bg-purple-700 transition-colors flex items-center justify-center gap-2 text-sm"
-                >
-                    ✨ AI Generator
-                </button>
-                <button
-                  onClick={onCreateNew}
-                  className="flex-1 text-center py-1 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors flex items-center justify-center text-sm"
-                >
-                  + New Workout
-                </button>
-            </div>
-             <div className="bg-gray-700/50 rounded-lg p-3 mb-4">
-                <div className="flex items-center justify-between cursor-pointer" onClick={() => setIsWarmupSettingsExpanded(prev => !prev)}>
-                    <div className="flex items-center gap-2">
-                        <span className="font-semibold text-white">חימום</span>
-                        <button onClick={(e) => { e.stopPropagation(); onSelectPlan('_warmup_'); }} className="p-1 rounded-full text-gray-400 hover:text-white hover:bg-gray-600">
-                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" /><path fillRule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clipRule="evenodd" /></svg>
-                        </button>
-                    </div>
-                    <label htmlFor="warmup-toggle" className="relative inline-flex items-center cursor-pointer" onClick={(e) => e.stopPropagation()}>
-                        <input type="checkbox" id="warmup-toggle" className="sr-only peer" checked={settings.isWarmupEnabled} onChange={(e) => updateSettings({ isWarmupEnabled: e.target.checked })} />
-                        <div className="w-11 h-6 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
-                    </label>
-                </div>
-                 {isWarmupSettingsExpanded && (
-                     <div className="mt-3 pt-3 border-t border-gray-600 animate-fadeIn" style={{ animationDuration: '0.3s'}}>
-                        {settings.isWarmupEnabled && (
-                            <>
-                                <label htmlFor="warmup-rest" className="text-sm text-gray-400">Rest after warm-up (seconds)</label>
-                                <HoverNumberInput
-                                    id="warmup-rest"
-                                    value={settings.restAfterWarmupDuration}
-                                    onChange={(val) => updateSettings({ restAfterWarmupDuration: val })}
-                                    min={0}
-                                    className="w-full mt-1 bg-gray-600 p-2 rounded-md text-center"
-                                />
-                            </>
-                        )}
-                         {settings.warmupSteps.length > 0 && (
-                            <div className="mt-4">
-                                <h4 className="text-sm font-semibold text-gray-300 mb-2">Steps:</h4>
-                                <ol className="text-gray-300 space-y-1 text-sm">
-                                    {settings.warmupSteps.map((step, index) => (
-                                        <li key={index} 
-                                            className={`flex items-center gap-2 p-1 -m-1 rounded transition-opacity ${step.enabled === false ? 'opacity-50' : ''} ${step.type === 'exercise' ? 'hover:bg-gray-600/50' : ''}`}
-                                            title={getStepDisplayName(step)}
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                if (step.type === 'exercise') {
-                                                    onInspectExercise(step.name);
-                                                }
-                                            }}
-                                            style={{ cursor: step.type === 'exercise' ? 'pointer' : 'default' }}
-                                        >
-                                            <span className={`w-1.5 h-4 rounded ${step.type === 'exercise' ? 'bg-orange-400' : 'bg-transparent'}`}></span>
-                                            <span className="truncate">{getStepDisplayName(step)} - <span className="text-gray-400 font-normal">{step.isRepBased ? `${step.reps} חזרות` : `${step.duration} שניות`}</span></span>
-                                        </li>
-                                    ))}
-                                </ol>
-                            </div>
-                        )}
-                     </div>
-                 )}
-            </div>
-          </>
-      )}
-
-      {selectedPlanIds.length > 0 && !activeWorkout && (
-          <button
-            onClick={handleStartSelected}
-            className="w-full mb-4 py-2.5 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition-colors"
-          >
-              Start Selected ({selectedPlanIds.length})
-          </button>
-      )}
-
-      <div className="space-y-4">
-        {plans.length === 0 ? (
-          <p className="text-gray-400 text-center py-8">No workout plans yet. Create one to get started!</p>
-        ) : (
-          plans.map((plan, index) => (
-            <PlanListItem 
-                key={plan.id} 
-                plan={plan} 
-                index={index}
-                setRef={el => { if (el) planRefs.current[plan.id] = el; }}
-                onSelectPlan={() => onSelectPlan(plan)}
-                onInitiateDelete={onInitiateDelete}
-                onInspectExercise={onInspectExercise}
-                onShowInfo={onShowInfo}
-                onShare={handleShare}
-                isSelected={selectedPlanIds.includes(plan.id)}
-                onToggleSelection={handleToggleSelection}
-                isDraggable={!activeWorkout}
-                onDragStart={onDragStart}
-                onDragOver={onDragOver}
-                onDrop={onDrop}
-                onDragEnd={onDragEnd}
-                onDragLeave={onDragLeave}
-                isDragTarget={dragTargetIndex === index}
-                isNewlyImported={plan.id === recentlyImportedPlanId}
-            />
-          ))
-        )}
-      </div>
-    </div>
-  );
-};
-
 const SetBuilder: React.FC<{ onAddSets: (steps: WorkoutStep[]) => void }> = ({ onAddSets }) => {
     const [name, setName] = useState('Exercise');
     const [isRepBased, setIsRepBased] = useState(false);
@@ -1942,27 +1424,24 @@ const PlanEditor: React.FC<{
             
             <div className="space-y-6">
                 {!isWarmupEditor && (
-                    <>
+                    <div className="flex items-center gap-2 mb-4">
                         <input 
                             type="text"
                             placeholder="Workout Plan Name"
                             title="The name for your workout plan"
                             value={editedPlan.name}
                             onChange={e => setEditedPlan(p => p ? { ...p, name: e.target.value } : null)}
-                            className="w-full bg-gray-600 text-white p-3 rounded-lg text-lg focus:outline-none focus:ring-2 ring-blue-500"
+                            className="flex-grow bg-gray-600 text-white p-3 rounded-lg text-lg focus:outline-none focus:ring-2 ring-blue-500 min-w-0"
                         />
-                        <div className="flex items-center gap-3 bg-gray-600 p-2 rounded-lg">
-                            <label htmlFor="planColor" className="text-white font-semibold">Plan Color</label>
+                        <div className="bg-gray-600 p-2 rounded-lg shrink-0" title="Choose plan color">
                             <input 
                                 type="color"
-                                id="planColor"
                                 value={editedPlan.color || '#808080'}
                                 onChange={e => setEditedPlan(p => p ? { ...p, color: e.target.value } : null)}
-                                className="w-10 h-10 p-0 bg-transparent border-none rounded-md cursor-pointer"
-                                title="Choose a color for this plan"
+                                className="w-8 h-8 p-0 bg-transparent border-none rounded cursor-pointer block"
                             />
                         </div>
-                    </>
+                    </div>
                 )}
 
 
@@ -2446,6 +1925,589 @@ const AiPlannerModal: React.FC<{
     );
 };
 
+const ImportTextModal: React.FC<{ onImport: (text: string) => void; onCancel: () => void; }> = ({ onImport, onCancel }) => {
+    const [jsonText, setJsonText] = useState('');
+    const textAreaRef = useRef<HTMLTextAreaElement>(null);
+
+    useEffect(() => {
+        // Auto-focus the textarea when the modal appears
+        textAreaRef.current?.focus();
+    }, []);
+    
+    const handleImportClick = () => {
+        if (jsonText.trim()) {
+            onImport(jsonText);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/70 z-[100] flex items-center justify-center" onClick={onCancel} aria-modal="true" role="dialog">
+            <div className="bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-lg" onClick={e => e.stopPropagation()}>
+                <h3 className="text-xl font-bold text-white">Import Plan from Text</h3>
+                <p className="text-gray-300 mt-2">Paste the JSON content of a workout plan below.</p>
+                <textarea
+                    ref={textAreaRef}
+                    value={jsonText}
+                    onChange={e => setJsonText(e.target.value)}
+                    className="w-full h-48 mt-4 p-2 bg-gray-900 text-gray-300 rounded-md font-mono text-sm focus:outline-none focus:ring-2 ring-blue-500"
+                    placeholder='{ "id": "...", "name": "...", "steps": [...] }'
+                />
+                <div className="mt-6 flex justify-end gap-4">
+                    <button onClick={onCancel} className="px-4 py-2 rounded-md text-white bg-gray-600 hover:bg-gray-500 font-semibold">Cancel</button>
+                    <button onClick={handleImportClick} className="px-4 py-2 rounded-md text-white bg-blue-600 hover:bg-blue-700 font-semibold">Import</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const PlanList: React.FC<{
+  onSelectPlan: (plan: WorkoutPlan | string) => void;
+  onCreateNew: () => void;
+  onInitiateDelete: (planId: string) => void;
+  onShowLog: () => void;
+  onInspectExercise: (exerciseName: string) => void;
+  onShowInfo: (plan: WorkoutPlan) => void;
+  isPinned: boolean;
+  onTogglePin: () => void;
+  onOpenAiPlanner: () => void;
+}> = ({ onSelectPlan, onCreateNew, onInitiateDelete, onShowLog, onInspectExercise, onShowInfo, isPinned, onTogglePin, onOpenAiPlanner }) => {
+  const { plans, reorderPlans, startWorkout, importPlan, activeWorkout, recentlyImportedPlanId, isSyncing, forceSync, savePlan } = useWorkout();
+  const { settings, updateSettings } = useSettings();
+  const { user, authStatus, signIn, signOut } = useAuth();
+  
+  const [selectedPlanIds, setSelectedPlanIds] = useState<string[]>([]);
+  // Split state for drag and drop to support two lists
+  const dragSource = useRef<{ index: number, listType: 'pinned' | 'unpinned' } | null>(null);
+  const [dragTarget, setDragTarget] = useState<{ index: number, listType: 'pinned' | 'unpinned' } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isImportTextVisible, setIsImportTextVisible] = useState(false);
+  const [sharingPlan, setSharingPlan] = useState<WorkoutPlan | null>(null);
+  const [refreshStatus, setRefreshStatus] = useState<'idle' | 'loading' | 'success' | 'partial' | 'error'>('idle');
+  const [refreshFeedback, setRefreshFeedback] = useState<string | null>(null);
+  const [isWarmupSettingsExpanded, setIsWarmupSettingsExpanded] = useState(false);
+  const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
+  const userDropdownRef = useRef<HTMLDivElement>(null);
+  
+  const planRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const lastScrolledPlanId = useRef<string | null>(null);
+
+  // Memoize sorted lists to ensure stability
+  const pinnedPlans = useMemo(() => plans.filter(p => p.isPinned), [plans]);
+  const unpinnedPlans = useMemo(() => plans.filter(p => !p.isPinned), [plans]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (userDropdownRef.current && !userDropdownRef.current.contains(event.target as Node)) {
+        setIsUserDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Effect to scroll to a newly imported plan
+  useEffect(() => {
+    if (recentlyImportedPlanId && recentlyImportedPlanId !== lastScrolledPlanId.current) {
+        // Use a timeout to allow the DOM to update and the modal to close
+        setTimeout(() => {
+            const element = planRefs.current[recentlyImportedPlanId];
+            if (element) {
+                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                lastScrolledPlanId.current = recentlyImportedPlanId;
+            }
+        }, 300);
+    }
+  }, [recentlyImportedPlanId]);
+
+
+  const handleRefreshAll = async () => {
+    if (refreshStatus === 'loading' || plans.length === 0) return;
+
+    setRefreshStatus('loading');
+    setRefreshFeedback('Checking server for missing exercises...');
+    const allExerciseNames = plans.flatMap(plan => plan.steps)
+                                  .filter(step => step.type === 'exercise')
+                                  .map(step => step.name); // Already base name
+    
+    const result = await prefetchExercises(allExerciseNames);
+    
+    if (result.failedCount === 0) {
+        setRefreshStatus('success');
+        setRefreshFeedback('All exercises are up to date!');
+    } else if (result.failedCount > 0 && result.successCount > 0) {
+        setRefreshStatus('partial');
+        setRefreshFeedback(`Failed to refresh: ${result.failedNames.join(', ')}`);
+    } else {
+        setRefreshStatus('error');
+        setRefreshFeedback(`Failed to refresh all missing exercises: ${result.failedNames.join(', ')}`);
+    }
+    
+    setTimeout(() => {
+        setRefreshStatus('idle');
+        setRefreshFeedback(null);
+    }, 8000);
+  };
+  
+  const getRefreshTooltip = () => {
+    if (refreshFeedback) return refreshFeedback;
+    switch (refreshStatus) {
+        case 'loading': return "Refreshing info in background...";
+        case 'success': return "All exercise info is up to date!";
+        default: return "Sync all exercises with the database";
+    }
+  };
+
+  const handleToggleSelection = (planId: string) => {
+    setSelectedPlanIds(prev =>
+      prev.includes(planId) ? prev.filter(id => id !== id) : [...prev, planId]
+    );
+  };
+  
+  const handleStartSelected = () => {
+      startWorkout(selectedPlanIds);
+      setSelectedPlanIds([]);
+  };
+  
+  const handleImportClick = () => {
+      fileInputRef.current?.click();
+  };
+
+  const handleShare = async (plan: WorkoutPlan) => {
+    try {
+        const planJson = JSON.stringify(plan);
+        const encoder = new TextEncoder();
+        const data = encoder.encode(planJson);
+        const binaryString = Array.from(data, byte => String.fromCharCode(byte)).join('');
+        const base64Data = btoa(binaryString);
+        
+        const url = new URL(window.location.href);
+        url.hash = `import=${base64Data}`;
+        url.search = '';
+        const shareableLink = url.toString();
+
+        const shareData = {
+            title: `Workout Plan: ${plan.name}`,
+            text: `Check out the "${plan.name}" workout plan!`,
+            url: shareableLink,
+        };
+
+        if (navigator.share) {
+            await navigator.share(shareData);
+        } else {
+            setSharingPlan(plan);
+        }
+    } catch (error) {
+        if ((error as DOMException).name !== 'AbortError') {
+            console.error("Share failed, falling back to modal:", error);
+            setSharingPlan(plan);
+        }
+    }
+  };
+  
+  const handleTogglePlanPin = (plan: WorkoutPlan) => {
+      savePlan({ ...plan, isPinned: !plan.isPinned });
+  };
+  
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    Array.from(files).forEach((file: File) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const text = e.target?.result as string;
+                handleJsonImport(text, 'file');
+            } catch (error) {
+                console.error("Failed to read file:", error);
+                alert(`Could not read the file: ${file.name}`);
+            }
+        };
+        reader.readAsText(file);
+    });
+
+    if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+    }
+  };
+
+  const handleJsonImport = (jsonText: string, source: string) => {
+    try {
+        const importedPlan = JSON.parse(jsonText);
+        // Basic validation
+        if (importedPlan && typeof importedPlan.name === 'string' && Array.isArray(importedPlan.steps)) {
+            importPlan(importedPlan, source);
+            setIsImportTextVisible(false); // Close modal on success
+        } else {
+            throw new Error("Invalid plan structure.");
+        }
+    } catch (error) {
+        console.error("Failed to import plan:", error);
+        alert("Could not import plan. The file may be corrupted or in the wrong format.");
+    }
+  };
+
+  const onDragStart = (e: React.DragEvent, index: number, listType: 'pinned' | 'unpinned') => {
+    dragSource.current = { index, listType };
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const onDragOver = (e: React.DragEvent, index: number, listType: 'pinned' | 'unpinned') => {
+    e.preventDefault();
+    // Only allow dropping in the same list type
+    if (!dragSource.current || dragSource.current.listType !== listType) return;
+
+    if (!dragTarget || dragTarget.index !== index || dragTarget.listType !== listType) {
+      setDragTarget({ index, listType });
+    }
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const onDrop = (e: React.DragEvent, index: number, listType: 'pinned' | 'unpinned') => {
+    e.preventDefault();
+    if (!dragSource.current || dragSource.current.listType !== listType) return;
+    
+    if (dragSource.current.index === index) {
+        setDragTarget(null);
+        return;
+    }
+    
+    // We are reordering within the same visual list (pinned or unpinned)
+    const sourceList = listType === 'pinned' ? [...pinnedPlans] : [...unpinnedPlans];
+    const otherList = listType === 'pinned' ? unpinnedPlans : pinnedPlans;
+    
+    const [movedItem] = sourceList.splice(dragSource.current.index, 1);
+    sourceList.splice(index, 0, movedItem);
+    
+    // Reconstruct full list to save order
+    // Order matters: if 'pinned' changed, put it first then 'unpinned'.
+    const newFullList = listType === 'pinned' 
+        ? [...sourceList, ...otherList] 
+        : [...otherList, ...sourceList];
+        
+    reorderPlans(newFullList);
+    
+    dragSource.current = null;
+    setDragTarget(null);
+  };
+
+  const onDragEnd = () => {
+    dragSource.current = null;
+    setDragTarget(null);
+  };
+  
+  const onDragLeave = () => {
+    setDragTarget(null);
+  };
+
+  return (
+    <div>
+      {sharingPlan && <ShareModal plan={sharingPlan} onClose={() => setSharingPlan(null)} />}
+      <div className="flex justify-between items-center mb-4">
+        {/* Left Side: Auth display (Guest only) */}
+        <div>
+           {authStatus !== 'authenticated' && (
+            <div className="flex flex-col items-center">
+              <p className="text-gray-400 text-xs mb-1">אורח</p>
+              <button
+                  onClick={signIn}
+                  className="bg-white text-gray-700 text-sm py-1 px-3 rounded-full border border-gray-200 shadow-sm hover:shadow-md transition-shadow flex items-center gap-2"
+                  aria-label="התחברות עם גוגל"
+              >
+                  <svg version="1.1" xmlns="http://www.w3.org/2000/svg" width="16px" height="16px" viewBox="0 0 48 48">
+                    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
+                    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
+                    <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
+                    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
+                    <path fill="none" d="M0 0h48v48H0z"></path>
+                  </svg>
+                  <span className="whitespace-nowrap">התחברות</span>
+              </button>
+            </div>
+           )}
+        </div>
+
+        {/* Right Side: Action buttons & logged-in user display */}
+        <div className="flex items-center gap-2">
+            {isSyncing && (
+                <div className="p-2" title="Syncing...">
+                    <svg className="animate-spin h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                </div>
+            )}
+            {user && (
+              <div className="relative" ref={userDropdownRef}>
+                <button onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)} className="flex items-center">
+                    <img
+                        src={user.photoURL!}
+                        alt="User profile"
+                        className="w-10 h-10 rounded-full border-2 border-gray-600 hover:border-blue-500 transition-colors"
+                    />
+                </button>
+                {isUserDropdownOpen && (
+                    <div className="absolute left-0 mt-2 w-56 bg-gray-700 rounded-md shadow-lg py-1 z-10 animate-fadeIn">
+                        <div className="px-4 py-2 text-sm text-gray-300 border-b border-gray-600">
+                            <p className="font-semibold text-white">{user.displayName}</p>
+                            <p className="truncate">{user.email}</p>
+                        </div>
+                        <button
+                            onClick={forceSync}
+                            className="flex items-center gap-3 w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-600/70"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5" />
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M4 9a9 9 0 0114.13-5.23M20 15a9 9 0 01-14.13 5.23" />
+                            </svg>
+                            <span>Sync Data</span>
+                        </button>
+                        <button
+                            onClick={signOut}
+                            className="flex items-center gap-3 w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-500/20"
+                        >
+                           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                             <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                           </svg>
+                            <span>Sign Out</span>
+                        </button>
+                    </div>
+                )}
+              </div>
+            )}
+            <button
+                onClick={handleRefreshAll}
+                className={`p-2 rounded-full hover:bg-gray-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors`}
+                title={getRefreshTooltip()}
+                disabled={refreshStatus === 'loading' || !!activeWorkout}
+            >
+                {refreshStatus === 'loading' ? (
+                    <svg className="animate-spin h-6 w-6 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" className={`h-6 w-6 ${
+                        refreshStatus === 'success' ? 'text-green-400' :
+                        refreshStatus === 'partial' ? 'text-yellow-400' :
+                        refreshStatus === 'error' ? 'text-red-400' :
+                        'text-gray-400'
+                    }`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 9a9 9 0 0114.13-5.23M20 15a9 9 0 01-14.13 5.23" />
+                    </svg>
+                )}
+            </button>
+            <button
+                onClick={onShowLog}
+                className="p-2 rounded-full hover:bg-gray-500/30 text-gray-400"
+                title="View Workout Log"
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
+                </svg>
+            </button>
+            <button
+                onClick={() => setIsImportTextVisible(true)}
+                className="p-2 rounded-full hover:bg-gray-500/30 text-gray-400"
+                title="Import Plan from Text"
+                disabled={!!activeWorkout}
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                </svg>
+            </button>
+            <button
+                onClick={handleImportClick}
+                className="p-2 rounded-full hover:bg-gray-500/30 text-gray-400"
+                title="Import Plan from File(s)"
+                disabled={!!activeWorkout}
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                    <line x1="12" y1="11" x2="12" y2="17"></line>
+                    <polyline points="9 14 12 11 15 14"></polyline>
+                </svg>
+            </button>
+            <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                accept=".json,application/json"
+                className="hidden"
+                multiple
+            />
+
+            <button 
+                onClick={onTogglePin}
+                className={`p-2 rounded-full hover:bg-gray-500/30 ${isPinned ? 'text-blue-400' : 'text-gray-400'}`}
+                title={isPinned ? 'Unpin Menu' : 'Pin Menu (Keep open during workout)'}
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 3a1 1 0 01.707.293l3 3a1 1 0 01-1.414 1.414L10 5.414 7.707 7.707a1 1 0 01-1.414-1.414l3-3A1 1 0 0110 3zm-3.707 9.293a1 1 0 011.414 0L10 14.586l2.293-2.293a1 1 0 011.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" transform="rotate(45 10 10)" />
+                  {isPinned && <path d="M10 18a8 8 0 100-16 8 8 0 000 16z" opacity="0.1" />}
+                </svg>
+            </button>
+        </div>
+      </div>
+
+      {isImportTextVisible && <ImportTextModal onImport={(text) => handleJsonImport(text, 'text')} onCancel={() => setIsImportTextVisible(false)} />}
+      
+      {!activeWorkout && (
+          <>
+            <div className="flex gap-4 mb-4">
+                <button
+                    onClick={onOpenAiPlanner}
+                    className="flex-1 text-center py-1 bg-purple-600 text-white rounded-lg font-bold hover:bg-purple-700 transition-colors flex items-center justify-center gap-2 text-sm"
+                >
+                    ✨ AI Generator
+                </button>
+                <button
+                  onClick={onCreateNew}
+                  className="flex-1 text-center py-1 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors flex items-center justify-center text-sm"
+                >
+                  + New Workout
+                </button>
+            </div>
+             <div className="bg-gray-700/50 rounded-lg p-3 mb-4">
+                <div className="flex items-center justify-between cursor-pointer" onClick={() => setIsWarmupSettingsExpanded(prev => !prev)}>
+                    <div className="flex items-center gap-2">
+                        <span className="font-semibold text-white">חימום</span>
+                        <button onClick={(e) => { e.stopPropagation(); onSelectPlan('_warmup_'); }} className="p-1 rounded-full text-gray-400 hover:text-white hover:bg-gray-600">
+                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" /><path fillRule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clipRule="evenodd" /></svg>
+                        </button>
+                    </div>
+                    <label htmlFor="warmup-toggle" className="relative inline-flex items-center cursor-pointer" onClick={(e) => e.stopPropagation()}>
+                        <input type="checkbox" id="warmup-toggle" className="sr-only peer" checked={settings.isWarmupEnabled} onChange={(e) => updateSettings({ isWarmupEnabled: e.target.checked })} />
+                        <div className="w-11 h-6 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
+                    </label>
+                </div>
+                 {isWarmupSettingsExpanded && (
+                     <div className="mt-3 pt-3 border-t border-gray-600 animate-fadeIn" style={{ animationDuration: '0.3s'}}>
+                        {settings.isWarmupEnabled && (
+                            <>
+                                <label htmlFor="warmup-rest" className="text-sm text-gray-400">Rest after warm-up (seconds)</label>
+                                <HoverNumberInput
+                                    id="warmup-rest"
+                                    value={settings.restAfterWarmupDuration}
+                                    onChange={(val) => updateSettings({ restAfterWarmupDuration: val })}
+                                    min={0}
+                                    className="w-full mt-1 bg-gray-600 p-2 rounded-md text-center"
+                                />
+                            </>
+                        )}
+                         {settings.warmupSteps.length > 0 && (
+                            <div className="mt-4">
+                                <h4 className="text-sm font-semibold text-gray-300 mb-2">Steps:</h4>
+                                <ol className="text-gray-300 space-y-1 text-sm">
+                                    {settings.warmupSteps.map((step, index) => (
+                                        <li key={index} 
+                                            className={`flex items-center gap-2 p-1 -m-1 rounded transition-opacity ${step.enabled === false ? 'opacity-50' : ''} ${step.type === 'exercise' ? 'hover:bg-gray-600/50' : ''}`}
+                                            title={getStepDisplayName(step)}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                if (step.type === 'exercise') {
+                                                    onInspectExercise(step.name);
+                                                }
+                                            }}
+                                            style={{ cursor: step.type === 'exercise' ? 'pointer' : 'default' }}
+                                        >
+                                            <span className={`w-1.5 h-4 rounded ${step.type === 'exercise' ? 'bg-orange-400' : 'bg-transparent'}`}></span>
+                                            <span className="truncate">{getStepDisplayName(step)} - <span className="text-gray-400 font-normal">{step.isRepBased ? `${step.reps} חזרות` : `${step.duration} שניות`}</span></span>
+                                        </li>
+                                    ))}
+                                </ol>
+                            </div>
+                        )}
+                     </div>
+                 )}
+            </div>
+          </>
+      )}
+
+      {selectedPlanIds.length > 0 && !activeWorkout && (
+          <button
+            onClick={handleStartSelected}
+            className="w-full mb-4 py-2.5 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition-colors"
+          >
+              Start Selected ({selectedPlanIds.length})
+          </button>
+      )}
+
+      <div className="space-y-4">
+        {plans.length === 0 ? (
+          <p className="text-gray-400 text-center py-8">No workout plans yet. Create one to get started!</p>
+        ) : (
+          <>
+            {pinnedPlans.length > 0 && (
+                <div className="mb-4">
+                    <h3 className="text-gray-400 text-sm uppercase font-bold mb-2 ml-1">נעוצים</h3>
+                    <div className="space-y-2">
+                        {pinnedPlans.map((plan, index) => (
+                            <PlanListItem 
+                                key={plan.id} 
+                                plan={plan} 
+                                index={index}
+                                setRef={el => { if (el) planRefs.current[plan.id] = el; }}
+                                onSelectPlan={() => onSelectPlan(plan)}
+                                onInitiateDelete={onInitiateDelete}
+                                onInspectExercise={onInspectExercise}
+                                onShowInfo={onShowInfo}
+                                onShare={handleShare}
+                                onTogglePin={handleTogglePlanPin}
+                                isSelected={selectedPlanIds.includes(plan.id)}
+                                onToggleSelection={handleToggleSelection}
+                                isDraggable={!activeWorkout}
+                                onDragStart={(e) => onDragStart(e, index, 'pinned')}
+                                onDragOver={(e) => onDragOver(e, index, 'pinned')}
+                                onDrop={(e) => onDrop(e, index, 'pinned')}
+                                onDragEnd={onDragEnd}
+                                onDragLeave={onDragLeave}
+                                isDragTarget={dragTarget?.index === index && dragTarget?.listType === 'pinned'}
+                                isNewlyImported={plan.id === recentlyImportedPlanId}
+                            />
+                        ))}
+                    </div>
+                </div>
+            )}
+            
+            {(pinnedPlans.length > 0 && unpinnedPlans.length > 0) && (
+                <h3 className="text-gray-400 text-sm uppercase font-bold mb-2 ml-1">כל השאר</h3>
+            )}
+
+            <div className="space-y-2">
+                {unpinnedPlans.map((plan, index) => (
+                    <PlanListItem 
+                        key={plan.id} 
+                        plan={plan} 
+                        index={index}
+                        setRef={el => { if (el) planRefs.current[plan.id] = el; }}
+                        onSelectPlan={() => onSelectPlan(plan)}
+                        onInitiateDelete={onInitiateDelete}
+                        onInspectExercise={onInspectExercise}
+                        onShowInfo={onShowInfo}
+                        onShare={handleShare}
+                        onTogglePin={handleTogglePlanPin}
+                        isSelected={selectedPlanIds.includes(plan.id)}
+                        onToggleSelection={handleToggleSelection}
+                        isDraggable={!activeWorkout}
+                        onDragStart={(e) => onDragStart(e, index, 'unpinned')}
+                        onDragOver={(e) => onDragOver(e, index, 'unpinned')}
+                        onDrop={(e) => onDrop(e, index, 'unpinned')}
+                        onDragEnd={onDragEnd}
+                        onDragLeave={onDragLeave}
+                        isDragTarget={dragTarget?.index === index && dragTarget?.listType === 'unpinned'}
+                        isNewlyImported={plan.id === recentlyImportedPlanId}
+                    />
+                ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
 
 export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean) => void; }> = ({ isOpen, setIsOpen }) => {
   const [isPinned, setIsPinned] = useState(false);

@@ -1,5 +1,5 @@
 {
   "name": "Copy of Copy of Copy of Copy of Copy of Copy of Copy of Advanced Sports Clock - אחרון לפני הוספת מסד נתונים היברידי",
-  "description": "v3.7.8: Reverted Plan Editor to the simpler, list-based design.",
+  "description": "v3.7.10: Restored missing components (PlanList, ImportTextModal) to fix the \"WorkoutMenu does not provide export\" error.",
   "requestFramePermissions": []
 }
