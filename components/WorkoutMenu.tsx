@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useRef, useMemo, useLayoutEffect } from 'react';
 import { useWorkout } from '../contexts/WorkoutContext';
 import { WorkoutPlan, WorkoutStep } from '../types';
@@ -823,6 +821,7 @@ const SetBuilder: React.FC<{ onAddSets: (steps: WorkoutStep[]) => void }> = ({ o
     const [reps, setReps] = useState(10);
     const [sets, setSets] = useState(3);
     const [rest, setRest] = useState(20);
+    const [tip, setTip] = useState('');
     
     const handleAdd = () => {
         const newSteps: WorkoutStep[] = [];
@@ -835,6 +834,7 @@ const SetBuilder: React.FC<{ onAddSets: (steps: WorkoutStep[]) => void }> = ({ o
                 duration: isRepBased ? 0 : duration,
                 reps: isRepBased ? reps : 0,
                 set: { current: i + 1, total: sets },
+                tip: tip.trim() || undefined,
             };
             newSteps.push(exerciseStep);
             
@@ -873,6 +873,15 @@ const SetBuilder: React.FC<{ onAddSets: (steps: WorkoutStep[]) => void }> = ({ o
                 <HoverNumberInput value={sets} onChange={setSets} min={1} title="Total number of sets to perform" className={commonInputClass} placeholder="Sets"/>
             </div>
             <HoverNumberInput value={rest} onChange={setRest} min={0} title="Rest time in seconds between sets" className={commonInputClass} placeholder="Rest between sets (s)" />
+            
+            <textarea
+                value={tip}
+                onChange={e => setTip(e.target.value)}
+                className="w-full bg-gray-600 p-2 rounded-md focus:outline-none focus:ring-1 ring-blue-500 text-sm text-gray-200 resize-y min-h-[60px]"
+                placeholder="הוראות ביצוע לתרגיל (אופציונלי)..."
+                dir="auto"
+            />
+
             <button onClick={handleAdd} className="w-full py-2 bg-blue-500/80 hover:bg-blue-500 rounded-lg">+ Add to Plan</button>
         </div>
     );
@@ -1850,7 +1859,7 @@ const AiPlannerModal: React.FC<{
                     
                 } catch (e) {
                     console.error("Failed to parse AI-generated JSON:", e);
-                    finalMessages.push({ role: 'model', parts: [{ text: "I tried to generate a plan, but there was an error in the format. Could you please clarify your request? The full response is below for debugging:\n\n" + responseText }] });
+                    finalMessages.push({ role: 'model', parts: [{ text: "I tried to generate a plan, but there was an error. Could you please clarify your request?" }] });
                 }
             } else if (!conversationalText) {
                 // If there's no conversational text and no JSON, it's probably just a text response.
