@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type, HarmCategory, HarmBlockThreshold } from "@google/genai";
 import { kv } from "@vercel/kv";
 
@@ -78,7 +77,7 @@ const handleExerciseInfoRequest = async (exerciseName: string, force_refresh: bo
         `;
         
         const textResponse = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-1.5-flash', // Using flash for quick info retrieval
             contents: textGenerationPrompt,
             config: {
                 responseMimeType: "application/json",
@@ -130,6 +129,8 @@ const handleExerciseInfoRequest = async (exerciseName: string, force_refresh: bo
     return { status: 200, body: finalData };
 }
 
+// --- SYSTEM PROMPT FOR WORKOUT PLANNER ---
+// Updated to match 'types.ts' (using 'tip' instead of 'executionTip')
 const baseSystemInstruction = `You are a world-class expert in human performance and rehabilitation, with deep knowledge in sports science, physiotherapy, and occupational therapy. Your primary goal is to help users create safe, effective, and personalized plans.
 
 **Interaction Flow:**
@@ -146,10 +147,10 @@ const baseSystemInstruction = `You are a world-class expert in human performance
 - The JSON MUST conform to the TypeScript interface provided below.
 - The \`type\` for steps can be 'exercise' for physical movements or 'rest' for breaks. Use these categories broadly. For example, a physiotherapy stretch is an 'exercise'.
 - **CRITICAL:** The \`name\` property for each step MUST ONLY contain the base name of the activity (e.g., "Squats", "Push-ups", "Gentle Wrist Stretches"). DO NOT include set counts, reps, or durations in the activity name itself.
-- **IMPORTANT:** You MUST populate the optional \`executionTip\` field for every step of type 'exercise'. This should be a VERY short instruction (max 50 characters) displayed during the workout. **IT MUST DESCRIBE THE ACTION EXECUTION (HOW TO DO IT), NOT GENERIC SAFETY ADVICE.** Example: Use "Lower chest to floor" instead of "Keep back straight". Use "Drive knees outward" instead of "Be careful".
+- **IMPORTANT:** You MUST populate the optional \`tip\` field for every step of type 'exercise'. This should be a VERY short instruction (max 50 characters) displayed during the workout. **IT MUST DESCRIBE THE ACTION EXECUTION (HOW TO DO IT), NOT GENERIC SAFETY ADVICE.** Example: Use "Lower chest to floor" instead of "Keep back straight". Use "Drive knees outward" instead of "Be careful".
 
 **Language:**
-- You MUST respond in the same language as the user's last message. This includes all conversational text, the plan summary, and all strings within the JSON object (like \`name\` and \`executionTip\` fields).
+- You MUST respond in the same language as the user's last message. This includes all conversational text, the plan summary, and all strings within the JSON object (like \`name\` and \`tip\` fields).
 
 **Workout Plan Interface:**
 \`\`\`typescript
@@ -160,7 +161,7 @@ interface WorkoutStep {
   isRepBased: boolean; // true for reps, false for time-based
   duration: number; // Duration in seconds (if not rep-based)
   reps: number; // Number of reps (if rep-based)
-  executionTip: string; // REQUIRED for type 'exercise'. Short biomechanical execution cue, MAX 50 characters.
+  tip: string; // REQUIRED for type 'exercise'. Short biomechanical execution cue, MAX 50 characters. Matches the 'tip' field in the app.
 }
 
 interface WorkoutPlan {
@@ -180,8 +181,9 @@ const handleChatRequest = async (history: any[], message: string, profileContext
     }
 
     // Determine the model to use based on preference.
-    const smartModel = 'gemini-3-pro-preview';
-    const fastModel = 'gemini-3-flash-preview';
+    // Updated to use the latest experimental models as requested.
+    const smartModel = 'gemini-2.0-flash-exp'; // Or 'gemini-1.5-pro' if preferred for stability
+    const fastModel = 'gemini-1.5-flash';
     
     // Default to Smart model if not specified or if 'smart' is requested.
     // 'speed' preference explicitly requests the faster model.
@@ -212,7 +214,10 @@ const handleChatRequest = async (history: any[], message: string, profileContext
              console.log(`Falling back to ${fastModel}...`);
              try {
                 const response = await generate(fastModel);
-                return { status: 200, body: { responseText: response.text } };
+                return { status: 200, body: { 
+                    responseText: response.text, 
+                    usedFallback: true 
+                } };
              } catch (fallbackError: any) {
                  // If fallback also fails, throw the fallback error (likely a broader issue).
                  throw fallbackError;
