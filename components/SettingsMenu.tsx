@@ -7,7 +7,7 @@ import { useLogger } from '../contexts/LoggingContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useWorkout } from '../contexts/WorkoutContext';
 
-const VERSION = 'v3.7.12';
+const VERSION = 'v3.7.13';
 
 const Toggle: React.FC<{
   id: string;

@@ -1,5 +1,5 @@
 {
   "name": "Copy of Copy of Copy of Copy of Copy of Copy of Copy of Advanced Sports Clock - אחרון לפני הוספת מסד נתונים היברידי",
-  "description": "v3.7.17: Added instruction editing to Set Builder inside Workout Menu.",
+  "description": "v3.7.21: Enable AI model selection (Smart/Speed) with fallback logic and improved execution tips.",
   "requestFramePermissions": []
 }

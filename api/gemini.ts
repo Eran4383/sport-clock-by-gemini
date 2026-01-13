@@ -1,5 +1,4 @@
 
-
 import { GoogleGenAI, Type, HarmCategory, HarmBlockThreshold } from "@google/genai";
 import { kv } from "@vercel/kv";
 
@@ -147,10 +146,10 @@ const baseSystemInstruction = `You are a world-class expert in human performance
 - The JSON MUST conform to the TypeScript interface provided below.
 - The \`type\` for steps can be 'exercise' for physical movements or 'rest' for breaks. Use these categories broadly. For example, a physiotherapy stretch is an 'exercise'.
 - **CRITICAL:** The \`name\` property for each step MUST ONLY contain the base name of the activity (e.g., "Squats", "Push-ups", "Gentle Wrist Stretches"). DO NOT include set counts, reps, or durations in the activity name itself.
-- **IMPORTANT:** Populate the optional \`tip\` field for exercises. This should be a VERY short instruction (max 50 characters) displayed during the workout. **IT MUST DESCRIBE THE ACTION EXECUTION (HOW TO DO IT), NOT GENERIC SAFETY ADVICE.** Example: Use "Lower chest to floor" instead of "Keep back straight". Use "Drive knees outward" instead of "Be careful".
+- **IMPORTANT:** You MUST populate the optional \`executionTip\` field for every step of type 'exercise'. This should be a VERY short instruction (max 50 characters) displayed during the workout. **IT MUST DESCRIBE THE ACTION EXECUTION (HOW TO DO IT), NOT GENERIC SAFETY ADVICE.** Example: Use "Lower chest to floor" instead of "Keep back straight". Use "Drive knees outward" instead of "Be careful".
 
 **Language:**
-- You MUST respond in the same language as the user's last message. This includes all conversational text, the plan summary, and all strings within the JSON object (like \`name\` and \`tip\` fields).
+- You MUST respond in the same language as the user's last message. This includes all conversational text, the plan summary, and all strings within the JSON object (like \`name\` and \`executionTip\` fields).
 
 **Workout Plan Interface:**
 \`\`\`typescript
@@ -161,7 +160,7 @@ interface WorkoutStep {
   isRepBased: boolean; // true for reps, false for time-based
   duration: number; // Duration in seconds (if not rep-based)
   reps: number; // Number of reps (if rep-based)
-  tip?: string; // Optional short tip/instruction on execution mechanics, MAX 50 characters.
+  executionTip: string; // REQUIRED for type 'exercise'. Short biomechanical execution cue, MAX 50 characters.
 }
 
 interface WorkoutPlan {
@@ -172,7 +171,7 @@ interface WorkoutPlan {
 \`\`\`
 `;
 
-const handleChatRequest = async (history: any[], message: string, profileContext?: string) => {
+const handleChatRequest = async (history: any[], message: string, profileContext?: string, modelPreference?: 'smart' | 'speed') => {
     const ai = new GoogleGenAI({ apiKey: geminiApiKey! });
     
     let finalSystemInstruction = baseSystemInstruction;
@@ -180,17 +179,49 @@ const handleChatRequest = async (history: any[], message: string, profileContext
         finalSystemInstruction += `\n\n--- IMPORTANT USER PROFILE ---\n${profileContext}\n--- END USER PROFILE ---`;
     }
 
-    const chat = ai.chats.create({
-        model: 'gemini-2.5-flash',
-        history,
-        config: {
-            safetySettings: safetySettings,
-            systemInstruction: finalSystemInstruction,
-        },
-    });
+    // Determine the model to use based on preference.
+    const smartModel = 'gemini-3-pro-preview';
+    const fastModel = 'gemini-3-flash-preview';
+    
+    // Default to Smart model if not specified or if 'smart' is requested.
+    // 'speed' preference explicitly requests the faster model.
+    const targetModel = modelPreference === 'speed' ? fastModel : smartModel;
 
-    const response = await chat.sendMessage({ message });
-    return { status: 200, body: { responseText: response.text } };
+    const generate = async (model: string) => {
+        const chat = ai.chats.create({
+            model: model,
+            history,
+            config: {
+                safetySettings: safetySettings,
+                systemInstruction: finalSystemInstruction,
+            },
+        });
+        return await chat.sendMessage({ message });
+    }
+
+    try {
+        const response = await generate(targetModel);
+        return { status: 200, body: { responseText: response.text } };
+    } catch (error: any) {
+        console.warn(`Model ${targetModel} failed. Error:`, error.message);
+        
+        // Strict Fallback Logic:
+        // If we tried the smart model and it failed (e.g. 429 quota or 503 overload), 
+        // automatically fallback to the fast model to ensure the user gets a result.
+        if (targetModel === smartModel) {
+             console.log(`Falling back to ${fastModel}...`);
+             try {
+                const response = await generate(fastModel);
+                return { status: 200, body: { responseText: response.text } };
+             } catch (fallbackError: any) {
+                 // If fallback also fails, throw the fallback error (likely a broader issue).
+                 throw fallbackError;
+             }
+        }
+        
+        // If we were already using the fast model or some other fatal error occurred, rethrow.
+        throw error;
+    }
 };
 
 
@@ -214,11 +245,11 @@ export default async function handler(req: any, res: any) {
       let result;
       if (chatRequest) {
           // Handle AI Planner Chat Request
-          const { history, message, profileContext } = chatRequest;
+          const { history, message, profileContext, modelPreference } = chatRequest;
           if (!message || typeof message !== 'string') {
               return res.status(400).json({ message: 'A valid message is required for chat requests.' });
           }
-          result = await handleChatRequest(history || [], message, profileContext);
+          result = await handleChatRequest(history || [], message, profileContext, modelPreference);
       } else if (checkCache && Array.isArray(checkCache)) {
           // Handle server-side cache check
           const keys = checkCache.map(name => `exercise:${name.trim().toLowerCase()}`);
@@ -290,7 +321,7 @@ export default async function handler(req: any, res: any) {
 
     // Check for Quota Exceeded error
     if (statusCode === 429 || errorPayload.status === 'RESOURCE_EXHAUSTED') {
-        const userFriendlyMessage = "מכסת השימוש היומית ב-API נוצלה. שירותי הבינה המלאכותית יחזרו לפעול מחר.";
+        const userFriendlyMessage = "מכסת שימוש היומית ב-API נוצלה. שירותי הבינה המלאכותית יחזרו לפעול מחר.";
         const technicalDetails = `פרטים טכניים: ${errorPayload.message}`;
 
         const clientError = chatRequest 

@@ -1764,6 +1764,10 @@ const AiPlannerModal: React.FC<{
     });
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    // --- New State for AI Model ---
+    const [modelPreference, setModelPreference] = useState<'smart' | 'speed'>('smart');
+    const [showModelSelector, setShowModelSelector] = useState(false);
+    // Fix: Properly declare state for profile panel
     const [isProfileOpen, setIsProfileOpen] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -1826,8 +1830,7 @@ const AiPlannerModal: React.FC<{
         }
 
         try {
-            const responseText = await generateWorkoutPlan(messages, input, profileContext);
-            
+const responseText = await generateWorkoutPlan(messages, input, profileContext, modelPreference);            
             // The service now returns a user-friendly error string, prefixed with "Error:".
             if (responseText.startsWith('Error: ')) {
                 const userFriendlyMessage = responseText.substring('Error: '.length);
@@ -1938,7 +1941,49 @@ const AiPlannerModal: React.FC<{
                 )}
                  <div ref={messagesEndRef} />
             </div>
-            <div className="flex gap-2">
+{/* --- New Input Area with Model Selector (Adapted) --- */}
+            <div className="flex gap-2 items-end bg-gray-900/50 p-2 rounded-xl border-t border-gray-700 relative">
+                {/* Popup Menu */}
+                {showModelSelector && (
+                    <div className="absolute bottom-16 left-0 bg-gray-800 border border-gray-700 rounded-xl shadow-2xl p-2 w-56 z-50 animate-in fade-in slide-in-from-bottom-2">
+                        <div className="text-xs text-gray-500 mb-2 px-2 uppercase tracking-wider font-bold">בחר מודל</div>
+                        <button
+                            onClick={() => { setModelPreference('smart'); setShowModelSelector(false); }}
+                            className={`w-full text-left px-3 py-3 rounded-lg text-sm flex items-center gap-3 transition-colors ${modelPreference === 'smart' ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/30' : 'text-gray-300 hover:bg-gray-700'}`}
+                        >
+                            <span className="text-xl">🧠</span>
+                            <div className="text-right flex-1">
+                                <div className="font-bold">Smart Pro</div>
+                                <div className="text-[10px] opacity-70">חשיבה עמוקה ודיוק</div>
+                            </div>
+                        </button>
+                        <button
+                            onClick={() => { setModelPreference('speed'); setShowModelSelector(false); }}
+                            className={`w-full text-left px-3 py-3 rounded-lg text-sm flex items-center gap-3 mt-1 transition-colors ${modelPreference === 'speed' ? 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/30' : 'text-gray-300 hover:bg-gray-700'}`}
+                        >
+                            <span className="text-xl">⚡</span>
+                            <div className="text-right flex-1">
+                                <div className="font-bold">Flash Speed</div>
+                                <div className="text-[10px] opacity-70">מהיר וחסכוני</div>
+                            </div>
+                        </button>
+                    </div>
+                )}
+
+                {/* Model Toggle Button */}
+                <button
+                    onClick={() => setShowModelSelector(!showModelSelector)}
+                    className={`p-3 mb-1 rounded-xl transition-all border shrink-0 ${
+                        modelPreference === 'smart' 
+                        ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30 hover:bg-indigo-500/20' 
+                        : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
+                    }`}
+                    title="בחר מודל AI"
+                >
+                    {modelPreference === 'smart' ? '🧠' : '⚡'}
+                </button>
+
+                {/* Textarea Input */}
                 <textarea
                     ref={textareaRef}
                     rows={1}
@@ -1950,16 +1995,28 @@ const AiPlannerModal: React.FC<{
                             handleSend();
                         }
                     }}
-                    placeholder="תאר את האימון הרצוי..."
-                    className="flex-grow bg-gray-800 text-white p-3 rounded-lg focus:outline-none focus:ring-2 ring-blue-500 resize-none"
+                    placeholder={modelPreference === 'smart' ? "שאל את המאמן (מודל חכם)..." : "בקשה מהירה..."}
+                    className="flex-grow bg-gray-800 text-white p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none max-h-32 overflow-y-auto"
                     dir="rtl"
                     disabled={isLoading}
                 />
-                <button onClick={handleSend} disabled={isLoading || !input.trim()} className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed">
-                    Send
+
+                {/* Send Button (Icon) */}
+                <button
+                    onClick={handleSend}
+                    disabled={isLoading || !input.trim()}
+                    className="p-3 mb-1 bg-indigo-600 text-white rounded-xl hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-indigo-500/20 shrink-0"
+                >
+                    {isLoading ? (
+                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                        // Send Icon
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 transform rotate-180">
+                            <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
+                        </svg>
+                    )}
                 </button>
-            </div>
-        </div>
+            </div>        </div>
     );
 };
 
