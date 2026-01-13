@@ -23,12 +23,12 @@ const safetySettings = [
   },
 ];
 
-// --- רשימת המודלים המעודכנת לינואר 2026 (לפי מחקר ה-Deprecation שלך) ---
+// רשימת המודלים המעודכנת (ינואר 2026)
 const MODEL_CHAIN = [
-    'gemini-3-pro-preview',     // החלפה מומלצת ל-2.5 Pro
-    'gemini-3-flash-preview',   // החלפה מומלצת ל-2.5 Flash
-    'gemini-2.5-pro',           // מודל יציב נוכחי
-    'gemini-2.5-flash'          // מודל פלאש יציב
+    'gemini-3-pro-preview',     // הכי חכם
+    'gemini-3-flash-preview',   // גיבוי מהיר וחכם
+    'gemini-2.5-pro',           // גיבוי יציב
+    'gemini-2.5-flash'          // רשת ביטחון
 ];
 
 const handleExerciseInfoRequest = async (exerciseName: string, force_refresh: boolean) => {
@@ -58,7 +58,7 @@ const handleExerciseInfoRequest = async (exerciseName: string, force_refresh: bo
 
     const getGeminiText = async () => {
         const textResponse = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview', // שימוש במודל מהיר ועדכני למידע תרגילים
+            model: 'gemini-3-flash-preview',
             contents: `Expert coach guide for "${exerciseName}". JSON: instructions (step-by-step \\n), tips (2-4 cues), generalInfo, language (ISO code).`,
             config: {
                 responseMimeType: "application/json",
@@ -89,27 +89,44 @@ const handleExerciseInfoRequest = async (exerciseName: string, force_refresh: bo
     return { status: 200, body: finalData };
 }
 
-const baseSystemInstruction = `You are a world-class performance expert.
-1. Be Conversational.
-2. Provide a human summary first.
-3. Provide JSON after the summary.
-4. Populating 'tip' field (MAX 50 chars) for every 'exercise' step is REQUIRED. It must be a biomechanical cue (e.g., "Drive knees out").
-5. Language: Always match user's language.
+// --- הוראות המערכת המעודכנות להפרדה בין הסבר ביצוע לטיפים ---
+const baseSystemInstruction = `You are a world-class fitness and rehabilitation expert. Your goal is to create detailed, professional workout plans.
 
-JSON Structure:
+**CRITICAL RULES FOR EXERCISE INSTRUCTIONS (The 'tip' field):**
+1. **First Set of any Exercise:** You MUST provide a full, step-by-step technical guide on HOW to perform the exercise. Imagine the user is asking "How do I do this?". 
+   - Example for Push-ups (First set): "Place hands shoulder-width apart, lower your body until chest nearly touches the floor, then push back up keeping your core tight."
+2. **Subsequent Sets (Set 2, 3, etc.):** You should provide short, punchy biomechanical cues or safety reminders.
+   - Example for Push-ups (Set 2+): "Keep your elbows at 45 degrees" or "Don't let your lower back sag."
+3. **Max Length:** Even for the first set, keep it concise but prioritizing clarity.
+4. **Language:** Always respond in the same language the user is using.
+
+**General JSON Rules:**
+- JSON MUST conform to the TypeScript interface provided.
+- 'type' can be 'exercise' or 'rest'.
+- 'name' field MUST only contain the exercise name (e.g., "Push-ups"), NOT the set number.
+- 'tip' field is REQUIRED for every 'exercise' step.
+
+**Workout Plan Interface:**
+\`\`\`typescript
+interface WorkoutStep {
+  id: string;
+  name: string;
+  type: 'exercise' | 'rest';
+  isRepBased: boolean;
+  duration: number;
+  reps: number;
+  tip: string; // This is the instructions box.
+}
+
 interface WorkoutPlan {
   name: string;
-  steps: Array<{
-    id: string;
-    name: string;
-    type: 'exercise' | 'rest';
-    isRepBased: boolean;
-    duration: number;
-    reps: number;
-    tip: string; // The instruction text
-  }>;
+  steps: WorkoutStep[];
+  executionMode?: 'linear' | 'circuit';
 }
-`;
+\`\`\`
+
+**Interaction:**
+Always provide a friendly summary in plain text FIRST, and then the JSON block.`;
 
 const handleChatRequest = async (history: any[], message: string, profileContext?: string, modelPreference?: 'smart' | 'speed') => {
     const ai = new GoogleGenAI({ apiKey: geminiApiKey! });
@@ -125,7 +142,7 @@ const handleChatRequest = async (history: any[], message: string, profileContext
         return await chat.sendMessage({ message });
     };
 
-    // Route: SPEED
+    // מסלול מהיר
     if (modelPreference === 'speed') {
         try {
             const res = await attemptGeneration('gemini-3-flash-preview');
@@ -136,7 +153,7 @@ const handleChatRequest = async (history: any[], message: string, profileContext
         }
     }
 
-    // Route: SMART (Chain)
+    // מסלול חכם (שרשרת מודלים)
     for (const modelName of MODEL_CHAIN) {
         try {
             console.log(`[AI] Trying ${modelName}`);
