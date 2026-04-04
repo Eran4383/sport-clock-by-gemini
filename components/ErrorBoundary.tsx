@@ -1,10 +1,10 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import React, { ErrorInfo, ReactNode } from 'react';
 import { useLogger } from '../contexts/LoggingContext';
 
 const CRASH_FLAG_KEY = 'app_crash_detected';
 
 interface Props {
-  children?: ReactNode;
+  children: ReactNode;
   logError: (error: Error, componentStack: string) => void;
 }
 
@@ -12,20 +12,24 @@ interface State {
   hasError: boolean;
 }
 
-/**
- * Internal class-based ErrorBoundary to use lifecycle methods.
- */
-class ErrorBoundaryInternal extends Component<Props, State> {
-  public state: State = { hasError: false };
+class ErrorBoundaryInternal extends React.Component<Props, State> {
+  // FIX: Added a constructor to correctly initialize component state and call super(props)
+  // to make `this.props` available throughout the component. This resolves errors where
+  // `this.state` and `this.props` were not accessible.
+  constructor(props: Props) {
+    super(props);
+    this.state = { hasError: false };
+  }
 
-  static getDerivedStateFromError(_: Error): State {
+  public static getDerivedStateFromError(_: Error): State {
+    // Update state so the next render will show the fallback UI.
     return { hasError: true };
   }
 
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("Uncaught error:", error, errorInfo);
-    this.props.logError(error, errorInfo.componentStack || '');
-    
+    this.props.logError(error, errorInfo.componentStack);
+    // Set a flag in localStorage so we can detect this crash on the next app load.
     try {
         localStorage.setItem(CRASH_FLAG_KEY, 'true');
     } catch (e) {
@@ -33,7 +37,7 @@ class ErrorBoundaryInternal extends Component<Props, State> {
     }
   }
 
-  render() {
+  public render() {
     if (this.state.hasError) {
       return (
         <div className="h-screen w-screen bg-red-900 text-white flex flex-col items-center justify-center p-4 text-center">
@@ -56,10 +60,9 @@ class ErrorBoundaryInternal extends Component<Props, State> {
   }
 }
 
-/***
- * Functional wrapper for the ErrorBoundary to consume hooks.
- */
+// Wrapper component to inject the logger context function into the class component
 export const ErrorBoundary: React.FC<{children: ReactNode}> = ({ children }) => {
     const { logError } = useLogger();
+    // FIX: Passed the `children` prop down to `ErrorBoundaryInternal` to satisfy its required props.
     return <ErrorBoundaryInternal logError={logError}>{children}</ErrorBoundaryInternal>;
 };

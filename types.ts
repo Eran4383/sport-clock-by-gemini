@@ -1,4 +1,3 @@
-
 export interface WorkoutStep {
   id: string;
   name: string; // Now the base name, e.g., "Push-ups"
@@ -8,8 +7,6 @@ export interface WorkoutStep {
   reps: number;
   isWarmup?: boolean;
   enabled?: boolean;
-  // Short instruction specifically for the active workout view (max ~50 chars)
-  tip?: string;
   // New structured data for sets, replacing "(Set X/Y)" in the name
   set?: {
     current: number;
@@ -24,7 +21,6 @@ export interface WorkoutPlan {
   executionMode?: 'linear' | 'circuit';
   color?: string;
   isLocked?: boolean;
-  isPinned?: boolean; // New property for pinning plans
   isSmartPlan?: boolean;
   order?: number;
   // Internal schema version to help with migrations

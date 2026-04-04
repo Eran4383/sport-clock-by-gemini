@@ -8,7 +8,7 @@ import { useSettings } from './SettingsContext';
 import { getLocalPlans, saveLocalPlans, getLocalHistory, saveLocalHistory } from '../services/storageService';
 import { useAuth } from './AuthContext';
 import { db } from '../services/firebase';
-import { collection, doc, writeBatch, query, orderBy, setDoc, deleteDoc, onSnapshot, Unsubscribe, getDocs, FirestoreError } from 'firebase/firestore';
+import { collection, doc, writeBatch, query, orderBy, setDoc, deleteDoc, onSnapshot, Unsubscribe, getDocs } from 'firebase/firestore';
 import { useLogger } from './LoggingContext';
 
 const ACK_FINGERPRINT_KEY = 'acknowledgedGuestDataFingerprint';
@@ -112,20 +112,6 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   const clearImportNotification = useCallback(() => setImportNotification(null), []);
 
-  const handleFirestoreError = useCallback((error: FirestoreError, context: string) => {
-      console.error(`Firestore error in ${context}:`, error);
-      logAction(`ERROR_FIRESTORE_${context}`, { message: error.message, code: error.code });
-      
-      if (error.code === 'permission-denied') {
-          setImportNotification({
-              message: 'שגיאת הרשאות',
-              planName: 'נא לעדכן חוקי אבטחה ב-Firebase Console',
-              type: 'warning',
-          });
-      }
-      setIsSyncing(false);
-  }, [logAction]);
-
   useEffect(() => {
     let plansUnsubscribe: Unsubscribe | undefined;
     let historyUnsubscribe: Unsubscribe | undefined;
@@ -190,7 +176,11 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
                 checkAndTriggerMergeModal();
             }
             setIsSyncing(false);
-        }, (error) => handleFirestoreError(error, 'PLANS_LISTENER'));
+        }, (error) => {
+            logAction('ERROR_FIRESTORE_PLANS_LISTENER', { message: error.message });
+            console.error("Firestore plans listener error:", error);
+            setIsSyncing(false);
+        });
         
         const historyCollection = collection(db, 'users', user.uid, 'history');
         historyUnsubscribe = onSnapshot(query(historyCollection, orderBy('date', 'desc')), (snapshot) => {
@@ -207,7 +197,10 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
                 historyListenerDone = true;
                 checkAndTriggerMergeModal();
             }
-        }, (error) => handleFirestoreError(error, 'HISTORY_LISTENER'));
+        }, (error) => {
+            logAction('ERROR_FIRESTORE_HISTORY_LISTENER', { message: error.message });
+            console.error("Firestore history listener error:", error);
+        });
 
     } else if (authStatus === 'unauthenticated') {
         logAction('AUTH_STATE_UNAUTHENTICATED');
@@ -227,7 +220,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
     
     return cleanup;
-  }, [user, authStatus, logAction, handleFirestoreError]);
+  }, [user, authStatus, logAction]);
 
 
   const forceSync = useCallback(async () => {
@@ -243,13 +236,6 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     } catch (error) {
         logAction('ERROR_SYNC_FORCE', { message: (error as Error).message });
         console.error("Manual sync failed:", error);
-        if ((error as FirestoreError).code === 'permission-denied') {
-             setImportNotification({
-                  message: 'שגיאת הרשאות',
-                  planName: 'נא לעדכן חוקי אבטחה ב-Firebase',
-                  type: 'warning',
-             });
-        }
     } finally {
         setIsSyncing(false);
     }
@@ -318,13 +304,6 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     } catch (error) {
         logAction('ERROR_GUEST_DATA_MERGE', { message: (error as Error).message });
         console.error("Failed to merge guest data:", error);
-        if ((error as FirestoreError).code === 'permission-denied') {
-             setImportNotification({
-                  message: 'שגיאת הרשאות במיזוג',
-                  planName: 'בדוק את חוקי Firebase',
-                  type: 'warning',
-             });
-        }
         setShowGuestMergeModal(true); 
     } finally {
         setGuestPlansToMerge([]);
@@ -368,13 +347,6 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
           } catch (error) {
               logAction('ERROR_PLAN_SAVE_FIRESTORE', { planId: migratedPlan.id, message: (error as Error).message });
               console.error("Failed to save plan to Firestore:", error);
-              if ((error as FirestoreError).code === 'permission-denied') {
-                 setImportNotification({
-                      message: 'שמירה נכשלה',
-                      planName: 'אין הרשאת כתיבה למסד הנתונים',
-                      type: 'warning',
-                 });
-              }
           }
       }
   }, [user, logAction]);
@@ -413,19 +385,6 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     
     if (source === 'ai') {
         newPlan.steps = processAndFormatAiSteps(newPlan.steps);
-        // FIX: Sanitize AI-generated steps to prevent invalid states like time-based exercises with 0 duration.
-        newPlan.steps = newPlan.steps.map(step => {
-            if (step.type === 'exercise' && !step.isRepBased && (!step.duration || step.duration <= 0)) {
-                // This is an invalid time-based step. Convert it to a rep-based step as a fallback.
-                return {
-                    ...step,
-                    isRepBased: true,
-                    reps: 10, // A sensible default for reps.
-                    duration: 0,
-                };
-            }
-            return step;
-        });
     }
     
     savePlan(newPlan);
@@ -524,13 +483,6 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         } catch (error) {
             logAction('ERROR_PLANS_REORDER_FIRESTORE', { message: (error as Error).message });
             console.error("Failed to reorder plans in Firestore:", error);
-            if ((error as FirestoreError).code === 'permission-denied') {
-                 setImportNotification({
-                      message: 'שגיאת הרשאות',
-                      planName: 'לא ניתן לשמור סדר חדש',
-                      type: 'warning',
-                 });
-            }
         }
       }
   }, [user, logAction]);
@@ -571,13 +523,6 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         } catch (e) {
             logAction('ERROR_LOG_SAVE_FIRESTORE', { message: (e as Error).message });
             console.error("Failed to save workout log to Firestore:", e);
-             if ((e as FirestoreError).code === 'permission-denied') {
-                 setImportNotification({
-                      message: 'היומן לא נשמר בענן',
-                      planName: 'נשמר מקומית עקב בעיית הרשאות',
-                      type: 'warning',
-                 });
-            }
             // Fallback to local storage if Firestore fails
             saveLocally();
         }
@@ -616,13 +561,6 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         } catch (e) {
             logAction('ERROR_LOG_SAVE_FIRESTORE', { message: (e as Error).message });
             console.error("Failed to save manual workout log to Firestore:", e);
-            if ((e as FirestoreError).code === 'permission-denied') {
-                 setImportNotification({
-                      message: 'היומן לא נשמר בענן',
-                      planName: 'נשמר מקומית עקב בעיית הרשאות',
-                      type: 'warning',
-                 });
-            }
             // Fallback to local storage if Firestore fails
             saveLocally();
         }
@@ -649,13 +587,6 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
                 } catch (error) {
                     logAction('ERROR_HISTORY_CLEAR_FIRESTORE', { message: (error as Error).message });
                     console.error("Failed to clear Firestore history:", error);
-                    if ((error as FirestoreError).code === 'permission-denied') {
-                         setImportNotification({
-                              message: 'מחיקה נכשלה',
-                              planName: 'חסרות הרשאות מחיקה',
-                              type: 'warning',
-                         });
-                    }
                 } finally {
                     setIsSyncing(false);
                 }
