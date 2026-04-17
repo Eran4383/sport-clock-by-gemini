@@ -2,10 +2,11 @@ import React from 'react';
 
 interface RepDisplayProps {
   reps: number;
+  notes?: string;
   onComplete: () => void;
 }
 
-export const RepDisplay: React.FC<RepDisplayProps> = ({ reps, onComplete }) => {
+export const RepDisplay: React.FC<RepDisplayProps> = ({ reps, notes, onComplete }) => {
   return (
     <div className="flex flex-col items-center justify-center text-center">
       <div 
@@ -15,6 +16,11 @@ export const RepDisplay: React.FC<RepDisplayProps> = ({ reps, onComplete }) => {
         {reps}
         <span className="text-4xl align-middle ml-4 opacity-80">Reps</span>
       </div>
+      {notes && (
+        <div className="mt-4 px-6 py-2 bg-white/10 rounded-lg text-lg text-white/90 max-w-lg animate-fadeIn" dir="rtl">
+          {notes}
+        </div>
+      )}
       <button
         onClick={onComplete}
         aria-label="Complete step and move to next"
