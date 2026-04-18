@@ -17,7 +17,7 @@ const firebaseConfig = {
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 const db = getFirestore(app);
 
-const geminiApiKey = process.env.API_KEY;
+const geminiApiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
 const youtubeApiKey = process.env.YOUTUBE_API_KEY;
 
 const safetySettings = [
