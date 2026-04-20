@@ -1,0 +1,54 @@
+@import "tailwindcss";
+
+body {
+  font-family: Arial, sans-serif;
+  transition: background-color 0.3s ease;
+}
+
+.font-mono {
+  font-family: Arial, sans-serif;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.theme-transition {
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.menu-container {
+  z-index: 60;
+}
+
+@keyframes pop {
+  0% { transform: scale(0.5); opacity: 0; }
+  60% { transform: scale(1.1); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes glow {
+  0%, 100% {
+    box-shadow: 0 0 0 rgba(59, 130, 246, 0);
+  }
+  50% {
+    box-shadow: 0 0 15px 4px rgba(59, 130, 246, 0.6);
+  }
+}
+
+.animate-pop {
+  animation: pop 1s ease-out;
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-in;
+}
+
+.animate-glow {
+  animation: glow 2.5s ease-in-out;
+}
