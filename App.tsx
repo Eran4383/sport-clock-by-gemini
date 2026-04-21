@@ -667,17 +667,10 @@ const AppContent: React.FC = () => {
         {settings.showCountdown && (
           <>
             {isRepStep ? (
-              <RepDisplay 
-                reps={currentStep.reps} 
-                notes={currentStep.notes}
-                onComplete={() => nextStepWithTime(StepStatus.Completed)} 
-              />
+              <RepDisplay reps={currentStep.reps} onComplete={() => nextStepWithTime(StepStatus.Completed)} />
             ) : (
               <>
-                <CountdownDisplay 
-                  timeLeft={countdown.timeLeft} 
-                  notes={currentStep?.notes}
-                />
+                <CountdownDisplay timeLeft={countdown.timeLeft} />
                 {settings.showCountdownControls && (
                   <CountdownControls
                     isRunning={isWorkoutActive ? (!isWorkoutPaused && !isCountdownPaused) : (countdown.isRunning || countdown.isResting)}

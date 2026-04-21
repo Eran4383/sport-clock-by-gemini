@@ -40,20 +40,12 @@ export const getBaseExerciseName = (name: string): string => {
  * @returns A string suitable for display in the UI.
  */
 export const getStepDisplayName = (step: WorkoutStep): string => {
-    let displayName = step.name;
-    
-    // Add RIR if exists
-    if (step.rir) {
-        const rirLabel = /[\u0590-\u05FF]/.test(step.name) ? 'רזרבה' : 'RIR';
-        displayName = `${displayName} (${rirLabel} ${step.rir})`;
-    }
-
     if (step.set) {
         // A simple check for any Hebrew character in the name to decide the language for "Set".
         const setLabel = /[\u0590-\u05FF]/.test(step.name) ? 'סט' : 'Set';
-        return `${displayName} (${setLabel} ${step.set.current}/${step.set.total})`;
+        return `${step.name} (${setLabel} ${step.set.current}/${step.set.total})`;
     }
-    return displayName;
+    return step.name;
 };
 
 /**
@@ -203,9 +195,7 @@ const areStepsEqual = (step1: Omit<WorkoutStep, 'id'>, step2: Omit<WorkoutStep, 
         step1.type !== step2.type ||
         step1.isRepBased !== step2.isRepBased ||
         step1.set?.current !== step2.set?.current ||
-        step1.set?.total !== step2.set?.total ||
-        step1.rir !== step2.rir ||
-        step1.notes !== step2.notes
+        step1.set?.total !== step2.set?.total
     ) {
         return false;
     }

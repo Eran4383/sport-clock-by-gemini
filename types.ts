@@ -12,8 +12,6 @@ export interface WorkoutStep {
     current: number;
     total: number;
   };
-  rir?: string;
-  notes?: string;
 }
 
 export interface WorkoutPlan {
