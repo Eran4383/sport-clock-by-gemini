@@ -13,7 +13,7 @@ const firebaseConfig = {
   measurementId: "G-N7QC8DZPYP"
 };
 
-// Initialize Firebase for the API environment 
+// Initialize Firebase for the API environment
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 const db = getFirestore(app);
 
