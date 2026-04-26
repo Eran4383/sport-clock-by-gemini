@@ -636,7 +636,7 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
       >
         <div className="p-6 overflow-y-auto h-full">
           <div className="flex justify-between items-center mb-8">
-            <h2 className="text-2xl font-bold text-white">הגדרות</h2>
+            <h2 className="text-2xl font-bold text-white">Settings</h2>
             <div className="flex items-center gap-2">
               <button 
                 onClick={() => setIsPinned(!isPinned)}

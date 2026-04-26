@@ -801,6 +801,7 @@ const PlanListItem: React.FC<{
 
 const ImportTextModal: React.FC<{ onImport: (text: string) => void; onCancel: () => void; }> = ({ onImport, onCancel }) => {
     const [jsonText, setJsonText] = useState('');
+    const [statusMessage, setStatusMessage] = useState<{ text: string, type: 'success' | 'error' | 'info' } | null>(null);
     const textAreaRef = useRef<HTMLTextAreaElement>(null);
 
     useEffect(() => {
@@ -808,27 +809,139 @@ const ImportTextModal: React.FC<{ onImport: (text: string) => void; onCancel: ()
         textAreaRef.current?.focus();
     }, []);
     
+    const showStatus = (text: string, type: 'success' | 'error' | 'info' = 'info') => {
+        setStatusMessage({ text, type });
+        setTimeout(() => setStatusMessage(null), 3000);
+    };
+
     const handleImportClick = () => {
         if (jsonText.trim()) {
             onImport(jsonText);
         }
     };
 
+    const handlePaste = async () => {
+        try {
+            const text = await navigator.clipboard.readText();
+            if (text) {
+                setJsonText(text);
+                showStatus('הודבק מהלוח', 'success');
+            }
+        } catch (err) {
+            console.error('Failed to read clipboard:', err);
+            showStatus('שגיאה בהדבקה. נסה להדביק ידנית.', 'error');
+        }
+    };
+
+    const handleCopyTemplate = () => {
+        const templatePrompt = `אתה מאמן כושר בינלאומי המומחה בבניית תוכניות אימון חכמות וממוקדות. 
+המטרה שלך היא לבנות תוכנית אימון בפורמט JSON שתתאים בדיוק למערכת האימונים שלי.
+
+דגשים לבניית האימון:
+1. מבנה התוכנית: התוכנית מורכבת מ"צעדים" (steps). כל צעד יכול להיות תרגיל (exercise) או מנוחה (rest).
+2. RIR (Reps in Reserve): עבור כל תרגיל כוח, עליך לציין בשדה ה-rir כמה חזרות להשאיר "בכל" (למשל "2" עבור RIR 2).
+3. הערות: בשדה ה-notes ניתן להוסיף דגשים טכניים קצרים (למשל: "מרפקים קרובים לגוף").
+4. סטים: אם יש לאותו תרגיל כמה סטים, צור צעד נפרד לכל סט עם מנוחה ביניהם. השתמש בשדה ה-set כדי לציין את מספר הסט (למשל set: {current: 1, total: 3}).
+5. סוג אימון: 
+   - 'linear': סטים רגילים (סט 1, מנוחה, סט 2...)
+   - 'circuit': אימון מחזורי (תרגיל 1, תרגיל 2, תרגיל 3... מנוחה ארוכה).
+6. שמות תרגילים: השתמש בשמות מוכרים באנגלית בשדה ה-name כדי שהמערכת תוכל למצוא סרטוני הדרכה (למשל "Push Ups").
+
+ספק לי את הקוד בפורמט JSON בלבד, ללא הסברים נוספים, לפי המבנה הבא:
+
+{
+  "name": "שם האימון",
+  "executionMode": "linear",
+  "steps": [
+    {
+      "id": "1",
+      "name": "Squats",
+      "type": "exercise",
+      "isRepBased": true,
+      "reps": 12,
+      "duration": 0,
+      "rir": "2",
+      "notes": "Keep your back straight",
+      "set": { "current": 1, "total": 3 }
+    },
+    {
+      "id": "2",
+      "name": "Rest",
+      "type": "rest",
+      "isRepBased": false,
+      "reps": 0,
+      "duration": 60
+    }
+  ]
+}`;
+        
+        navigator.clipboard.writeText(templatePrompt).then(() => {
+            showStatus('הוראות למאמן הועתקו ללוח!', 'success');
+        }).catch(err => {
+            console.error('Failed to copy:', err);
+            showStatus('שגיאה בהעתקה', 'error');
+        });
+    };
+
     return (
-        <div className="fixed inset-0 bg-black/70 z-[100] flex items-center justify-center" onClick={onCancel} aria-modal="true" role="dialog">
-            <div className="bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-lg" onClick={e => e.stopPropagation()}>
-                <h3 className="text-xl font-bold text-white">Import Plan from Text</h3>
-                <p className="text-gray-300 mt-2">Paste the JSON content of a workout plan below.</p>
-                <textarea
-                    ref={textAreaRef}
-                    value={jsonText}
-                    onChange={e => setJsonText(e.target.value)}
-                    className="w-full h-48 mt-4 p-2 bg-gray-900 text-gray-300 rounded-md font-mono text-sm focus:outline-none focus:ring-2 ring-blue-500"
-                    placeholder='{ "id": "...", "name": "...", "steps": [...] }'
-                />
-                <div className="mt-6 flex justify-end gap-4">
-                    <button onClick={onCancel} className="px-4 py-2 rounded-md text-white bg-gray-600 hover:bg-gray-500 font-semibold">Cancel</button>
-                    <button onClick={handleImportClick} className="px-4 py-2 rounded-md text-white bg-blue-600 hover:bg-blue-700 font-semibold">Import</button>
+        <div className="fixed inset-0 bg-black/70 z-[100] flex items-center justify-center p-4 px-6" onClick={onCancel} aria-modal="true" role="dialog">
+            <div className="bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-xl flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-start mb-2">
+                    <div>
+                        <h3 className="text-xl font-bold text-white">Import Plan (JSON)</h3>
+                        <p className="text-gray-400 text-sm mt-1">הדבק קוד JSON למטה כדי לייבא אימון</p>
+                    </div>
+                    <button onClick={onCancel} className="p-1 rounded-full hover:bg-gray-700 text-gray-400">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                </div>
+
+                <div className="flex gap-2 mb-4">
+                    <button 
+                        onClick={handlePaste}
+                        className="flex-1 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-md flex items-center justify-center gap-2 text-sm transition-colors"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                        הדבק קוד מהלוח
+                    </button>
+                    <button 
+                        onClick={handleCopyTemplate}
+                        className="flex-1 py-2 bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 border border-purple-500/50 rounded-md flex items-center justify-center gap-2 text-sm transition-colors"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" /></svg>
+                        העתק תבנית למאמן (AI)
+                    </button>
+                </div>
+
+                <div className="relative flex-grow min-h-0 flex flex-col">
+                    <textarea
+                        ref={textAreaRef}
+                        value={jsonText}
+                        onChange={e => setJsonText(e.target.value)}
+                        className="w-full flex-grow p-3 bg-gray-900 text-gray-300 rounded-md font-mono text-sm focus:outline-none focus:ring-2 ring-blue-500 select-all"
+                        placeholder='{ "id": "...", "name": "...", "steps": [...] }'
+                        dir="ltr"
+                    />
+                    {statusMessage && (
+                        <div className={`absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full shadow-lg text-sm font-semibold animate-fadeIn ${
+                            statusMessage.type === 'success' ? 'bg-green-600 text-white' : 
+                            statusMessage.type === 'error' ? 'bg-red-600 text-white' : 
+                            'bg-blue-600 text-white'
+                        }`}>
+                            {statusMessage.text}
+                        </div>
+                    )}
+                </div>
+                
+                <div className="mt-6 flex justify-end gap-3">
+                    <button onClick={onCancel} className="px-6 py-2 rounded-md text-gray-300 hover:text-white hover:bg-gray-700 transition-colors">ביטול</button>
+                    <button 
+                        onClick={handleImportClick} 
+                        className="px-8 py-2 rounded-md text-white bg-blue-600 hover:bg-blue-700 font-bold shadow-lg transition-all active:scale-95 disabled:opacity-50"
+                        disabled={!jsonText.trim()}
+                    >
+                        ייבא אימון
+                    </button>
                 </div>
             </div>
         </div>
@@ -1491,6 +1604,34 @@ const EditableStepItem: React.FC<{
                             </div>
                         )}
                    </div>
+                   
+                   {step.type === 'exercise' && (
+                       <div className="grid grid-cols-2 gap-3">
+                           <div>
+                               <label className="text-sm text-gray-400">RIR (רזרבה)</label>
+                               <input 
+                                   type="text"
+                                   value={step.rir || ''}
+                                   onChange={e => updateStep(index, { rir: e.target.value })}
+                                   placeholder="למשל: 2"
+                                   className="w-full bg-gray-600 p-2 rounded-md focus:outline-none focus:ring-1 ring-blue-500 text-sm"
+                                   title="Reps in Reserve"
+                               />
+                           </div>
+                           <div>
+                               <label className="text-sm text-gray-400">הערות לביצוע</label>
+                               <input 
+                                   type="text"
+                                   value={step.notes || ''}
+                                   onChange={e => updateStep(index, { notes: e.target.value })}
+                                   placeholder="דגשים..."
+                                   className="w-full bg-gray-600 p-2 rounded-md focus:outline-none focus:ring-1 ring-blue-500 text-sm"
+                                   title="הערות לתרגיל"
+                                   dir="rtl"
+                               />
+                           </div>
+                       </div>
+                   )}
                 </div>
             )}
         </div>

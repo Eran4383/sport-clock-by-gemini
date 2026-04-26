@@ -1,8 +1,23 @@
 
 import { GoogleGenAI, Type, HarmCategory, HarmBlockThreshold } from "@google/genai";
-import { kv } from "@vercel/kv";
+import { initializeApp, getApps, getApp } from "firebase/app";
+import { getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
 
-const geminiApiKey = process.env.API_KEY;
+const firebaseConfig = {
+  apiKey: "AIzaSyBKjqOImhiSryfylDv2DkEGtQZeR1QG8oA",
+  authDomain: "sport-clock-account-connection.firebaseapp.com",
+  projectId: "sport-clock-account-connection",
+  storageBucket: "sport-clock-account-connection.firebasestorage.app",
+  messagingSenderId: "721205944193",
+  appId: "1:721205944193:web:1dc6b014d9c09adb599280",
+  measurementId: "G-N7QC8DZPYP"
+};
+
+// Initialize Firebase for the API environment 
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+const db = getFirestore(app);
+
+const geminiApiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
 const youtubeApiKey = process.env.YOUTUBE_API_KEY;
 
 const safetySettings = [
@@ -30,15 +45,16 @@ const handleExerciseInfoRequest = async (exerciseName: string, force_refresh: bo
     const normalizedExerciseName = exerciseName.trim().toLowerCase();
     const exerciseCacheKey = `exercise:${normalizedExerciseName}`;
 
-    // STAGE 0: Check our persistent KV cache first.
+    // STAGE 0: Check our persistent Firestore cache first.
     if (!force_refresh) {
         try {
-            const cachedData = await kv.get(exerciseCacheKey);
-            if (cachedData) {
-                return { status: 200, body: cachedData };
+            const docRef = doc(db, "exercise_cache", normalizedExerciseName);
+            const docSnap = await getDoc(docRef);
+            if (docSnap.exists()) {
+                return { status: 200, body: docSnap.data() };
             }
-        } catch (kvError) {
-            console.error("Vercel KV 'get' operation failed. This is likely a configuration issue. The app will proceed without server-side caching for this request.", kvError);
+        } catch (fsError) {
+            console.error("Firestore cache 'get' operation failed:", fsError);
         }
     }
 
@@ -120,11 +136,12 @@ const handleExerciseInfoRequest = async (exerciseName: string, force_refresh: bo
         finalData.instructions = "לא נמצאו סרטוני הדרכה מתאימים עבור תרגיל זה. המידע הכתוב עדיין זמין.";
     }
 
-    // Attempt to save to KV but don't let it block the response.
+    // Attempt to save to Firestore but don't let it block the response.
     try {
-        await kv.set(exerciseCacheKey, finalData);
-    } catch (kvError) {
-        console.error("Vercel KV 'set' operation failed. The response was sent to the user, but it was not cached on the server.", kvError);
+        const docRef = doc(db, "exercise_cache", normalizedExerciseName);
+        await setDoc(docRef, finalData);
+    } catch (fsError) {
+        console.error("Firestore cache 'set' operation failed:", fsError);
     }
 
     return { status: 200, body: finalData };
@@ -206,18 +223,21 @@ export default async function handler(req: any, res: any) {
           }
           result = await handleChatRequest(history || [], message);
       } else if (checkCache && Array.isArray(checkCache)) {
-          // Handle server-side cache check
-          const keys = checkCache.map(name => `exercise:${name.trim().toLowerCase()}`);
-          if (keys.length === 0) {
-              return res.status(200).json({ uncachedNames: [] });
-          }
+          // Handle server-side cache check using Firestore
+          const uncachedNames = [];
           try {
-              const results = await kv.mget(...keys);
-              const uncachedNames = checkCache.filter((_, index) => results[index] === null);
+              for (const name of checkCache) {
+                  const normalized = name.trim().toLowerCase();
+                  const docRef = doc(db, "exercise_cache", normalized);
+                  const docSnap = await getDoc(docRef);
+                  if (!docSnap.exists()) {
+                      uncachedNames.push(name);
+                  }
+              }
               return res.status(200).json({ uncachedNames });
-          } catch (kvError) {
-               console.error("Vercel KV 'mget' operation failed.", kvError);
-               // If KV fails, assume nothing is cached so the client tries to fetch everything.
+          } catch (fsError) {
+               console.error("Firestore cache 'check' operation failed.", fsError);
+               // If Firestore fails, assume nothing is cached so the client tries to fetch everything.
                return res.status(200).json({ uncachedNames: checkCache });
           }
       } else if (exerciseName) {
