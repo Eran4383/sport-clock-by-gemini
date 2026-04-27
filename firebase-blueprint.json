@@ -33,6 +33,14 @@
     "users/{userId}": {
       "schema": "User",
       "description": "User profile data."
+    },
+    "users/{userId}/plans/{planId}": {
+      "schema": "WorkoutPlan",
+      "description": "User's workout plans."
+    },
+    "users/{userId}/history/{logId}": {
+      "schema": "WorkoutLogEntry",
+      "description": "User's workout history log."
     }
   }
 }

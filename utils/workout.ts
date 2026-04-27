@@ -236,22 +236,34 @@ export const arePlansDeeplyEqual = (plan1: WorkoutPlan, plan2: WorkoutPlan): boo
 };
 
 /**
- * Recursively removes all 'undefined' values from an object, as Firestore does not support them.
- * It also handles nested objects and arrays.
+ * Recursively removes all 'undefined' values and converts forbidden numbers (NaN, Infinity)
+ * to null, as Firestore does not support them.
  */
 export const sanitizeForFirestore = (obj: any): any => {
+  // If it's a primitive or already null, return as is
+  if (obj === null || typeof obj !== 'object') {
+    if (typeof obj === 'number') {
+      return isFinite(obj) ? obj : null;
+    }
+    return obj;
+  }
+
+  // Handle Arrays
   if (Array.isArray(obj)) {
     return obj
       .filter(v => v !== undefined)
       .map(v => sanitizeForFirestore(v));
-  } else if (obj !== null && typeof obj === 'object') {
-    return Object.keys(obj).reduce((acc: any, key: string) => {
+  }
+
+  // Handle Objects
+  const sanitizedObj: any = {};
+  for (const key in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
       const value = obj[key];
       if (value !== undefined) {
-        acc[key] = sanitizeForFirestore(value);
+        sanitizedObj[key] = sanitizeForFirestore(value);
       }
-      return acc;
-    }, {});
+    }
   }
-  return obj;
+  return sanitizedObj;
 };

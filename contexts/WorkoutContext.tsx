@@ -351,6 +351,24 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
           try {
               const planRef = doc(db, 'users', user.uid, 'plans', migratedPlan.id);
               const sanitizedPlan = sanitizeForFirestore(migratedPlan);
+              
+              // Diagnostic log to find the offending undefined field if it still persists
+              if (process.env.NODE_ENV !== 'production') {
+                  const checkUndefined = (o: any, path: string = ''): string[] => {
+                      let found: string[] = [];
+                      for (const k in o) {
+                          const p = path ? `${path}.${k}` : k;
+                          if (o[k] === undefined) found.push(p);
+                          else if (o[k] !== null && typeof o[k] === 'object') found = found.concat(checkUndefined(o[k], p));
+                      }
+                      return found;
+                  };
+                  const missing = checkUndefined(sanitizedPlan);
+                  if (missing.length > 0) {
+                      console.error("Sanitizer missed some undefined fields:", missing);
+                  }
+              }
+
               await setDoc(planRef, sanitizedPlan, { merge: true });
           } catch (error) {
               const firebaseError = error as any;
@@ -359,7 +377,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
                   message: firebaseError.message,
                   code: firebaseError.code
               });
-              console.error("Failed to save plan to Firestore:", error, "Data:", migratedPlan);
+              console.error("Failed to save plan to Firestore:", error, "Data being sent:", migratedPlan);
           }
       }
   }, [user, logAction]);
