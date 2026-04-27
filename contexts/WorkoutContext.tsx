@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useMemo, useRef } from 'react';
 import { WorkoutPlan, WorkoutStep, WorkoutLogEntry, StepStatus, PerformedStep } from '../types';
 import { prefetchExercises } from '../services/geminiService';
-import { getBaseExerciseName, generateCircuitSteps, processAndFormatAiSteps, arePlansDeeplyEqual, migratePlanToV2 } from '../utils/workout';
+import { getBaseExerciseName, generateCircuitSteps, processAndFormatAiSteps, arePlansDeeplyEqual, migratePlanToV2, sanitizeForFirestore } from '../utils/workout';
 import { useSettings } from './SettingsContext';
 import { getLocalPlans, saveLocalPlans, getLocalHistory, saveLocalHistory } from '../services/storageService';
 import { useAuth } from './AuthContext';
@@ -277,14 +277,16 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
             
             plansToUpload.forEach((plan) => {
                 const planRef = doc(db, 'users', user.uid, 'plans', plan.id);
-                batch.set(planRef, plan);
+                const sanitizedPlan = sanitizeForFirestore(plan);
+                batch.set(planRef, sanitizedPlan);
             });
         }
         
         if (mergeHistory && guestHistoryToMerge.length > 0) {
             guestHistoryToMerge.forEach(entry => {
                 const historyRef = doc(db, 'users', user.uid, 'history', entry.id);
-                batch.set(historyRef, entry);
+                const sanitizedEntry = sanitizeForFirestore(entry);
+                batch.set(historyRef, sanitizedEntry);
             });
         }
 
@@ -342,7 +344,8 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
       if (user) {
           try {
               const planRef = doc(db, 'users', user.uid, 'plans', migratedPlan.id);
-              await setDoc(planRef, migratedPlan, { merge: true });
+              const sanitizedPlan = sanitizeForFirestore(migratedPlan);
+              await setDoc(planRef, sanitizedPlan, { merge: true });
           } catch (error) {
               logAction('ERROR_PLAN_SAVE_FIRESTORE', { planId: migratedPlan.id, message: (error as Error).message });
               console.error("Failed to save plan to Firestore:", error);
@@ -474,7 +477,8 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
             const batch = writeBatch(db);
             plansWithOrder.forEach((plan) => {
                 const planRef = doc(db, 'users', user.uid, 'plans', plan.id);
-                batch.set(planRef, plan, { merge: true });
+                const sanitizedPlan = sanitizeForFirestore(plan);
+                batch.set(planRef, sanitizedPlan, { merge: true });
             });
             await batch.commit();
         } catch (error) {
@@ -503,7 +507,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     };
     logAction('WORKOUT_LOGGED', { planName, duration: newEntry.durationSeconds, performedStepCount: performedSteps.length });
 
-    const sanitizedEntry = JSON.parse(JSON.stringify(newEntry));
+    const sanitizedEntry = sanitizeForFirestore(newEntry);
 
     const saveLocally = () => {
         setWorkoutHistory(prev => {
@@ -541,7 +545,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     };
     logAction('MANUAL_WORKOUT_LOGGED', { planName: name, duration: newEntry.durationSeconds, performedStepCount: performedSteps.length });
     
-    const sanitizedEntry = JSON.parse(JSON.stringify(newEntry));
+    const sanitizedEntry = sanitizeForFirestore(newEntry);
 
     const saveLocally = () => {
         setWorkoutHistory(prev => {

@@ -234,3 +234,22 @@ export const arePlansDeeplyEqual = (plan1: WorkoutPlan, plan2: WorkoutPlan): boo
 
     return true;
 };
+
+/**
+ * Recursively removes all 'undefined' values from an object, as Firestore does not support them.
+ * It also handles nested objects and arrays.
+ */
+export const sanitizeForFirestore = (obj: any): any => {
+  if (Array.isArray(obj)) {
+    return obj.map(v => sanitizeForFirestore(v));
+  } else if (obj !== null && typeof obj === 'object') {
+    return Object.keys(obj).reduce((acc: any, key: string) => {
+      const value = obj[key];
+      if (value !== undefined) {
+        acc[key] = sanitizeForFirestore(value);
+      }
+      return acc;
+    }, {});
+  }
+  return obj;
+};
