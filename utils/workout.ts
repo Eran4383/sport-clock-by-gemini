@@ -241,7 +241,9 @@ export const arePlansDeeplyEqual = (plan1: WorkoutPlan, plan2: WorkoutPlan): boo
  */
 export const sanitizeForFirestore = (obj: any): any => {
   if (Array.isArray(obj)) {
-    return obj.map(v => sanitizeForFirestore(v));
+    return obj
+      .filter(v => v !== undefined)
+      .map(v => sanitizeForFirestore(v));
   } else if (obj !== null && typeof obj === 'object') {
     return Object.keys(obj).reduce((acc: any, key: string) => {
       const value = obj[key];

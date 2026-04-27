@@ -168,8 +168,12 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
 
         const plansCollection = collection(db, 'users', user.uid, 'plans');
         plansUnsubscribe = onSnapshot(query(plansCollection, orderBy('order', 'asc')), (snapshot) => {
-            remotePlansCache = snapshot.docs.map(doc => migratePlanToV2(doc.data())).filter((p): p is WorkoutPlan => !!p);
-            setPlans(remotePlansCache);
+            const remotePlans = snapshot.docs
+                .map(doc => migratePlanToV2(doc.data()))
+                .filter((p): p is WorkoutPlan => !!p);
+            
+            setPlans(remotePlans);
+            remotePlansCache = remotePlans;
             
             if (!plansListenerDone) {
                 plansListenerDone = true;
@@ -325,20 +329,22 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
       setPlans(prevPlans => {
           const isNewPlan = !prevPlans.some(p => p.id === migratedPlan.id);
           const plansWithOrder = prevPlans.map((p, i) => ({ ...p, order: i }));
-          let newPlans;
+          let newPlans: WorkoutPlan[];
 
           if (isNewPlan) {
-              const maxOrder = plansWithOrder.reduce((max, p) => Math.max(max, p.order ?? -1), -1);
+              const maxOrder = plansWithOrder.length > 0 
+                  ? Math.max(...plansWithOrder.map(p => p.order ?? -1))
+                  : -1;
               migratedPlan.order = maxOrder + 1;
               newPlans = [...plansWithOrder, migratedPlan];
           } else {
               newPlans = plansWithOrder.map(p => p.id === migratedPlan.id ? migratedPlan : p);
           }
 
-          // Always save to local plans as a backup to prevent data loss on slow connections or quick refreshes
-          saveLocalPlans(newPlans);
-          
-          return newPlans;
+          // Safety filter to ensure no nulls/undefined creep into state
+          const finalPlans = newPlans.filter(Boolean);
+          saveLocalPlans(finalPlans);
+          return finalPlans;
       });
 
       if (user) {
@@ -347,8 +353,13 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
               const sanitizedPlan = sanitizeForFirestore(migratedPlan);
               await setDoc(planRef, sanitizedPlan, { merge: true });
           } catch (error) {
-              logAction('ERROR_PLAN_SAVE_FIRESTORE', { planId: migratedPlan.id, message: (error as Error).message });
-              console.error("Failed to save plan to Firestore:", error);
+              const firebaseError = error as any;
+              logAction('ERROR_PLAN_SAVE_FIRESTORE', { 
+                  planId: migratedPlan.id, 
+                  message: firebaseError.message,
+                  code: firebaseError.code
+              });
+              console.error("Failed to save plan to Firestore:", error, "Data:", migratedPlan);
           }
       }
   }, [user, logAction]);
