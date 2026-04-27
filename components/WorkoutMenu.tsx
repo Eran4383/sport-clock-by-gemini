@@ -441,7 +441,8 @@ const PlanListItem: React.FC<{
   isNewlyImported: boolean;
   index: number;
   setRef: (el: HTMLDivElement | null) => void;
-}> = ({ plan, onSelectPlan, onInitiateDelete, onInspectExercise, onShowInfo, onShare, isSelected, onToggleSelection, isDraggable, onDragStart, onDragOver, onDrop, onDragEnd, onDragLeave, isDragTarget, isNewlyImported, index, setRef }) => {
+  onTogglePin?: (planId: string) => void;
+}> = ({ plan, onSelectPlan, onInitiateDelete, onInspectExercise, onShowInfo, onShare, isSelected, onToggleSelection, isDraggable, onDragStart, onDragOver, onDrop, onDragEnd, onDragLeave, isDragTarget, isNewlyImported, index, setRef, onTogglePin }) => {
   const { 
       activeWorkout,
       currentStep,
@@ -452,6 +453,7 @@ const PlanListItem: React.FC<{
       resumeStepCountdown, 
       restartCurrentStep, 
       savePlan,
+      togglePlanPin,
       workoutHistory,
   } = useWorkout();
   const [isExpanded, setIsExpanded] = useState(false);
@@ -628,8 +630,20 @@ const PlanListItem: React.FC<{
               )}
               <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            togglePlanPin(plan.id);
+                        }}
+                        className={`p-1 rounded-full transition-colors ${plan.isPinned ? 'text-yellow-400' : 'text-gray-500 hover:text-gray-300'}`}
+                        title={plan.isPinned ? "הסר הצמדה" : "הצמד לראש התפריט"}
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill={plan.isPinned ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.382-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                        </svg>
+                    </button>
                     {plan.isSmartPlan && <span title="AI Generated Plan">✨</span>}
-                    <h3 className="text-xl font-semibold text-white break-words" title={plan.name}>{plan.name}</h3>
+                    <h3 className={`text-xl font-semibold break-words ${plan.isPinned ? 'text-yellow-100' : 'text-white'}`} title={plan.name}>{plan.name}</h3>
                   </div>
                   <div className="text-sm text-gray-400 flex items-center">
                     <span className="truncate">
@@ -896,20 +910,18 @@ const ImportTextModal: React.FC<{ onImport: (text: string) => void; onCancel: ()
                     </button>
                 </div>
 
-                <div className="flex gap-2 mb-4">
+                <div className="flex gap-4 mb-4">
                     <button 
                         onClick={handlePaste}
-                        className="flex-1 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-md flex items-center justify-center gap-2 text-sm transition-colors"
+                        className="flex-1 py-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded-md flex items-center justify-center text-sm transition-colors h-10"
                     >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
-                        הדבק קוד מהלוח
+                        הדבק
                     </button>
                     <button 
                         onClick={handleCopyTemplate}
-                        className="flex-1 py-2 bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 border border-purple-500/50 rounded-md flex items-center justify-center gap-2 text-sm transition-colors"
+                        className="flex-1 py-1.5 bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 border border-purple-500/50 rounded-md flex items-center justify-center text-sm transition-colors h-10"
                     >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" /></svg>
-                        העתק תבנית למאמן (AI)
+                        תבנית לדוגמה
                     </button>
                 </div>
 
@@ -975,6 +987,14 @@ const PlanList: React.FC<{
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const userDropdownRef = useRef<HTMLDivElement>(null);
   
+  const sortedPlans = useMemo(() => {
+    return [...plans].sort((a, b) => {
+        if (a.isPinned && !b.isPinned) return -1;
+        if (!a.isPinned && b.isPinned) return 1;
+        return (a.order ?? 0) - (b.order ?? 0);
+    });
+  }, [plans]);
+
   const planRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const lastScrolledPlanId = useRef<string | null>(null);
 
@@ -1147,8 +1167,8 @@ const PlanList: React.FC<{
     if (dragItemIndex.current === null || dragItemIndex.current === index) {
       return;
     }
-    const draggedItem = plans[dragItemIndex.current];
-    const newPlans = [...plans];
+    const draggedItem = sortedPlans[dragItemIndex.current];
+    const newPlans = [...sortedPlans];
     newPlans.splice(dragItemIndex.current, 1);
     newPlans.splice(index, 0, draggedItem);
     reorderPlans(newPlans);
@@ -1400,10 +1420,10 @@ const PlanList: React.FC<{
       )}
 
       <div className="space-y-4">
-        {plans.length === 0 ? (
+        {sortedPlans.length === 0 ? (
           <p className="text-gray-400 text-center py-8">No workout plans yet. Create one to get started!</p>
         ) : (
-          plans.map((plan, index) => (
+          sortedPlans.map((plan, index) => (
             <PlanListItem 
                 key={plan.id} 
                 plan={plan} 
@@ -2434,6 +2454,8 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
   const { settings, updateSettings } = useSettings();
   const modalMutedApp = useRef(false);
   const [isAiPlannerOpen, setIsAiPlannerOpen] = useState(false);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [showScrollTop, setShowScrollTop] = useState(false);
 
   // Mute app sounds when the exercise modal is visible and restore on close.
   useEffect(() => {
@@ -2451,6 +2473,14 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
       }
     }
   }, [isModalVisible, settings.isMuted, updateSettings]);
+  
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    setShowScrollTop(e.currentTarget.scrollTop > 300);
+  };
+
+  const scrollToTop = () => {
+    scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  };
   
   const planToDelete = useMemo(() => {
     return plans.find(p => p.id === confirmDeletePlanId) || null;
@@ -2565,6 +2595,18 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
         ></div>
       )}
 
+      {showScrollTop && isOpen && view === 'list' && (
+        <button
+          onClick={scrollToTop}
+          className="fixed bottom-6 left-6 z-[60] p-3 bg-blue-600/80 backdrop-blur-sm text-white rounded-full shadow-lg hover:bg-blue-600 transition-all animate-fadeIn"
+          title="חזרה למעלה"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+          </svg>
+        </button>
+      )}
+
       {planToDelete && (
           <ConfirmDeleteModal 
               planName={planToDelete.name}
@@ -2589,7 +2631,11 @@ export const WorkoutMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean)
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         >
-          <div className="p-6 overflow-y-auto h-full">
+          <div 
+            ref={scrollContainerRef}
+            onScroll={handleScroll}
+            className="p-6 overflow-y-auto h-full"
+          >
             {view === 'list' && (
                 <PlanList 
                     onSelectPlan={handleSelectPlan} 

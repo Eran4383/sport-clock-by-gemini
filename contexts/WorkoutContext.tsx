@@ -63,6 +63,7 @@ interface WorkoutContextType {
   importPlan: (plan: WorkoutPlan, source?: string) => void;
   deletePlan: (planId: string) => void;
   reorderPlans: (reorderedPlans: WorkoutPlan[]) => void;
+  togglePlanPin: (planId: string) => void;
   startWorkout: (planIds: string[]) => void;
   commitStartWorkout: () => void;
   clearPreparingWorkout: () => void;
@@ -528,6 +529,36 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
       }
   }, [user, logAction]);
   
+  const togglePlanPin = useCallback(async (planId: string) => {
+      const plan = plans.find(p => p.id === planId);
+      if (!plan) return;
+
+      const newIsPinned = !plan.isPinned;
+      logAction('PLAN_TOGGLE_PIN', { planId, isPinned: newIsPinned });
+
+      const updatedPlan = { ...plan, isPinned: newIsPinned };
+      
+      setPlans(prevPlans => {
+          const updatedPlans = prevPlans.map(p => p.id === planId ? updatedPlan : p);
+          // When pinning, we don't automatically move it to top here, we let the UI sort it if desired,
+          // OR we can enforce sort here. The user said "Pinning to head of menu", so usually they expect it at the top.
+          // However, they also want to "move the order of pinned exercises".
+          // The most flexible way is to sort by isPinned then by order in the selector/useMemo.
+          saveLocalPlans(updatedPlans);
+          return updatedPlans;
+      });
+
+      if (user) {
+          try {
+              const planRef = doc(db, 'users', user.uid, 'plans', planId);
+              const sanitizedPlan = sanitizeForFirestore(updatedPlan);
+              await setDoc(planRef, sanitizedPlan, { merge: true });
+          } catch (error) {
+              console.error("Failed to toggle pin in Firestore:", error);
+          }
+      }
+  }, [user, plans, logAction]);
+  
   const logWorkoutCompletion = useCallback(async (
     planName: string, 
     durationMs: number, 
@@ -868,6 +899,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     importPlan,
     deletePlan,
     reorderPlans,
+    togglePlanPin,
     startWorkout,
     commitStartWorkout,
     clearPreparingWorkout,

@@ -24,6 +24,7 @@ export interface WorkoutPlan {
   color?: string;
   isLocked?: boolean;
   isSmartPlan?: boolean;
+  isPinned?: boolean;
   order?: number;
   // Internal schema version to help with migrations
   version?: number;
