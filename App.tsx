@@ -624,6 +624,12 @@ const AppContent: React.FC = () => {
       )}
       <SettingsMenu isOpen={isSettingsOpen} setIsOpen={setIsSettingsOpen} />
       <WorkoutMenu isOpen={isWorkoutOpen} setIsOpen={setIsWorkoutOpen} />
+      
+      {/* Version indicator for production debugging */}
+      <div className="fixed bottom-1 right-1 text-[8px] opacity-10 pointer-events-none z-[1000]">
+        v2026-04-27-1430
+      </div>
+
       <main onDoubleClick={toggleFullScreen} className="flex-grow flex flex-col items-center justify-center w-full max-w-4xl mx-auto min-h-0">
         {/* TOP TITLE CONTAINER - reserves space to prevent layout shift */}
         <div className="text-center mb-2 min-h-[3.5rem] flex items-end justify-center">

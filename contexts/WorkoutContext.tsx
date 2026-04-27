@@ -95,6 +95,11 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [plansToStart, setPlansToStart] = useState<string[]>([]);
   const [importNotification, setImportNotification] = useState<ImportNotificationData | null>(null);
   const [isSyncing, setIsSyncing] = useState(true);
+  const APP_VERSION = "2026-04-27-1430"; // Version for verification
+
+  useEffect(() => {
+     console.log(`%c Workout Life - Version: ${APP_VERSION} `, 'background: #222; color: #bada55; font-size: 20px;');
+  }, []);
   
   const [showGuestMergeModal, setShowGuestMergeModal] = useState(false);
   const [guestPlansToMerge, setGuestPlansToMerge] = useState<WorkoutPlan[]>([]);
@@ -370,6 +375,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
               }
 
               await setDoc(planRef, sanitizedPlan, { merge: true });
+              console.log("Plan saved successfully to Firestore:", migratedPlan.id);
           } catch (error) {
               const firebaseError = error as any;
               logAction('ERROR_PLAN_SAVE_FIRESTORE', { 
@@ -377,7 +383,12 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
                   message: firebaseError.message,
                   code: firebaseError.code
               });
-              console.error("Failed to save plan to Firestore:", error, "Data being sent:", migratedPlan);
+              console.error("Failed to save plan to Firestore:", error, "Data being sent:", sanitizedPlan);
+              setImportNotification({
+                message: 'שגיאת סנכרון',
+                planName: `הנתונים לא נשמרו בשרת: ${firebaseError.message}`,
+                type: 'warning'
+              });
           }
       }
   }, [user, logAction]);
