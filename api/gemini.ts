@@ -94,7 +94,7 @@ const handleExerciseInfoRequest = async (exerciseName: string, force_refresh: bo
         `;
         
         const textResponse = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-1.5-flash',
             contents: textGenerationPrompt,
             config: {
                 responseMimeType: "application/json",
@@ -151,7 +151,7 @@ const handleChatRequest = async (history: any[], message: string) => {
     const ai = new GoogleGenAI({ apiKey: geminiApiKey! });
     
     const chat = ai.chats.create({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-1.5-flash',
         history,
         config: {
             safetySettings: safetySettings,
