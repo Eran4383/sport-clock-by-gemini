@@ -626,8 +626,8 @@ const AppContent: React.FC = () => {
       <WorkoutMenu isOpen={isWorkoutOpen} setIsOpen={setIsWorkoutOpen} />
       
       {/* Version indicator for production debugging */}
-      <div className="fixed bottom-1 right-1 text-[8px] opacity-10 pointer-events-none z-[1000]">
-        v2026-04-27-1430
+      <div className="fixed bottom-1 right-1 text-[8px] opacity-10 pointer-events-none z-[1000] font-mono">
+        v2026-04-27-1500
       </div>
 
       <main onDoubleClick={toggleFullScreen} className="flex-grow flex flex-col items-center justify-center w-full max-w-4xl mx-auto min-h-0">

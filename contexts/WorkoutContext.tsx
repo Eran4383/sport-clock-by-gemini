@@ -95,7 +95,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [plansToStart, setPlansToStart] = useState<string[]>([]);
   const [importNotification, setImportNotification] = useState<ImportNotificationData | null>(null);
   const [isSyncing, setIsSyncing] = useState(true);
-  const APP_VERSION = "2026-04-27-1430"; // Version for verification
+  const APP_VERSION = "2026-04-27-1500"; // Updated version for verification
 
   useEffect(() => {
      console.log(`%c Workout Life - Version: ${APP_VERSION} `, 'background: #222; color: #bada55; font-size: 20px;');
