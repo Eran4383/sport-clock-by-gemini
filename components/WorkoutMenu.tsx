@@ -1770,8 +1770,15 @@ const AiPlannerModal: React.FC<{
     // Fix: Properly declare state for profile panel
     const [isProfileOpen, setIsProfileOpen] = useState(false);
     const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+    const [isListening, setIsListening] = useState(false);
+    const [speechNotice, setSpeechNotice] = useState<string | null>(null);
+    const recognitionRef = useRef<any>(null);
+    const baseTextBeforeListeningRef = useRef<string>('');
+
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const chatContainerRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const isInitialMount = useRef(true);
 
     const handleCopy = (text: string, index: number) => {
         if (!text) return;
@@ -1783,10 +1790,153 @@ const AiPlannerModal: React.FC<{
         });
     };
 
+    const isProgrammaticScrollRef = useRef(true);
+
+    // Restore saved scroll position or scroll to bottom by default
+    useEffect(() => {
+        const el = chatContainerRef.current;
+        if (!el) return;
+
+        const restoreOrScrollBottom = () => {
+            const hasUserScrolled = sessionStorage.getItem('sportsClockAiHasUserScrolled') === 'true';
+            const savedPos = sessionStorage.getItem('sportsClockAiUserScrollPos');
+            if (hasUserScrolled && savedPos !== null) {
+                const parsed = parseFloat(savedPos);
+                if (!isNaN(parsed)) {
+                    el.scrollTop = parsed;
+                    return;
+                }
+            }
+            // First time entry or when user was at bottom: scroll completely to bottom
+            el.scrollTop = el.scrollHeight;
+        };
+
+        restoreOrScrollBottom();
+        const r1 = requestAnimationFrame(restoreOrScrollBottom);
+        const t1 = setTimeout(restoreOrScrollBottom, 50);
+        const t2 = setTimeout(restoreOrScrollBottom, 150);
+        const t3 = setTimeout(() => {
+            restoreOrScrollBottom();
+            isProgrammaticScrollRef.current = false;
+        }, 300);
+
+        return () => {
+            cancelAnimationFrame(r1);
+            clearTimeout(t1);
+            clearTimeout(t2);
+            clearTimeout(t3);
+        };
+    }, []);
+
+    const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+        if (isProgrammaticScrollRef.current) return;
+        const target = e.currentTarget;
+        const isNearBottom = target.scrollHeight - target.clientHeight - target.scrollTop <= 35;
+        if (isNearBottom) {
+            sessionStorage.removeItem('sportsClockAiHasUserScrolled');
+            sessionStorage.removeItem('sportsClockAiUserScrollPos');
+        } else {
+            sessionStorage.setItem('sportsClockAiHasUserScrolled', 'true');
+            sessionStorage.setItem('sportsClockAiUserScrollPos', target.scrollTop.toString());
+        }
+    };
+
     useEffect(() => {
         localStorage.setItem(AI_CHAT_HISTORY_KEY, JSON.stringify(messages));
+        // Auto-scroll to bottom when new messages arrive after initial load
+        if (isInitialMount.current) {
+            isInitialMount.current = false;
+            return;
+        }
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages]);
+
+    const stopListening = () => {
+        if (recognitionRef.current) {
+            try {
+                recognitionRef.current.stop();
+            } catch {}
+            recognitionRef.current = null;
+        }
+        setIsListening(false);
+        setSpeechNotice(null);
+    };
+
+    const toggleListening = () => {
+        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            setSpeechNotice("הדפדפן אינו תומך בהקלדה קולית (מומלץ Chrome/Edge/Safari)");
+            setTimeout(() => setSpeechNotice(null), 4000);
+            return;
+        }
+
+        if (isListening) {
+            stopListening();
+            return;
+        }
+
+        try {
+            const recognition = new SpeechRecognition();
+            recognition.lang = 'he-IL';
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.maxAlternatives = 1;
+
+            baseTextBeforeListeningRef.current = input;
+
+            recognition.onstart = () => {
+                setIsListening(true);
+                setSpeechNotice("מקשיב... דבר עכשיו (הקלדה בעברית)");
+            };
+
+            recognition.onresult = (event: any) => {
+                let transcript = '';
+                for (let i = 0; i < event.results.length; i++) {
+                    transcript += event.results[i][0].transcript;
+                }
+                const base = baseTextBeforeListeningRef.current.trim();
+                const combined = base ? `${base} ${transcript}` : transcript;
+                setInput(combined);
+            };
+
+            recognition.onerror = (event: any) => {
+                console.warn("Speech recognition error:", event.error);
+                if (event.error === 'not-allowed') {
+                    setSpeechNotice("יש לאשר גישה למיקרופון בהגדרות הדפדפן");
+                } else if (event.error === 'no-speech') {
+                    setSpeechNotice("לא נקלט דיבור");
+                } else {
+                    setSpeechNotice(`שגיאת מיקרופון: ${event.error}`);
+                }
+                setTimeout(() => setSpeechNotice(null), 3500);
+                setIsListening(false);
+                recognitionRef.current = null;
+            };
+
+            recognition.onend = () => {
+                setIsListening(false);
+                setSpeechNotice(null);
+                recognitionRef.current = null;
+            };
+
+            recognitionRef.current = recognition;
+            recognition.start();
+        } catch (err: any) {
+            console.error("Speech recognition start failed:", err);
+            setSpeechNotice("לא ניתן להפעיל את המיקרופון");
+            setTimeout(() => setSpeechNotice(null), 3000);
+            setIsListening(false);
+        }
+    };
+
+    // Clean up microphone on unmount
+    useEffect(() => {
+        return () => {
+            if (recognitionRef.current) {
+                try { recognitionRef.current.stop(); } catch {}
+            }
+        };
+    }, []);
 
     useEffect(() => {
         const textarea = textareaRef.current;
@@ -1806,12 +1956,20 @@ const AiPlannerModal: React.FC<{
     }, [input]);
 
     const handleNewChat = () => {
+        stopListening();
         setMessages([]);
         localStorage.removeItem(AI_CHAT_HISTORY_KEY);
+        sessionStorage.removeItem('sportsClockAiHasUserScrolled');
+        sessionStorage.removeItem('sportsClockAiUserScrollPos');
+        sessionStorage.removeItem('sportsClockAiScrollPos');
+        if (chatContainerRef.current) {
+            chatContainerRef.current.scrollTop = 0;
+        }
     };
 
     const handleSend = async () => {
         if (!input.trim() || isLoading) return;
+        stopListening();
 
         const userMessage: ChatMessage = { role: 'user', parts: [{ text: input }] };
         const newMessages = [...messages, userMessage];
@@ -1893,9 +2051,10 @@ const responseText = await generateWorkoutPlan(messages, input, profileContext, 
 
     return (
         <div 
-            className="fixed inset-0 bg-gray-900/90 z-[100] flex flex-col p-4 select-text" 
+            className="fixed inset-0 bg-gray-900/95 z-[100] flex flex-col p-4 select-text" 
             aria-modal="true" 
             role="dialog"
+            style={{ userSelect: 'text', WebkitUserSelect: 'text' }}
             onMouseDown={(e) => e.stopPropagation()}
             onTouchStart={(e) => e.stopPropagation()}
         >
@@ -1908,7 +2067,7 @@ const responseText = await generateWorkoutPlan(messages, input, profileContext, 
                 </button>
                 <h2 className="text-xl font-bold flex items-center gap-2">✨ AI Workout Planner</h2>
                 <div className="flex items-center gap-2">
-                    <button onClick={handleNewChat} title="Start a new chat" className="p-2 rounded-full hover:bg-gray-700">
+                    <button onClick={handleNewChat} title="התחל שיחה חדשה" className="p-2 rounded-full hover:bg-gray-700">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 110 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" /></svg>
                     </button>
                     <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-700">
@@ -1916,12 +2075,21 @@ const responseText = await generateWorkoutPlan(messages, input, profileContext, 
                     </button>
                 </div>
             </div>
-            <div className="flex-grow overflow-y-auto mb-4 space-y-4 pr-2 select-text">
+            <div 
+                ref={chatContainerRef} 
+                onScroll={handleScroll} 
+                className="flex-grow overflow-y-auto mb-4 space-y-4 pr-2 select-text"
+                style={{ userSelect: 'text', WebkitUserSelect: 'text' }}
+            >
                  {messages.length === 0 && (
-                    <div className="text-center text-gray-400 p-8 select-text cursor-text" dir="rtl">
-                        <p className="text-lg select-text">ברוכים הבאים למתכנן האימונים החכם!</p>
-                        <p className="mt-2 select-text">תאר את האימון שברצונך לבנות. לדוגמה:</p>
-                        <em className="block mt-2 select-text">"צור לי תוכנית אימון למתחילים באורך 20 דקות לכל הגוף."</em>
+                    <div 
+                        className="text-center text-gray-400 p-8 select-text cursor-text" 
+                        dir="rtl"
+                        style={{ userSelect: 'text', WebkitUserSelect: 'text' }}
+                    >
+                        <p className="text-lg select-text font-bold text-gray-300">ברוכים הבאים למתכנן האימונים החכם! ⚡</p>
+                        <p className="mt-2 select-text text-sm">תאר את האימון שברצונך לבנות בהקלדה או בלחיצה על המיקרופון:</p>
+                        <em className="block mt-2 select-text text-indigo-300 text-sm">"בנה לי אימון HIIT של 15 דקות ללא ציוד"</em>
                     </div>
                 )}
                 {messages.map((msg, index) => {
@@ -1935,18 +2103,35 @@ const responseText = await generateWorkoutPlan(messages, input, profileContext, 
 
                     if (isError) {
                         return (
-                            <div key={index} className="flex justify-start select-text">
-                                <div className="max-w-prose p-3.5 rounded-xl bg-red-950/70 border border-red-500/50 text-red-200 select-text cursor-text shadow-lg">
-                                    <div className="flex items-center justify-between gap-3 mb-2 pb-1.5 border-b border-red-800/40 select-none">
-                                        <span className="text-xs font-bold text-red-400 flex items-center gap-1.5">
-                                            <svg className="w-4 h-4 text-red-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                            </svg>
-                                            הודעת שגיאה
-                                        </span>
+                            <div key={index} className="flex justify-start select-text" style={{ userSelect: 'text', WebkitUserSelect: 'text' }}>
+                                <div 
+                                    className="max-w-prose p-3.5 rounded-xl bg-red-950/85 border border-red-500/50 text-red-200 select-text cursor-text shadow-lg"
+                                    style={{ userSelect: 'text', WebkitUserSelect: 'text' }}
+                                >
+                                    <div className="flex items-center gap-1.5 mb-2 pb-1 border-b border-red-800/40 select-none text-xs font-bold text-red-400">
+                                        <svg className="w-4 h-4 text-red-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                        </svg>
+                                        <span>הודעת שגיאה</span>
+                                    </div>
+                                    <div className="space-y-1 select-text" style={{ userSelect: 'text', WebkitUserSelect: 'text' }}>
+                                        {msg.parts.map((part, partIndex) => (
+                                            <p 
+                                                key={partIndex} 
+                                                className="whitespace-pre-wrap select-text cursor-text leading-relaxed font-sans" 
+                                                dir="auto"
+                                                style={{ userSelect: 'text', WebkitUserSelect: 'text' }}
+                                            >
+                                                {part.text}
+                                            </p>
+                                        ))}
+                                    </div>
+                                    {/* Bottom Copy Button */}
+                                    <div className="mt-3 pt-2 border-t border-red-800/40 flex justify-end items-center select-none">
                                         <button
+                                            type="button"
                                             onClick={() => handleCopy(fullText, index)}
-                                            className="px-2.5 py-1 text-xs rounded-md bg-red-800/80 hover:bg-red-700 text-white flex items-center gap-1.5 transition-all cursor-pointer font-medium shadow-sm"
+                                            className="px-2.5 py-1 text-xs rounded-md bg-red-900/90 hover:bg-red-800 text-white flex items-center gap-1.5 transition-all cursor-pointer font-medium shadow-sm border border-red-700/60"
                                             title="העתק את הודעת השגיאה ללוח"
                                         >
                                             {isCopied ? (
@@ -1954,7 +2139,7 @@ const responseText = await generateWorkoutPlan(messages, input, profileContext, 
                                                     <svg className="w-3.5 h-3.5 text-green-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                                     </svg>
-                                                    <span className="text-green-200">הועתק!</span>
+                                                    <span className="text-green-200 font-bold">הועתק!</span>
                                                 </>
                                             ) : (
                                                 <>
@@ -1966,11 +2151,6 @@ const responseText = await generateWorkoutPlan(messages, input, profileContext, 
                                             )}
                                         </button>
                                     </div>
-                                    {msg.parts.map((part, partIndex) => (
-                                        <p key={partIndex} className="whitespace-pre-wrap select-text cursor-text leading-relaxed font-sans" dir="auto">
-                                            {part.text}
-                                        </p>
-                                    ))}
                                 </div>
                             </div>
                         );
@@ -1978,62 +2158,89 @@ const responseText = await generateWorkoutPlan(messages, input, profileContext, 
 
                     if (msg.role === 'user') {
                         return (
-                            <div key={index} className="flex justify-end select-text">
-                                <div className="max-w-prose p-3 rounded-xl bg-blue-600 text-white select-text cursor-text shadow group relative">
-                                    <div className="flex items-start justify-between gap-2">
-                                        <div className="flex-1 min-w-0 select-text cursor-text">
-                                            {msg.parts.map((part, partIndex) => (
-                                                <p key={partIndex} className="whitespace-pre-wrap select-text cursor-text leading-relaxed font-sans" dir="auto">
-                                                    {part.text}
-                                                </p>
-                                            ))}
-                                        </div>
-                                        {fullText && (
+                            <div key={index} className="flex justify-end select-text" style={{ userSelect: 'text', WebkitUserSelect: 'text' }}>
+                                <div 
+                                    className="max-w-prose p-3 rounded-xl bg-blue-600 text-white select-text cursor-text shadow"
+                                    style={{ userSelect: 'text', WebkitUserSelect: 'text' }}
+                                >
+                                    <div className="space-y-1 select-text" style={{ userSelect: 'text', WebkitUserSelect: 'text' }}>
+                                        {msg.parts.map((part, partIndex) => (
+                                            <p 
+                                                key={partIndex} 
+                                                className="whitespace-pre-wrap select-text cursor-text leading-relaxed font-sans" 
+                                                dir="auto"
+                                                style={{ userSelect: 'text', WebkitUserSelect: 'text' }}
+                                            >
+                                                {part.text}
+                                            </p>
+                                        ))}
+                                    </div>
+                                    {fullText && (
+                                        <div className="mt-2.5 pt-1.5 border-t border-blue-500/40 flex justify-end items-center select-none">
                                             <button
+                                                type="button"
                                                 onClick={() => handleCopy(fullText, index)}
-                                                className="shrink-0 p-1 rounded hover:bg-blue-700 text-blue-200 hover:text-white transition-opacity opacity-0 group-hover:opacity-100 cursor-pointer select-none"
+                                                className="px-2.5 py-1 rounded-md bg-blue-700/90 hover:bg-blue-700 text-blue-100 transition-all text-xs flex items-center gap-1.5 cursor-pointer select-none shadow-sm"
                                                 title="העתק הודעה"
                                             >
                                                 {isCopied ? (
-                                                    <span className="text-green-200 text-xs font-bold">הועתק!</span>
+                                                    <span className="text-green-200 text-xs font-bold flex items-center gap-1">
+                                                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                                        </svg>
+                                                        הועתק!
+                                                    </span>
                                                 ) : (
-                                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
-                                                    </svg>
+                                                    <>
+                                                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                                                        </svg>
+                                                        <span className="text-xs">העתק</span>
+                                                    </>
                                                 )}
                                             </button>
-                                        )}
-                                    </div>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         );
                     }
 
+                    // Regular model message
                     return (
-                        <div key={index} className="flex justify-start select-text">
-                            <div className="max-w-prose p-3.5 rounded-xl bg-gray-800 border border-gray-700 text-gray-200 select-text cursor-text shadow group relative">
-                                <div className="flex items-start justify-between gap-3">
-                                    <div className="flex-1 min-w-0 select-text cursor-text">
-                                        {msg.parts.map((part, partIndex) => 
-                                            part.isPlanLink ? (
-                                                <div key={partIndex} dir="auto" className="my-1.5 p-2.5 bg-purple-900/40 border border-purple-500/30 rounded-lg select-text">
-                                                    <p className="select-text text-purple-200 font-medium">✨ הוספתי את תוכנית "{part.planName}" לרשימה שלך.</p>
-                                                    <button onClick={onClose} className="mt-2 inline-flex items-center gap-1 font-bold text-purple-300 hover:text-purple-100 underline cursor-pointer">
-                                                        <span>הצג תוכנית</span>
-                                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                                                    </button>
-                                                </div>
-                                            ) : (
-                                                <p key={partIndex} className="whitespace-pre-wrap select-text cursor-text leading-relaxed font-sans" dir="auto">
-                                                    {part.text}
-                                                </p>
-                                            )
-                                        )}
-                                    </div>
-                                    {fullText && (
+                        <div key={index} className="flex justify-start select-text" style={{ userSelect: 'text', WebkitUserSelect: 'text' }}>
+                            <div 
+                                className="max-w-prose p-3.5 rounded-xl bg-gray-800 border border-gray-700 text-gray-200 select-text cursor-text shadow"
+                                style={{ userSelect: 'text', WebkitUserSelect: 'text' }}
+                            >
+                                <div className="space-y-1 select-text" style={{ userSelect: 'text', WebkitUserSelect: 'text' }}>
+                                    {msg.parts.map((part, partIndex) => 
+                                        part.isPlanLink ? (
+                                            <div key={partIndex} dir="auto" className="my-1.5 p-2.5 bg-purple-900/40 border border-purple-500/30 rounded-lg select-text" style={{ userSelect: 'text', WebkitUserSelect: 'text' }}>
+                                                <p className="select-text text-purple-200 font-medium" style={{ userSelect: 'text', WebkitUserSelect: 'text' }}>✨ הוספתי את תוכנית "{part.planName}" לרשימה שלך.</p>
+                                                <button onClick={onClose} className="mt-2 inline-flex items-center gap-1 font-bold text-purple-300 hover:text-purple-100 underline cursor-pointer">
+                                                    <span>הצג תוכנית</span>
+                                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <p 
+                                                key={partIndex} 
+                                                className="whitespace-pre-wrap select-text cursor-text leading-relaxed font-sans" 
+                                                dir="auto"
+                                                style={{ userSelect: 'text', WebkitUserSelect: 'text' }}
+                                            >
+                                                {part.text}
+                                            </p>
+                                        )
+                                    )}
+                                </div>
+                                {fullText && (
+                                    <div className="mt-2.5 pt-1.5 border-t border-gray-700/60 flex justify-end items-center select-none">
                                         <button
+                                            type="button"
                                             onClick={() => handleCopy(fullText, index)}
-                                            className="shrink-0 p-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white transition-all text-xs flex items-center gap-1 cursor-pointer select-none border border-gray-600 opacity-70 group-hover:opacity-100"
+                                            className="px-2.5 py-1 rounded-md bg-gray-750 hover:bg-gray-700 text-gray-300 hover:text-white transition-all text-xs flex items-center gap-1.5 cursor-pointer select-none border border-gray-650 shadow-sm"
                                             title="העתק טקסט"
                                         >
                                             {isCopied ? (
@@ -2048,12 +2255,12 @@ const responseText = await generateWorkoutPlan(messages, input, profileContext, 
                                                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
                                                     </svg>
-                                                    <span className="text-[11px]">העתק</span>
+                                                    <span className="text-xs">העתק</span>
                                                 </>
                                             )}
                                         </button>
-                                    )}
-                                </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     );
@@ -2074,9 +2281,18 @@ const responseText = await generateWorkoutPlan(messages, input, profileContext, 
                 )}
                  <div ref={messagesEndRef} />
             </div>
-{/* --- New Input Area with Model Selector (Adapted) --- */}
-            <div className="flex gap-2 items-end bg-gray-900/50 p-2 rounded-xl border-t border-gray-700 relative">
-                {/* Popup Menu */}
+
+            {/* Input Area with Model Selector, Integrated Microphone inside typing box, and Send Button */}
+            <div className="flex gap-2 items-end bg-gray-900/60 p-2.5 rounded-2xl border border-gray-700/80 relative">
+                {/* Speech Dictation Status Notification */}
+                {speechNotice && (
+                    <div className="absolute -top-11 right-2 bg-gray-800/95 text-amber-300 text-xs px-3 py-1.5 rounded-lg border border-amber-500/40 shadow-xl flex items-center gap-2 animate-in fade-in select-none z-30 backdrop-blur-sm">
+                        {isListening && <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping"></span>}
+                        <span>{speechNotice}</span>
+                    </div>
+                )}
+
+                {/* Model Selector Popup */}
                 {showModelSelector && (
                     <div className="absolute bottom-16 left-0 bg-gray-800 border border-gray-700 rounded-xl shadow-2xl p-2 w-56 z-50 animate-in fade-in slide-in-from-bottom-2">
                         <div className="text-xs text-gray-500 mb-2 px-2 uppercase tracking-wider font-bold">בחר מודל</div>
@@ -2106,7 +2322,7 @@ const responseText = await generateWorkoutPlan(messages, input, profileContext, 
                 {/* Model Toggle Button */}
                 <button
                     onClick={() => setShowModelSelector(!showModelSelector)}
-                    className={`p-3 mb-1 rounded-xl transition-all border shrink-0 ${
+                    className={`p-3 mb-0.5 rounded-xl transition-all border shrink-0 ${
                         modelPreference === 'smart' 
                         ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30 hover:bg-indigo-500/20' 
                         : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
@@ -2116,34 +2332,64 @@ const responseText = await generateWorkoutPlan(messages, input, profileContext, 
                     {modelPreference === 'smart' ? '🧠' : '⚡'}
                 </button>
 
-                {/* Textarea Input */}
-                <textarea
-                    ref={textareaRef}
-                    rows={1}
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyPress={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault();
-                            handleSend();
+                {/* Textarea Input Container with Integrated Microphone Button inside */}
+                <div className="flex-grow relative flex items-center bg-gray-800 rounded-xl border border-gray-700 focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-500/40 transition-all">
+                    <textarea
+                        ref={textareaRef}
+                        rows={1}
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                handleSend();
+                            }
+                        }}
+                        placeholder={
+                            isListening
+                                ? "מקשיב... דבר עכשיו (הקלדה קולית)"
+                                : modelPreference === 'smart'
+                                ? "שאל את המאמן (מודל חכם)..."
+                                : "בקשה מהירה לבניית אימון..."
                         }
-                    }}
-                    placeholder={modelPreference === 'smart' ? "שאל את המאמן (מודל חכם)..." : "בקשה מהירה..."}
-                    className="flex-grow bg-gray-800 text-white p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none max-h-32 overflow-y-auto"
-                    dir="rtl"
-                    disabled={isLoading}
-                />
+                        className="w-full bg-transparent text-white p-3 pr-3.5 pl-11 focus:outline-none resize-none max-h-32 overflow-y-auto font-sans leading-relaxed text-sm select-text"
+                        style={{ userSelect: 'text', WebkitUserSelect: 'text' }}
+                        dir="rtl"
+                        disabled={isLoading}
+                    />
 
-                {/* Send Button (Icon) */}
+                    {/* Microphone Dictation Button inside the typing box */}
+                    <button
+                        type="button"
+                        onClick={toggleListening}
+                        disabled={isLoading}
+                        className={`absolute left-1.5 bottom-1.5 p-2 rounded-lg transition-all cursor-pointer ${
+                            isListening
+                                ? 'bg-red-600 text-white shadow-lg shadow-red-500/50 animate-pulse ring-2 ring-red-400'
+                                : 'text-gray-400 hover:text-white hover:bg-gray-700/80'
+                        }`}
+                        title={isListening ? "עצור הקלטה קולית" : "הקלדה קולית באמצעות מיקרופון"}
+                        aria-label={isListening ? "עצור הקלטה קולית" : "הקלדה קולית באמצעות מיקרופון"}
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                            <line x1="12" y1="19" x2="12" y2="22" />
+                            <line x1="8" y1="22" x2="16" y2="22" />
+                        </svg>
+                    </button>
+                </div>
+
+                {/* Send Button */}
                 <button
                     onClick={handleSend}
                     disabled={isLoading || !input.trim()}
-                    className="p-3 mb-1 bg-indigo-600 text-white rounded-xl hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-indigo-500/20 shrink-0"
+                    className="p-3 mb-0.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-md shadow-indigo-600/30 shrink-0 cursor-pointer flex items-center justify-center"
+                    title="שלח הודעה"
                 >
                     {isLoading ? (
                         <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                     ) : (
-                        // Send Icon
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 transform rotate-180">
                             <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
                         </svg>
