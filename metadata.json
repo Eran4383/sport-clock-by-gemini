@@ -1,5 +1,8 @@
 {
-  "name": "Advanced Sports Clock",
-  "description": "שעון ספורט מתקדם עם ניהול אימונים, היסטוריה, סנכרון ענן (Google/Firestore), צלילים מותאמים אישית ומצב סבבים (Circuit Mode).",
-  "requestFramePermissions": []
+  "name": "Copy of Copy of Copy of Copy of Copy of Copy of Copy of Advanced Sports Clock - אחרון לפני הוספת מסד נתונים היברידי",
+  "description": "v3.7.22: Update AI workout generator to use gemini-3.8-flash and gemini-3.1-flash-lite models with fallback resilience.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

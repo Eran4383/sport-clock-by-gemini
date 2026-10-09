@@ -251,9 +251,16 @@ export async function prefetchExercises(exerciseNames: string[]): Promise<{ succ
  * Sends a chat message to the AI workout planner backend.
  * @param chatHistory The history of the conversation so far.
  * @param userMessage The latest message from the user.
+ * @param userProfileContext Optional string containing user's profile info.
+ * @param modelPreference Preference for "smart" (reasoning) or "speed" (fast) model.
  * @returns The raw text response from the AI model.
  */
-export async function generateWorkoutPlan(chatHistory: { role: 'user' | 'model'; parts: { text: string }[] }[], userMessage: string): Promise<string> {
+export async function generateWorkoutPlan(
+    chatHistory: { role: 'user' | 'model'; parts: { text: string }[] }[], 
+    userMessage: string,
+    userProfileContext?: string,
+    modelPreference?: 'smart' | 'speed'
+): Promise<string> {
     try {
         const res = await fetch('/api/gemini', {
             method: 'POST',
@@ -264,6 +271,8 @@ export async function generateWorkoutPlan(chatHistory: { role: 'user' | 'model';
                 chatRequest: {
                     history: chatHistory,
                     message: userMessage,
+                    profileContext: userProfileContext,
+                    modelPreference,
                 },
             }),
         });

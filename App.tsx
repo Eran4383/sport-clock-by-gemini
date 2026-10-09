@@ -23,6 +23,7 @@ import { StepStatus, PerformedStep, WorkoutStep } from './types';
 import { LoggingProvider, useLogger } from './contexts/LoggingContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { CrashNotification } from './components/CrashNotification';
+import { getExerciseInfo } from './services/geminiService';
 
 const CRASH_FLAG_KEY = 'app_crash_detected';
 
@@ -68,6 +69,40 @@ const AppContent: React.FC = () => {
   const [manualSessionLog, setManualSessionLog] = useState<PerformedStep[]>([]);
   const [isLoggingModalOpen, setIsLoggingModalOpen] = useState(false);
   const prevCycleCount = useRef(0);
+  
+  const [instructionText, setInstructionText] = useState<string | null>(null);
+
+  // Wake Lock state and timer
+  const wakeLockRef = useRef<any>(null);
+  const wakeLockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const requestWakeLock = useCallback(async () => {
+    if ('wakeLock' in navigator && settings.keepScreenOnDuringWorkout) {
+      try {
+        wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+        logAction('WAKE_LOCK_ACQUIRED');
+        
+        // Listen for browser-triggered release (e.g., visibility change)
+        wakeLockRef.current.addEventListener('release', () => {
+          logAction('WAKE_LOCK_RELEASE_EVENT');
+          wakeLockRef.current = null;
+        });
+      } catch (err: any) {
+        logAction('ERROR_WAKE_LOCK', { message: err.message });
+      }
+    }
+  }, [settings.keepScreenOnDuringWorkout, logAction]);
+
+  const releaseWakeLock = useCallback(() => {
+    if (wakeLockRef.current) {
+      wakeLockRef.current.release().then(() => {
+        wakeLockRef.current = null;
+        logAction('WAKE_LOCK_RELEASED_MANUALLY');
+      }).catch((err: any) => {
+        logAction('ERROR_WAKE_LOCK_RELEASE', { message: err.message });
+      });
+    }
+  }, [logAction]);
 
   // Check for crash flag on initial app load
   useEffect(() => {
@@ -136,11 +171,56 @@ const AppContent: React.FC = () => {
     countdownDuration, 
     settings.countdownRestDuration, 
     settings,
-    isWorkoutActive ? () => nextStepWithTime(StepStatus.Completed) : undefined,
+    (isWorkoutActive && !isRepStep) ? () => nextStepWithTime(StepStatus.Completed) : undefined,
     // Pass a unique key for each step and restart to ensure the countdown hook resets correctly
     isWorkoutActive ? `${currentStep.id}-${activeWorkout.currentStepIndex}-${activeWorkout.stepRestartKey || 0}` : undefined,
     isRestStep
   );
+
+  // Wake Lock management logic
+  useEffect(() => {
+    if (isWorkoutActive && settings.keepScreenOnDuringWorkout) {
+      if (wakeLockTimerRef.current) {
+        clearTimeout(wakeLockTimerRef.current);
+        wakeLockTimerRef.current = null;
+      }
+      requestWakeLock();
+    } else if (workoutCompleted && settings.keepScreenOnDuringWorkout) {
+      // Keep on for 60 seconds after completion as requested
+      if (!wakeLockTimerRef.current) {
+        logAction('WAKE_LOCK_RELEASE_SCHEDULED', { delay: 60000 });
+        wakeLockTimerRef.current = setTimeout(() => {
+          releaseWakeLock();
+          wakeLockTimerRef.current = null;
+        }, 60000);
+      }
+    } else {
+      // Aborted, toggled off, or not in workout
+      if (wakeLockTimerRef.current) {
+        clearTimeout(wakeLockTimerRef.current);
+        wakeLockTimerRef.current = null;
+      }
+      releaseWakeLock();
+    }
+
+    return () => {
+      // Components might unmount
+      if (wakeLockTimerRef.current) {
+        clearTimeout(wakeLockTimerRef.current);
+      }
+    };
+  }, [isWorkoutActive, workoutCompleted, settings.keepScreenOnDuringWorkout, requestWakeLock, releaseWakeLock, logAction]);
+
+  // Visibility change handling for Wake Lock
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && isWorkoutActive && settings.keepScreenOnDuringWorkout) {
+        requestWakeLock();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [isWorkoutActive, settings.keepScreenOnDuringWorkout, requestWakeLock]);
 
   // Track manual session cycles
   useEffect(() => {
@@ -192,7 +272,49 @@ const AppContent: React.FC = () => {
       }
   }, [countdown.cycleCount]);
 
-  const isPastHalfway = settings.showCountdown && countdown.isRunning && countdown.timeLeft <= countdownDuration / 2 && countdown.timeLeft > 0;
+  // Logic to fetch short instructions
+  useEffect(() => {
+    if (!settings.showExerciseInstructions || !isWorkoutActive || !currentStep) {
+        setInstructionText(null);
+        return;
+    }
+
+    // Determine which step to show instructions for:
+    // If resting, show upcoming step (preparation).
+    // If exercising, show current step (execution).
+    const targetStep = (currentStep.type === 'rest') ? nextUpcomingStep : currentStep;
+    
+    if (!targetStep || targetStep.type !== 'exercise') {
+        setInstructionText(null);
+        return;
+    }
+
+    // PRIORITY 1: Check if the user/AI defined a specific tip for this step.
+    if (targetStep.tip && targetStep.tip.trim().length > 0) {
+        setInstructionText(targetStep.tip);
+        return;
+    }
+
+    // PRIORITY 2: Fallback to the generic service.
+    // Use cached service to get info. This relies on prefetch being done in WorkoutMenu or PlanList.
+    getExerciseInfo(targetStep.name).then(info => {
+        if (info.tips && info.tips.length > 0) {
+            setInstructionText(info.tips[0]);
+        } else if (info.instructions) {
+            // Fallback to first line of instructions if no tips
+            setInstructionText(info.instructions.split('\n')[0].substring(0, 100) + (info.instructions.length > 100 ? '...' : ''));
+        } else {
+            setInstructionText(null);
+        }
+    }).catch(() => {
+        setInstructionText(null);
+    });
+
+  }, [currentStep, nextUpcomingStep, settings.showExerciseInstructions, isWorkoutActive]);
+
+
+  // Fix: background color should not depend on isRunning
+  const isPastHalfway = settings.showCountdown && countdown.timeLeft <= countdownDuration / 2 && countdown.timeLeft > 0;
 
   // This effect will always keep the ref up-to-date with the latest non-null activeWorkout
   useEffect(() => {
@@ -537,7 +659,8 @@ const AppContent: React.FC = () => {
       return 'white'; // Default for invalid colors
   };
   
-  const isResting = (isWorkoutActive && currentStep.type === 'rest') || (!isWorkoutActive && countdown.isResting && settings.showRestTitleOnDefaultCountdown);
+  // Use isRestPhase for color logic to persist during pause
+  const isResting = (isWorkoutActive && currentStep.type === 'rest') || (!isWorkoutActive && countdown.isRestPhase && settings.showRestTitleOnDefaultCountdown);
 
   if (workoutCompleted) {
     bgColor = '#6ee7b7'; // A light green color for completion
@@ -622,14 +745,8 @@ const AppContent: React.FC = () => {
             onClose={() => setIsLoggingModalOpen(false)}
         />
       )}
-      <SettingsMenu isOpen={isSettingsOpen} setIsOpen={setIsSettingsOpen} />
+      <SettingsMenu isOpen={isSettingsOpen} setIsOpen={setIsSettingsOpen} isWorkoutOpen={isWorkoutOpen} />
       <WorkoutMenu isOpen={isWorkoutOpen} setIsOpen={setIsWorkoutOpen} />
-      
-      {/* Version indicator for production debugging */}
-      <div className="fixed bottom-1 right-1 text-[8px] opacity-10 pointer-events-none z-[1000] font-mono">
-        v2026-04-27-1500
-      </div>
-
       <main onDoubleClick={toggleFullScreen} className="flex-grow flex flex-col items-center justify-center w-full max-w-4xl mx-auto min-h-0">
         {/* TOP TITLE CONTAINER - reserves space to prevent layout shift */}
         <div className="text-center mb-2 min-h-[3.5rem] flex items-end justify-center">
@@ -662,7 +779,7 @@ const AppContent: React.FC = () => {
                 }
                 
                 // Title for the default countdown rest (no workout active)
-                if (!isWorkoutActive && countdown.isResting && settings.showRestTitleOnDefaultCountdown) {
+                if (!isWorkoutActive && countdown.isRestPhase && settings.showRestTitleOnDefaultCountdown) {
                     return <p className="text-8xl font-bold" dir="rtl">מנוחה</p>;
                 }
 
@@ -673,17 +790,10 @@ const AppContent: React.FC = () => {
         {settings.showCountdown && (
           <>
             {isRepStep ? (
-              <RepDisplay 
-                reps={currentStep.reps} 
-                notes={currentStep.notes}
-                onComplete={() => nextStepWithTime(StepStatus.Completed)} 
-              />
+              <RepDisplay reps={currentStep.reps} onComplete={() => nextStepWithTime(StepStatus.Completed)} />
             ) : (
               <>
-                <CountdownDisplay 
-                  timeLeft={countdown.timeLeft} 
-                  notes={currentStep?.notes}
-                />
+                <CountdownDisplay timeLeft={countdown.timeLeft} />
                 {settings.showCountdownControls && (
                   <CountdownControls
                     isRunning={isWorkoutActive ? (!isWorkoutPaused && !isCountdownPaused) : (countdown.isRunning || countdown.isResting)}
@@ -704,6 +814,15 @@ const AppContent: React.FC = () => {
               {isWorkoutPaused ? 'PAUSED' : (isCountdownPaused ? `${getStepDisplayName(currentStep)} (Paused)` : getStepDisplayName(currentStep))}
             </p>
           )}
+        </div>
+        
+        {/* Short Instruction Display */}
+        <div className="text-center mt-2 min-h-[2rem] px-4 max-w-2xl">
+            {settings.showExerciseInstructions && instructionText && (
+                <p className="font-medium animate-fadeIn" style={{ color: settings.tipColor, fontSize: `${settings.tipFontSize / 100 * 1.125}rem` }} dir="auto">
+                    {instructionText}
+                </p>
+            )}
         </div>
       </main>
 
