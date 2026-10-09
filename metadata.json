@@ -1,6 +1,6 @@
 {
   "name": "Copy of Copy of Copy of Copy of Copy of Copy of Copy of Advanced Sports Clock - אחרון לפני הוספת מסד נתונים היברידי",
-  "description": "v3.7.22: Update AI workout generator to use gemini-3.8-flash and gemini-3.1-flash-lite models with fallback resilience.",
+  "description": "v3.7.23: Enable text selection with mouse in AI workout planner, add copy buttons for messages and error details.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

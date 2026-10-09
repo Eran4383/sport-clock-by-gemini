@@ -1769,8 +1769,19 @@ const AiPlannerModal: React.FC<{
     const [showModelSelector, setShowModelSelector] = useState(false);
     // Fix: Properly declare state for profile panel
     const [isProfileOpen, setIsProfileOpen] = useState(false);
+    const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+    const handleCopy = (text: string, index: number) => {
+        if (!text) return;
+        navigator.clipboard.writeText(text).then(() => {
+            setCopiedIndex(index);
+            setTimeout(() => setCopiedIndex(null), 2000);
+        }).catch(err => {
+            console.error("Failed to copy text:", err);
+        });
+    };
 
     useEffect(() => {
         localStorage.setItem(AI_CHAT_HISTORY_KEY, JSON.stringify(messages));
@@ -1881,9 +1892,15 @@ const responseText = await generateWorkoutPlan(messages, input, profileContext, 
     };
 
     return (
-        <div className="fixed inset-0 bg-gray-900/90 z-[100] flex flex-col p-4" aria-modal="true" role="dialog">
+        <div 
+            className="fixed inset-0 bg-gray-900/90 z-[100] flex flex-col p-4 select-text" 
+            aria-modal="true" 
+            role="dialog"
+            onMouseDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+        >
             <AiProfilePanel isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} />
-             <div className="flex justify-between items-center mb-4 text-white">
+             <div className="flex justify-between items-center mb-4 text-white select-none">
                 <button onClick={() => setIsProfileOpen(true)} title="הפרופיל שלי" className="p-2 rounded-full hover:bg-gray-700">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor">
                         <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-6-3a2 2 0 11-4 0 2 2 0 014 0zm-2 4a5 5 0 00-4.546 2.916A5.986 5.986 0 0010 16a5.986 5.986 0 004.546-2.084A5 5 0 0010 11z" clipRule="evenodd" />
@@ -1899,32 +1916,148 @@ const responseText = await generateWorkoutPlan(messages, input, profileContext, 
                     </button>
                 </div>
             </div>
-            <div className="flex-grow overflow-y-auto mb-4 space-y-4 pr-2">
+            <div className="flex-grow overflow-y-auto mb-4 space-y-4 pr-2 select-text">
                  {messages.length === 0 && (
-                    <div className="text-center text-gray-400 p-8" dir="rtl">
-                        <p className="text-lg">ברוכים הבאים למתכנן האימונים החכם!</p>
-                        <p className="mt-2">תאר את האימון שברצונך לבנות. לדוגמה:</p>
-                        <em className="block mt-2">"צור לי תוכנית אימון למתחילים באורך 20 דקות לכל הגוף."</em>
+                    <div className="text-center text-gray-400 p-8 select-text cursor-text" dir="rtl">
+                        <p className="text-lg select-text">ברוכים הבאים למתכנן האימונים החכם!</p>
+                        <p className="mt-2 select-text">תאר את האימון שברצונך לבנות. לדוגמה:</p>
+                        <em className="block mt-2 select-text">"צור לי תוכנית אימון למתחילים באורך 20 דקות לכל הגוף."</em>
                     </div>
                 )}
-                {messages.map((msg, index) => (
-                    <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-prose p-3 rounded-lg ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-200'}`}>
-                            {msg.parts.map((part, partIndex) => 
-                                part.isPlanLink ? (
-                                    <div key={partIndex} dir="auto">
-                                        <p>הוספתי את תוכנית "{part.planName}" לרשימה שלך.</p>
-                                        <button onClick={onClose} className="mt-2 font-bold text-blue-300 hover:text-blue-200 underline">
-                                            הצג תוכנית
+                {messages.map((msg, index) => {
+                    const fullText = msg.parts.map(p => p.text).filter(Boolean).join('\n');
+                    const isError = msg.role === 'model' && (
+                        fullText.startsWith('שגיאה:') ||
+                        fullText.startsWith('Error:') ||
+                        fullText.includes('אירעה שגיאה')
+                    );
+                    const isCopied = copiedIndex === index;
+
+                    if (isError) {
+                        return (
+                            <div key={index} className="flex justify-start select-text">
+                                <div className="max-w-prose p-3.5 rounded-xl bg-red-950/70 border border-red-500/50 text-red-200 select-text cursor-text shadow-lg">
+                                    <div className="flex items-center justify-between gap-3 mb-2 pb-1.5 border-b border-red-800/40 select-none">
+                                        <span className="text-xs font-bold text-red-400 flex items-center gap-1.5">
+                                            <svg className="w-4 h-4 text-red-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                            </svg>
+                                            הודעת שגיאה
+                                        </span>
+                                        <button
+                                            onClick={() => handleCopy(fullText, index)}
+                                            className="px-2.5 py-1 text-xs rounded-md bg-red-800/80 hover:bg-red-700 text-white flex items-center gap-1.5 transition-all cursor-pointer font-medium shadow-sm"
+                                            title="העתק את הודעת השגיאה ללוח"
+                                        >
+                                            {isCopied ? (
+                                                <>
+                                                    <svg className="w-3.5 h-3.5 text-green-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                                    </svg>
+                                                    <span className="text-green-200">הועתק!</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                                                    </svg>
+                                                    <span>העתק שגיאה</span>
+                                                </>
+                                            )}
                                         </button>
                                     </div>
-                                ) : (
-                                    <p key={partIndex} className="whitespace-pre-wrap" dir="auto">{part.text}</p>
-                                )
-                            )}
+                                    {msg.parts.map((part, partIndex) => (
+                                        <p key={partIndex} className="whitespace-pre-wrap select-text cursor-text leading-relaxed font-sans" dir="auto">
+                                            {part.text}
+                                        </p>
+                                    ))}
+                                </div>
+                            </div>
+                        );
+                    }
+
+                    if (msg.role === 'user') {
+                        return (
+                            <div key={index} className="flex justify-end select-text">
+                                <div className="max-w-prose p-3 rounded-xl bg-blue-600 text-white select-text cursor-text shadow group relative">
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div className="flex-1 min-w-0 select-text cursor-text">
+                                            {msg.parts.map((part, partIndex) => (
+                                                <p key={partIndex} className="whitespace-pre-wrap select-text cursor-text leading-relaxed font-sans" dir="auto">
+                                                    {part.text}
+                                                </p>
+                                            ))}
+                                        </div>
+                                        {fullText && (
+                                            <button
+                                                onClick={() => handleCopy(fullText, index)}
+                                                className="shrink-0 p-1 rounded hover:bg-blue-700 text-blue-200 hover:text-white transition-opacity opacity-0 group-hover:opacity-100 cursor-pointer select-none"
+                                                title="העתק הודעה"
+                                            >
+                                                {isCopied ? (
+                                                    <span className="text-green-200 text-xs font-bold">הועתק!</span>
+                                                ) : (
+                                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                                                    </svg>
+                                                )}
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    }
+
+                    return (
+                        <div key={index} className="flex justify-start select-text">
+                            <div className="max-w-prose p-3.5 rounded-xl bg-gray-800 border border-gray-700 text-gray-200 select-text cursor-text shadow group relative">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="flex-1 min-w-0 select-text cursor-text">
+                                        {msg.parts.map((part, partIndex) => 
+                                            part.isPlanLink ? (
+                                                <div key={partIndex} dir="auto" className="my-1.5 p-2.5 bg-purple-900/40 border border-purple-500/30 rounded-lg select-text">
+                                                    <p className="select-text text-purple-200 font-medium">✨ הוספתי את תוכנית "{part.planName}" לרשימה שלך.</p>
+                                                    <button onClick={onClose} className="mt-2 inline-flex items-center gap-1 font-bold text-purple-300 hover:text-purple-100 underline cursor-pointer">
+                                                        <span>הצג תוכנית</span>
+                                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <p key={partIndex} className="whitespace-pre-wrap select-text cursor-text leading-relaxed font-sans" dir="auto">
+                                                    {part.text}
+                                                </p>
+                                            )
+                                        )}
+                                    </div>
+                                    {fullText && (
+                                        <button
+                                            onClick={() => handleCopy(fullText, index)}
+                                            className="shrink-0 p-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white transition-all text-xs flex items-center gap-1 cursor-pointer select-none border border-gray-600 opacity-70 group-hover:opacity-100"
+                                            title="העתק טקסט"
+                                        >
+                                            {isCopied ? (
+                                                <span className="text-green-400 font-bold text-xs flex items-center gap-1">
+                                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                                    </svg>
+                                                    הועתק!
+                                                </span>
+                                            ) : (
+                                                <>
+                                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                                                    </svg>
+                                                    <span className="text-[11px]">העתק</span>
+                                                </>
+                                            )}
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                ))}
+                    );
+                })}
                 {isLoading && (
                      <div className="flex justify-start">
                         <div className="max-w-sm p-3 rounded-lg bg-gray-700 text-gray-200">
