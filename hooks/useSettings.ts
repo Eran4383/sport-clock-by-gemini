@@ -1,4 +1,6 @@
 
+
+
 import { useState, useEffect, useCallback } from 'react';
 import { WorkoutStep } from '../types';
 import { getLocalSettings, saveLocalSettings } from '../services/storageService';
@@ -34,8 +36,6 @@ export interface Settings {
   backgroundColor: string;
   halfwayColor: string;
   restBackgroundColor: string;
-  tipColor: string;
-  tipFontSize: number; // New setting for tip font size percentage
   showRestTitleOnDefaultCountdown: boolean;
   preWorkoutCountdownDuration: number;
   settingsCategoryOrder: string[];
@@ -49,13 +49,6 @@ export interface Settings {
   warmupSteps: WorkoutStep[];
   restAfterWarmupDuration: number;
   showLogSessionButton: boolean;
-  keepScreenOnDuringWorkout: boolean;
-  showExerciseInstructions: boolean; 
-  userProfile?: {
-    birthDate?: string; 
-    fitnessLevel?: 'beginner' | 'intermediate' | 'advanced';
-    equipment?: { name: string; available: boolean }[];
-  };
 }
 
 const defaultSettings: Settings = {
@@ -83,8 +76,6 @@ const defaultSettings: Settings = {
   backgroundColor: '#000000',
   halfwayColor: '#FF0000',
   restBackgroundColor: '#FFFFFF',
-  tipColor: '#FDE047', // Default yellow-300
-  tipFontSize: 100, // Default 100% scale
   showRestTitleOnDefaultCountdown: true,
   preWorkoutCountdownDuration: 10,
   settingsCategoryOrder: ['sounds', 'customSounds', 'countdown', 'stopwatch', 'workoutDisplay', 'displaySizes', 'displayColors', 'developer'],
@@ -93,32 +84,10 @@ const defaultSettings: Settings = {
   warmupSteps: [],
   restAfterWarmupDuration: 15,
   showLogSessionButton: true,
-  keepScreenOnDuringWorkout: true,
-  showExerciseInstructions: true,
-  userProfile: {
-    birthDate: '',
-    fitnessLevel: 'intermediate',
-    equipment: [
-      { name: 'Dumbbells', available: true },
-      { name: 'Resistance Bands', available: false },
-      { name: 'Yoga Mat', available: true },
-    ],
-  },
 };
 
 const getInitialSettings = (): Settings => {
   const localSettings = getLocalSettings();
-  
-  // Backwards compatibility for existing users who don't have tipColor or tipFontSize yet
-  if (localSettings) {
-      if (!localSettings.tipColor) {
-          localSettings.tipColor = defaultSettings.tipColor;
-      }
-      if (!localSettings.tipFontSize) {
-          localSettings.tipFontSize = defaultSettings.tipFontSize;
-      }
-  }
-
   // Ensure the developer category is present for existing users
   if (localSettings && !localSettings.settingsCategoryOrder?.includes('developer')) {
     localSettings.settingsCategoryOrder = [...(localSettings.settingsCategoryOrder || defaultSettings.settingsCategoryOrder), 'developer'];

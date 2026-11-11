@@ -3,12 +3,12 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useMemo, useRef } from 'react';
 import { WorkoutPlan, WorkoutStep, WorkoutLogEntry, StepStatus, PerformedStep } from '../types';
 import { prefetchExercises } from '../services/geminiService';
-import { getBaseExerciseName, generateCircuitSteps, processAndFormatAiSteps, arePlansDeeplyEqual, migratePlanToV2 } from '../utils/workout';
+import { getBaseExerciseName, generateCircuitSteps, processAndFormatAiSteps, arePlansDeeplyEqual, migratePlanToV2, sanitizeForFirestore } from '../utils/workout';
 import { useSettings } from './SettingsContext';
 import { getLocalPlans, saveLocalPlans, getLocalHistory, saveLocalHistory } from '../services/storageService';
 import { useAuth } from './AuthContext';
 import { db } from '../services/firebase';
-import { collection, doc, writeBatch, query, orderBy, setDoc, deleteDoc, onSnapshot, Unsubscribe, getDocs, FirestoreError } from 'firebase/firestore';
+import { collection, doc, writeBatch, query, orderBy, setDoc, deleteDoc, onSnapshot, Unsubscribe, getDocs } from 'firebase/firestore';
 import { useLogger } from './LoggingContext';
 
 const ACK_FINGERPRINT_KEY = 'acknowledgedGuestDataFingerprint';
@@ -63,6 +63,7 @@ interface WorkoutContextType {
   importPlan: (plan: WorkoutPlan, source?: string) => void;
   deletePlan: (planId: string) => void;
   reorderPlans: (reorderedPlans: WorkoutPlan[]) => void;
+  togglePlanPin: (planId: string) => void;
   startWorkout: (planIds: string[]) => void;
   commitStartWorkout: () => void;
   clearPreparingWorkout: () => void;
@@ -86,15 +87,22 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
   const { settings } = useSettings();
   const { user, authStatus } = useAuth();
   const { logAction } = useLogger();
-  const [plans, setPlans] = useState<WorkoutPlan[]>([]);
+  const [plans, setPlans] = useState<WorkoutPlan[]>(() => {
+    return getLocalPlans().map(migratePlanToV2).filter((p): p is WorkoutPlan => !!p);
+  });
   const [activeWorkout, setActiveWorkout] = useState<ActiveWorkout | null>(null);
   const [isWorkoutPaused, setIsWorkoutPaused] = useState(false);
   const [isCountdownPaused, setIsCountdownPaused] = useState(false);
   const [recentlyImportedPlanId, setRecentlyImportedPlanId] = useState<string | null>(null);
-  const [workoutHistory, setWorkoutHistory] = useState<WorkoutLogEntry[]>([]);
+  const [workoutHistory, setWorkoutHistory] = useState<WorkoutLogEntry[]>(getLocalHistory);
   const [plansToStart, setPlansToStart] = useState<string[]>([]);
   const [importNotification, setImportNotification] = useState<ImportNotificationData | null>(null);
   const [isSyncing, setIsSyncing] = useState(true);
+  const APP_VERSION = "2026-04-27-1500"; // Updated version for verification
+
+  useEffect(() => {
+     console.log(`%c Workout Life - Version: ${APP_VERSION} `, 'background: #222; color: #bada55; font-size: 20px;');
+  }, []);
   
   const [showGuestMergeModal, setShowGuestMergeModal] = useState(false);
   const [guestPlansToMerge, setGuestPlansToMerge] = useState<WorkoutPlan[]>([]);
@@ -111,20 +119,6 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
   const isPreparingWorkout = plansToStart.length > 0;
 
   const clearImportNotification = useCallback(() => setImportNotification(null), []);
-
-  const handleFirestoreError = useCallback((error: FirestoreError, context: string) => {
-      console.error(`Firestore error in ${context}:`, error);
-      logAction(`ERROR_FIRESTORE_${context}`, { message: error.message, code: error.code });
-      
-      if (error.code === 'permission-denied') {
-          setImportNotification({
-              message: 'שגיאת הרשאות',
-              planName: 'נא לעדכן חוקי אבטחה ב-Firebase Console',
-              type: 'warning',
-          });
-      }
-      setIsSyncing(false);
-  }, [logAction]);
 
   useEffect(() => {
     let plansUnsubscribe: Unsubscribe | undefined;
@@ -181,16 +175,32 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         };
 
         const plansCollection = collection(db, 'users', user.uid, 'plans');
-        plansUnsubscribe = onSnapshot(query(plansCollection, orderBy('order', 'asc')), (snapshot) => {
-            remotePlansCache = snapshot.docs.map(doc => migratePlanToV2(doc.data())).filter((p): p is WorkoutPlan => !!p);
-            setPlans(remotePlansCache);
+        plansUnsubscribe = onSnapshot(plansCollection, (snapshot) => {
+            const remotePlans = snapshot.docs
+                .map(doc => migratePlanToV2(doc.data()))
+                .filter((p): p is WorkoutPlan => !!p)
+                .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+            
+            // Combine with any local plans that haven't synced yet so newly created plans never get deleted
+            const remotePlanIds = new Set(remotePlans.map(p => p.id));
+            const localPlans = getLocalPlans().map(migratePlanToV2).filter((p): p is WorkoutPlan => !!p);
+            const pendingLocalPlans = localPlans.filter(p => !remotePlanIds.has(p.id));
+            
+            const combinedPlans = [...remotePlans, ...pendingLocalPlans].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+            setPlans(combinedPlans);
+            saveLocalPlans(combinedPlans);
+            remotePlansCache = remotePlans;
             
             if (!plansListenerDone) {
                 plansListenerDone = true;
                 checkAndTriggerMergeModal();
             }
             setIsSyncing(false);
-        }, (error) => handleFirestoreError(error, 'PLANS_LISTENER'));
+        }, (error) => {
+            logAction('ERROR_FIRESTORE_PLANS_LISTENER', { message: error.message });
+            console.error("Firestore plans listener error:", error);
+            setIsSyncing(false);
+        });
         
         const historyCollection = collection(db, 'users', user.uid, 'history');
         historyUnsubscribe = onSnapshot(query(historyCollection, orderBy('date', 'desc')), (snapshot) => {
@@ -207,7 +217,10 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
                 historyListenerDone = true;
                 checkAndTriggerMergeModal();
             }
-        }, (error) => handleFirestoreError(error, 'HISTORY_LISTENER'));
+        }, (error) => {
+            logAction('ERROR_FIRESTORE_HISTORY_LISTENER', { message: error.message });
+            console.error("Firestore history listener error:", error);
+        });
 
     } else if (authStatus === 'unauthenticated') {
         logAction('AUTH_STATE_UNAUTHENTICATED');
@@ -227,7 +240,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
     
     return cleanup;
-  }, [user, authStatus, logAction, handleFirestoreError]);
+  }, [user, authStatus, logAction]);
 
 
   const forceSync = useCallback(async () => {
@@ -236,20 +249,17 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     setIsSyncing(true);
     try {
         const plansCollection = collection(db, 'users', user.uid, 'plans');
-        const remoteSnapshot = await getDocs(query(plansCollection, orderBy('order', 'asc')));
-        const remotePlans = remoteSnapshot.docs.map(doc => migratePlanToV2(doc.data())).filter((p): p is WorkoutPlan => !!p);
+        const remoteSnapshot = await getDocs(plansCollection);
+        const remotePlans = remoteSnapshot.docs
+            .map(doc => migratePlanToV2(doc.data()))
+            .filter((p): p is WorkoutPlan => !!p)
+            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
         setPlans(remotePlans);
+        saveLocalPlans(remotePlans);
         logAction('SYNC_FORCE_SUCCESS', { planCount: remotePlans.length });
     } catch (error) {
         logAction('ERROR_SYNC_FORCE', { message: (error as Error).message });
         console.error("Manual sync failed:", error);
-        if ((error as FirestoreError).code === 'permission-denied') {
-             setImportNotification({
-                  message: 'שגיאת הרשאות',
-                  planName: 'נא לעדכן חוקי אבטחה ב-Firebase',
-                  type: 'warning',
-             });
-        }
     } finally {
         setIsSyncing(false);
     }
@@ -291,14 +301,16 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
             
             plansToUpload.forEach((plan) => {
                 const planRef = doc(db, 'users', user.uid, 'plans', plan.id);
-                batch.set(planRef, plan);
+                const sanitizedPlan = sanitizeForFirestore(plan);
+                batch.set(planRef, sanitizedPlan);
             });
         }
         
         if (mergeHistory && guestHistoryToMerge.length > 0) {
             guestHistoryToMerge.forEach(entry => {
                 const historyRef = doc(db, 'users', user.uid, 'history', entry.id);
-                batch.set(historyRef, entry);
+                const sanitizedEntry = sanitizeForFirestore(entry);
+                batch.set(historyRef, sanitizedEntry);
             });
         }
 
@@ -318,13 +330,6 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     } catch (error) {
         logAction('ERROR_GUEST_DATA_MERGE', { message: (error as Error).message });
         console.error("Failed to merge guest data:", error);
-        if ((error as FirestoreError).code === 'permission-denied') {
-             setImportNotification({
-                  message: 'שגיאת הרשאות במיזוג',
-                  planName: 'בדוק את חוקי Firebase',
-                  type: 'warning',
-             });
-        }
         setShowGuestMergeModal(true); 
     } finally {
         setGuestPlansToMerge([]);
@@ -341,45 +346,61 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
           return;
       }
 
+      // Guarantee order is computed synchronously
+      const currentStored = getLocalPlans().map(migratePlanToV2).filter((p): p is WorkoutPlan => !!p);
+      const existing = plans.find(p => p.id === migratedPlan.id) || currentStored.find(p => p.id === migratedPlan.id);
+      
+      if (migratedPlan.order === undefined || migratedPlan.order === null) {
+          if (existing && existing.order !== undefined && existing.order !== null) {
+              migratedPlan.order = existing.order;
+          } else {
+              const allPlans = plans.length > 0 ? plans : currentStored;
+              const maxOrder = allPlans.reduce((max, p) => Math.max(max, p.order ?? -1), -1);
+              migratedPlan.order = maxOrder + 1;
+          }
+      }
+
+      // Immediately persist to local storage synchronously
+      const withoutThis = currentStored.filter(p => p.id !== migratedPlan.id);
+      const newStoredPlans = [...withoutThis, migratedPlan].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      saveLocalPlans(newStoredPlans);
+
+      // Update state
       setPlans(prevPlans => {
           const isNewPlan = !prevPlans.some(p => p.id === migratedPlan.id);
-          const plansWithOrder = prevPlans.map((p, i) => ({ ...p, order: i }));
-          let newPlans;
-
+          let newPlans: WorkoutPlan[];
           if (isNewPlan) {
-              const maxOrder = plansWithOrder.reduce((max, p) => Math.max(max, p.order ?? -1), -1);
-              migratedPlan.order = maxOrder + 1;
-              newPlans = [...plansWithOrder, migratedPlan];
+              newPlans = [...prevPlans, migratedPlan];
           } else {
-              newPlans = plansWithOrder.map(p => p.id === migratedPlan.id ? migratedPlan : p);
+              newPlans = prevPlans.map(p => p.id === migratedPlan.id ? migratedPlan : p);
           }
-
-          if (authStatusRef.current === 'unauthenticated') {
-              saveLocalPlans(newPlans);
-          }
-          
-          return newPlans;
+          return newPlans.filter(Boolean).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
       });
 
       if (user) {
           try {
               const planRef = doc(db, 'users', user.uid, 'plans', migratedPlan.id);
-              await setDoc(planRef, migratedPlan, { merge: true });
+              const sanitizedPlan = sanitizeForFirestore(migratedPlan);
+              await setDoc(planRef, sanitizedPlan, { merge: true });
+              console.log("Plan saved successfully to Firestore:", migratedPlan.id);
           } catch (error) {
-              logAction('ERROR_PLAN_SAVE_FIRESTORE', { planId: migratedPlan.id, message: (error as Error).message });
-              console.error("Failed to save plan to Firestore:", error);
-              if ((error as FirestoreError).code === 'permission-denied') {
-                 setImportNotification({
-                      message: 'שמירה נכשלה',
-                      planName: 'אין הרשאת כתיבה למסד הנתונים',
-                      type: 'warning',
-                 });
-              }
+              const firebaseError = error as any;
+              logAction('ERROR_PLAN_SAVE_FIRESTORE', { 
+                  planId: migratedPlan.id, 
+                  message: firebaseError.message,
+                  code: firebaseError.code
+              });
+              console.error("Failed to save plan to Firestore:", error, "Data being sent:", sanitizedPlan);
+              setImportNotification({
+                message: 'שגיאת סנכרון',
+                planName: `הנתונים נשמרו מקומית אך לא בשרת: ${firebaseError.message}`,
+                type: 'warning'
+              });
           }
       }
-  }, [user, logAction]);
+  }, [user, plans, logAction]);
   
-  const importPlan = useCallback((planToImport: WorkoutPlan, source: string = 'file') => {
+  const importPlan = useCallback(async (planToImport: WorkoutPlan, source: string = 'file') => {
     logAction('PLAN_IMPORT_ATTEMPT', { planName: planToImport.name, source });
     const migratedPlan = migratePlanToV2(planToImport);
     if (!migratedPlan) {
@@ -413,22 +434,9 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     
     if (source === 'ai') {
         newPlan.steps = processAndFormatAiSteps(newPlan.steps);
-        // FIX: Sanitize AI-generated steps to prevent invalid states like time-based exercises with 0 duration.
-        newPlan.steps = newPlan.steps.map(step => {
-            if (step.type === 'exercise' && !step.isRepBased && (!step.duration || step.duration <= 0)) {
-                // This is an invalid time-based step. Convert it to a rep-based step as a fallback.
-                return {
-                    ...step,
-                    isRepBased: true,
-                    reps: 10, // A sensible default for reps.
-                    duration: 0,
-                };
-            }
-            return step;
-        });
     }
     
-    savePlan(newPlan);
+    await savePlan(newPlan);
 
     setImportNotification({
         message: 'תוכנית אימונים יובאה בהצלחה!',
@@ -482,11 +490,16 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
   const deletePlan = useCallback(async (planId: string) => {
     logAction('PLAN_DELETE_ATTEMPT', { planId });
 
+    const newPlans = plans.filter(p => p.id !== planId);
+    setPlans(newPlans);
+    saveLocalPlans(newPlans);
+
     if (user) {
         try {
             const planRef = doc(db, 'users', user.uid, 'plans', planId);
             await deleteDoc(planRef);
-            // On success, the onSnapshot listener will update the UI.
+            // The local setPlans and saveLocalPlans already optimistically updated the UI and cache.
+            // onSnapshot will further ensure consistency with the server.
         } catch (error) {
             logAction('ERROR_PLAN_DELETE_FIRESTORE', { planId, message: (error as Error).message });
             console.error("Failed to delete plan from Firestore:", error);
@@ -497,10 +510,6 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
                 type: 'warning',
             });
         }
-    } else { // Handle guest user (local storage only)
-        const newPlans = plans.filter(p => p.id !== planId);
-        setPlans(newPlans);
-        saveLocalPlans(newPlans);
     }
   }, [user, plans, logAction]);
 
@@ -508,32 +517,53 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
       logAction('PLANS_REORDERED', { count: reorderedPlans.length });
       const plansWithOrder = reorderedPlans.map((p, i) => ({ ...p, order: i }));
       setPlans(plansWithOrder);
-
-      if (authStatusRef.current === 'unauthenticated') {
-          saveLocalPlans(plansWithOrder);
-      }
+      saveLocalPlans(plansWithOrder);
 
       if (user) {
         try {
             const batch = writeBatch(db);
             plansWithOrder.forEach((plan) => {
                 const planRef = doc(db, 'users', user.uid, 'plans', plan.id);
-                batch.set(planRef, plan, { merge: true });
+                const sanitizedPlan = sanitizeForFirestore(plan);
+                batch.set(planRef, sanitizedPlan, { merge: true });
             });
             await batch.commit();
         } catch (error) {
             logAction('ERROR_PLANS_REORDER_FIRESTORE', { message: (error as Error).message });
             console.error("Failed to reorder plans in Firestore:", error);
-            if ((error as FirestoreError).code === 'permission-denied') {
-                 setImportNotification({
-                      message: 'שגיאת הרשאות',
-                      planName: 'לא ניתן לשמור סדר חדש',
-                      type: 'warning',
-                 });
-            }
         }
       }
   }, [user, logAction]);
+  
+  const togglePlanPin = useCallback(async (planId: string) => {
+      const plan = plans.find(p => p.id === planId);
+      if (!plan) return;
+
+      const newIsPinned = !plan.isPinned;
+      logAction('PLAN_TOGGLE_PIN', { planId, isPinned: newIsPinned });
+
+      const updatedPlan = { ...plan, isPinned: newIsPinned };
+      
+      setPlans(prevPlans => {
+          const updatedPlans = prevPlans.map(p => p.id === planId ? updatedPlan : p);
+          // When pinning, we don't automatically move it to top here, we let the UI sort it if desired,
+          // OR we can enforce sort here. The user said "Pinning to head of menu", so usually they expect it at the top.
+          // However, they also want to "move the order of pinned exercises".
+          // The most flexible way is to sort by isPinned then by order in the selector/useMemo.
+          saveLocalPlans(updatedPlans);
+          return updatedPlans;
+      });
+
+      if (user) {
+          try {
+              const planRef = doc(db, 'users', user.uid, 'plans', planId);
+              const sanitizedPlan = sanitizeForFirestore(updatedPlan);
+              await setDoc(planRef, sanitizedPlan, { merge: true });
+          } catch (error) {
+              console.error("Failed to toggle pin in Firestore:", error);
+          }
+      }
+  }, [user, plans, logAction]);
   
   const logWorkoutCompletion = useCallback(async (
     planName: string, 
@@ -554,7 +584,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     };
     logAction('WORKOUT_LOGGED', { planName, duration: newEntry.durationSeconds, performedStepCount: performedSteps.length });
 
-    const sanitizedEntry = JSON.parse(JSON.stringify(newEntry));
+    const sanitizedEntry = sanitizeForFirestore(newEntry);
 
     const saveLocally = () => {
         setWorkoutHistory(prev => {
@@ -571,13 +601,6 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         } catch (e) {
             logAction('ERROR_LOG_SAVE_FIRESTORE', { message: (e as Error).message });
             console.error("Failed to save workout log to Firestore:", e);
-             if ((e as FirestoreError).code === 'permission-denied') {
-                 setImportNotification({
-                      message: 'היומן לא נשמר בענן',
-                      planName: 'נשמר מקומית עקב בעיית הרשאות',
-                      type: 'warning',
-                 });
-            }
             // Fallback to local storage if Firestore fails
             saveLocally();
         }
@@ -599,7 +622,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     };
     logAction('MANUAL_WORKOUT_LOGGED', { planName: name, duration: newEntry.durationSeconds, performedStepCount: performedSteps.length });
     
-    const sanitizedEntry = JSON.parse(JSON.stringify(newEntry));
+    const sanitizedEntry = sanitizeForFirestore(newEntry);
 
     const saveLocally = () => {
         setWorkoutHistory(prev => {
@@ -616,13 +639,6 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
         } catch (e) {
             logAction('ERROR_LOG_SAVE_FIRESTORE', { message: (e as Error).message });
             console.error("Failed to save manual workout log to Firestore:", e);
-            if ((e as FirestoreError).code === 'permission-denied') {
-                 setImportNotification({
-                      message: 'היומן לא נשמר בענן',
-                      planName: 'נשמר מקומית עקב בעיית הרשאות',
-                      type: 'warning',
-                 });
-            }
             // Fallback to local storage if Firestore fails
             saveLocally();
         }
@@ -649,13 +665,6 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
                 } catch (error) {
                     logAction('ERROR_HISTORY_CLEAR_FIRESTORE', { message: (error as Error).message });
                     console.error("Failed to clear Firestore history:", error);
-                    if ((error as FirestoreError).code === 'permission-denied') {
-                         setImportNotification({
-                              message: 'מחיקה נכשלה',
-                              planName: 'חסרות הרשאות מחיקה',
-                              type: 'warning',
-                         });
-                    }
                 } finally {
                     setIsSyncing(false);
                 }
@@ -896,6 +905,7 @@ export const WorkoutProvider: React.FC<{ children: ReactNode }> = ({ children })
     importPlan,
     deletePlan,
     reorderPlans,
+    togglePlanPin,
     startWorkout,
     commitStartWorkout,
     clearPreparingWorkout,

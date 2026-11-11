@@ -93,7 +93,7 @@ export const Controls: React.FC<ControlsProps> = ({
                   ariaLabel="Log Session"
                   className={`w-16 px-4 ${buttonColor}`}
               >
-                  Log
+                  LOG.
               </Button>
           ) : <div className="w-16"></div>}
 

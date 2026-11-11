@@ -1,8 +1,5 @@
 {
-  "name": "Copy of Copy of Copy of Copy of Copy of Copy of Copy of Advanced Sports Clock - אחרון לפני הוספת מסד נתונים היברידי",
-  "description": "v3.7.23: Enable text selection with mouse in AI workout planner, add copy buttons for messages and error details.",
-  "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
+  "name": "Advanced Sports Clock",
+  "description": "שעון ספורט מתקדם עם ניהול אימונים, היסטוריה, סנכרון ענן (Google/Firestore), צלילים מותאמים אישית ומצב סבבים (Circuit Mode).",
+  "requestFramePermissions": []
 }

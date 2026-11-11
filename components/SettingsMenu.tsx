@@ -1,3 +1,7 @@
+
+
+
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 // FIX: Module '"../contexts/SettingsContext"' has no exported member 'CustomSound'. Import it from hooks/useSettings instead.
 import { useSettings } from '../contexts/SettingsContext';
@@ -6,8 +10,6 @@ import { playNotificationSound } from '../utils/sound';
 import { useLogger } from '../contexts/LoggingContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useWorkout } from '../contexts/WorkoutContext';
-
-const VERSION = 'v3.7.13';
 
 const Toggle: React.FC<{
   id: string;
@@ -123,7 +125,7 @@ const CustomSoundUploader: React.FC<{
   );
 };
 
-export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean) => void; isWorkoutOpen?: boolean; }> = ({ isOpen, setIsOpen, isWorkoutOpen }) => {
+export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean) => void; }> = ({ isOpen, setIsOpen }) => {
   const { settings, updateSettings } = useSettings();
   const { getDebugReportAsString } = useLogger();
   const { user } = useAuth();
@@ -159,6 +161,7 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
     }
   }, [settings.preWorkoutCountdownDuration]);
 
+  // Auto-close logic
   useEffect(() => {
     if (!isOpen && closeTimerRef.current) {
       clearTimeout(closeTimerRef.current);
@@ -171,6 +174,7 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
     };
   }, [isOpen]);
 
+  // Effect to handle wheel events on number inputs without scrolling the parent
   useEffect(() => {
     const handleWheel = (
       e: WheelEvent,
@@ -237,6 +241,7 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
      setLocalPreWorkoutCountdownStr(finalValue.toString());
      updateSettings({ preWorkoutCountdownDuration: finalValue });
   };
+
 
   const handleClose = () => {
     handleDurationBlur();
@@ -311,6 +316,7 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
     });
   };
 
+  // --- Drag and drop state and logic ---
   const [draggedInfo, setDraggedInfo] = useState<{
     index: number;
     id: string;
@@ -324,7 +330,7 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
   const categoryRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   const handleMouseDown = (e: React.MouseEvent<HTMLHeadingElement>, index: number, key: string) => {
-    if (e.button !== 0) return;
+    if (e.button !== 0) return; // Only left-click
     e.preventDefault();
     
     const target = e.currentTarget.parentElement?.parentElement;
@@ -516,8 +522,6 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
       content: (
         <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
           <Toggle id="showNextExercise" label="Show Next Exercise" checked={settings.showNextExercise} onChange={(e) => updateSettings({ showNextExercise: e.target.checked })} />
-          <Toggle id="showInstructions" label="Show Short Instructions" checked={settings.showExerciseInstructions} onChange={(e) => updateSettings({ showExerciseInstructions: e.target.checked })} />
-          <Toggle id="keepScreenOnToggle" label="השאר מסך דלוק בזמן אימון" checked={settings.keepScreenOnDuringWorkout} onChange={(e) => updateSettings({ keepScreenOnDuringWorkout: e.target.checked })} />
         </div>
       )
     },
@@ -529,7 +533,6 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
           <RangeSlider id="stopwatchSize" label="Stopwatch" value={settings.stopwatchSize} onChange={e => updateSettings({ stopwatchSize: parseInt(e.target.value, 10) })} />
           <RangeSlider id="countdownControlsSize" label="Countdown Controls" value={settings.countdownControlsSize} onChange={e => updateSettings({ countdownControlsSize: parseInt(e.target.value, 10) })} />
           <RangeSlider id="stopwatchControlsSize" label="Stopwatch Controls" value={settings.stopwatchControlsSize} onChange={e => updateSettings({ stopwatchControlsSize: parseInt(e.target.value, 10) })} />
-          <RangeSlider id="tipFontSize" label="Tip Text Size" value={settings.tipFontSize} onChange={e => updateSettings({ tipFontSize: parseInt(e.target.value, 10) })} />
         </div>
       )
     },
@@ -548,10 +551,6 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
           <div className="flex items-center justify-between">
             <label htmlFor="restBackgroundColor" className="text-white">Rest Background</label>
             <input type="color" id="restBackgroundColor" value={settings.restBackgroundColor} onChange={(e) => updateSettings({ restBackgroundColor: e.target.value })} className="w-10 h-10 p-0 bg-transparent border-none rounded-md cursor-pointer" title="Set background color for rest periods" />
-          </div>
-          <div className="flex items-center justify-between">
-            <label htmlFor="tipColor" className="text-white">Tip Text Color</label>
-            <input type="color" id="tipColor" value={settings.tipColor || '#FDE047'} onChange={(e) => updateSettings({ tipColor: e.target.value })} className="w-10 h-10 p-0 bg-transparent border-none rounded-md cursor-pointer" title="Set the color of the instruction tips" />
           </div>
         </div>
       )
@@ -589,7 +588,7 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
               width: draggedInfo.elementWidth,
               boxShadow: '0 10px 20px rgba(0,0,0,0.2)',
               transform: 'scale(1.02)',
-              background: 'rgb(31 41 55)',
+              background: 'rgb(31 41 55)', // solid gray-800
               borderRadius: '0.5rem',
             }}
           >
@@ -610,14 +609,14 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
   return (
     <>
       {ghostElement}
-      <div className={`absolute top-4 right-4 menu-container group ${isWorkoutOpen ? 'hidden md:block' : ''}`}>
-          <button 
-            onClick={() => isOpen ? handleClose() : setIsOpen(true)} 
-            aria-label="Open settings menu"
-            className="w-12 h-12 flex items-center justify-center rounded-full bg-gray-500/20 text-gray-400 hover:bg-gray-500/30 transition-opacity duration-1000 focus:outline-none opacity-0 group-hover:opacity-100"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-          </button>
+      <div className="absolute top-4 right-4 menu-container group">
+        <button 
+          onClick={() => isOpen ? handleClose() : setIsOpen(true)} 
+          aria-label="Open settings menu"
+          className="w-12 h-12 flex items-center justify-center rounded-full bg-gray-500/20 text-gray-400 hover:bg-gray-500/30 transition-opacity duration-1000 focus:outline-none opacity-0 group-hover:opacity-100"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+        </button>
       </div>
 
       {isOpen && (
@@ -637,10 +636,7 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
       >
         <div className="p-6 overflow-y-auto h-full">
           <div className="flex justify-between items-center mb-8">
-            <div>
-              <h2 className="text-2xl font-bold text-white">Settings</h2>
-              <p className="text-xs text-gray-500 mt-1">{VERSION}</p>
-            </div>
+            <h2 className="text-2xl font-bold text-white">Settings</h2>
             <div className="flex items-center gap-2">
               <button 
                 onClick={() => setIsPinned(!isPinned)}
@@ -664,12 +660,12 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
               
               let transform = 'translateY(0px)';
               if (draggedInfo && overIndex !== null && draggedInfo.index !== overIndex) {
-                  const draggedHeight = draggedInfo.elementHeight + 32;
-                  if (draggedInfo.index < overIndex) {
+                  const draggedHeight = draggedInfo.elementHeight + 32; // 32 is space-y-8 (2rem)
+                  if (draggedInfo.index < overIndex) { // Dragging down
                       if (index > draggedInfo.index && index <= overIndex) {
                           transform = `translateY(-${draggedHeight}px)`;
                       }
-                  } else {
+                  } else { // Dragging up
                       if (index < draggedInfo.index && index >= overIndex) {
                           transform = `translateY(${draggedHeight}px)`;
                       }

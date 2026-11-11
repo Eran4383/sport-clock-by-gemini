@@ -1,25 +1,24 @@
 {
-  "name": "copy-of-copy-of-copy-of-copy-of-copy-of-copy-of-copy-of-advanced-sports-clock---אחרון-לפני-הוספת-מסד-נתונים-היברידי",
+  "name": "advanced-sports-clock",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "dev": "tsx server.ts",
+    "dev": "vite",
     "build": "vite build",
-    "start": "tsx server.ts",
+    "lint": "echo 'No lint script defined'",
     "preview": "vite preview"
   },
   "dependencies": {
     "@google/genai": "^1.16.0",
+    "@tailwindcss/vite": "^4.2.2",
     "@vercel/kv": "^3.0.0",
-    "express": "^5.2.1",
     "firebase": "^12.3.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "tsx": "^4.23.15"
+    "tailwindcss": "^4.2.2"
   },
   "devDependencies": {
-    "@types/express": "^5.0.6",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
     "typescript": "~5.8.2",
