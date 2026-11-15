@@ -1,12 +1,28 @@
 import { doc, getDoc } from "firebase/firestore";
-import { db, getGeminiApiKey } from "./_geminiClient.ts";
-import { handleExerciseInfoRequest } from "./_exerciseInfo.ts";
-import { handleChatRequest } from "./_chatPlanner.ts";
+import { db, getGeminiApiKey } from "./_geminiClient.js";
+import { handleExerciseInfoRequest } from "./_exerciseInfo.js";
+import { handleChatRequest } from "./_chatPlanner.js";
+
+function parseRequestBody(rawBody: any): Record<string, any> | null {
+  if (!rawBody) return {};
+  if (typeof rawBody === 'string') {
+    try {
+      return JSON.parse(rawBody);
+    } catch {
+      return null;
+    }
+  }
+  return typeof rawBody === 'object' ? rawBody : {};
+}
 
 export default async function handler(req: any, res: any) {
+  if (typeof res?.setHeader === 'function') {
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  }
+
   if (req.method !== 'POST') {
     res.setHeader('Allow', ['POST']);
-    return res.status(405).end(`Method ${req.method} Not Allowed`);
+    return res.status(405).json({ message: `Method ${req.method} Not Allowed` });
   }
 
   const geminiApiKey = getGeminiApiKey();
@@ -18,16 +34,27 @@ export default async function handler(req: any, res: any) {
     });
   }
 
-  const { exerciseName, force_refresh, chatRequest, checkCache } = req.body || {};
+  const body = parseRequestBody(req.body);
+  if (body === null) {
+    return res.status(400).json({
+      responseText: 'שגיאה: גוף הבקשה שנשלח אינו בפורמט JSON תקין.',
+      message: 'Invalid JSON request body.',
+    });
+  }
+
+  const { exerciseName, force_refresh, chatRequest, checkCache } = body;
 
   try {
     let result;
     if (chatRequest) {
-      const { history, message } = chatRequest;
+      const { history, message, profileContext, modelPreference } = chatRequest;
       if (!message || typeof message !== 'string') {
-        return res.status(400).json({ message: 'A valid message is required for chat requests.' });
+        return res.status(400).json({
+          responseText: 'שגיאה: נדרשת הודעה תקינה לבקשת הצ\'אט.',
+          message: 'A valid message is required for chat requests.',
+        });
       }
-      result = await handleChatRequest(history || [], message);
+      result = await handleChatRequest(history || [], message, profileContext || '', modelPreference || 'smart');
     } else if (checkCache && Array.isArray(checkCache)) {
       const uncachedNames = [];
       try {

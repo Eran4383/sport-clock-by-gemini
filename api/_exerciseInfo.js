@@ -1,9 +1,9 @@
 import { Type } from "@google/genai";
 import { doc, getDoc, setDoc } from "firebase/firestore";
-import { createGeminiClient, db, getGeminiApiKey, safetySettings, withGeminiModelFallback } from "./_geminiClient.ts";
+import { createGeminiClient, db, getGeminiApiKey, safetySettings, withGeminiModelFallback } from "./_geminiClient.js";
 
-export const handleExerciseInfoRequest = async (exerciseName: string, forceRefresh: boolean) => {
-  const apiKey = getGeminiApiKey()!;
+export const handleExerciseInfoRequest = async (exerciseName, forceRefresh) => {
+  const apiKey = getGeminiApiKey();
   const ai = createGeminiClient(apiKey);
   const normalizedExerciseName = exerciseName.trim().toLowerCase();
 
@@ -19,7 +19,7 @@ export const handleExerciseInfoRequest = async (exerciseName: string, forceRefre
     }
   }
 
-  const searchYouTube = async (): Promise<string[]> => {
+  const searchYouTube = async () => {
     const youtubeApiKey = process.env.YOUTUBE_API_KEY;
     if (!youtubeApiKey) return [];
     const searchQuery = `how to do ${exerciseName} proper form tutorial short`;
@@ -33,7 +33,7 @@ export const handleExerciseInfoRequest = async (exerciseName: string, forceRefre
         return [];
       }
       const youtubeData = await youtubeResponse.json();
-      return (youtubeData.items || []).map((item: any) => item.id?.videoId).filter(Boolean);
+      return (youtubeData.items || []).map((item) => item.id?.videoId).filter(Boolean);
     } catch (error) {
       console.error("Failed to fetch from YouTube API:", error);
       return [];

@@ -39,7 +39,7 @@ export const AiPlannerModal: React.FC<{ onClose: () => void }> = ({ onClose }) =
     isNearBottom,
   } = useAiScrollMemory(chatContainerRef, messages.length);
 
-  const { isLoading, sendMessage } =
+  const { isLoading, sendMessage, retryLastMessage, canRetry } =
     useAiWorkoutGenerator(messages, setMessages, stopListening);
 
   useEffect(() => {
@@ -112,6 +112,8 @@ export const AiPlannerModal: React.FC<{ onClose: () => void }> = ({ onClose }) =
             copiedIndex={copiedIndex}
             onCopy={handleCopy}
             onCloseModal={onClose}
+            onRetry={canRetry && idx === messages.length - 1 ? retryLastMessage : undefined}
+            onNewChat={handleNewChat}
           />
         ))}
 

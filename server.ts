@@ -9,7 +9,17 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
+
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (err && req.path.startsWith('/api')) {
+    return res.status(err.status || 400).json({
+      responseText: 'שגיאה: הבקשה לשרת לא פוענחה כראוי.',
+      message: err.message || 'Invalid JSON payload',
+    });
+  }
+  return next(err);
+});
 
 // API Route for Gemini workouts and exercise info
 app.post('/api/gemini', async (req, res) => {

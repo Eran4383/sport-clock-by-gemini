@@ -15,10 +15,10 @@ const firebaseConfig = {
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 export const db = getFirestore(app);
 
-export const getGeminiApiKey = (): string | undefined =>
+export const getGeminiApiKey = () =>
   process.env.GEMINI_API_KEY || process.env.API_KEY;
 
-export const createGeminiClient = (apiKey: string): GoogleGenAI =>
+export const createGeminiClient = (apiKey) =>
   new GoogleGenAI({
     apiKey,
     httpOptions: {
@@ -35,11 +35,12 @@ export const safetySettings = [
   { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
 ];
 
-const PREFERRED_MODELS = ['gemini-4-hydrogen', 'gemini-3.1-flash-lite'];
+const SMART_MODELS = ['gemini-4-hydrogen', 'gemini-3.1-flash-lite'];
+const SPEED_MODELS = ['gemini-3.1-flash-lite', 'gemini-4-hydrogen'];
 const MODEL_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
-let cachedDiscoveredModel: { name: string; expiresAt: number } | null = null;
+let cachedDiscoveredModel = null;
 
-const isModelNotFoundError = (error: any): boolean => {
+const isModelNotFoundError = (error) => {
   const status = error?.status ?? error?.code;
   const msg = typeof error?.message === 'string' ? error.message.toLowerCase() : '';
   return (
@@ -52,13 +53,13 @@ const isModelNotFoundError = (error: any): boolean => {
   );
 };
 
-async function discoverFallbackFlashModel(ai: GoogleGenAI, tried: Set<string>): Promise<string | null> {
+async function discoverFallbackFlashModel(ai, tried) {
   if (cachedDiscoveredModel && Date.now() < cachedDiscoveredModel.expiresAt && !tried.has(cachedDiscoveredModel.name)) {
     return cachedDiscoveredModel.name;
   }
   try {
     const pager = await ai.models.list();
-    const candidates: string[] = [];
+    const candidates = [];
     for await (const m of pager) {
       const rawName = (m.name || '').replace(/^models\//, '');
       if (!rawName || tried.has(rawName)) continue;
@@ -83,25 +84,23 @@ async function discoverFallbackFlashModel(ai: GoogleGenAI, tried: Set<string>): 
   }
 }
 
-export async function withGeminiModelFallback<T>(
-  ai: GoogleGenAI,
-  runWithModel: (model: string) => Promise<T>
-): Promise<T> {
+export async function withGeminiModelFallback(ai, runWithModel, modelPreference = 'smart') {
   const envModel = process.env.GEMINI_MODEL?.trim();
+  const baseModels = modelPreference === 'speed' ? SPEED_MODELS : SMART_MODELS;
   const initialCandidates = [
     ...(envModel ? [envModel] : []),
+    ...baseModels,
     ...(cachedDiscoveredModel && Date.now() < cachedDiscoveredModel.expiresAt ? [cachedDiscoveredModel.name] : []),
-    ...PREFERRED_MODELS,
   ];
   const uniqueCandidates = [...new Set(initialCandidates)];
-  const tried = new Set<string>();
-  let lastError: any;
+  const tried = new Set();
+  let lastError;
 
   for (const model of uniqueCandidates) {
     tried.add(model);
     try {
       return await runWithModel(model);
-    } catch (err: any) {
+    } catch (err) {
       lastError = err;
       if (!isModelNotFoundError(err)) {
         throw err;

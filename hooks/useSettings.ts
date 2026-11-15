@@ -11,6 +11,17 @@ export interface CustomSound {
   dataUrl: string;
 }
 
+export interface UserEquipmentItem {
+  name: string;
+  available: boolean;
+}
+
+export interface UserProfile {
+  birthDate?: string;
+  fitnessLevel?: 'beginner' | 'intermediate' | 'advanced';
+  equipment?: UserEquipmentItem[];
+}
+
 export interface Settings {
   showTimer: boolean;
   showCountdown: boolean;
@@ -49,6 +60,7 @@ export interface Settings {
   warmupSteps: WorkoutStep[];
   restAfterWarmupDuration: number;
   showLogSessionButton: boolean;
+  userProfile?: UserProfile;
 }
 
 const defaultSettings: Settings = {
