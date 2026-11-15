@@ -1,5 +1,6 @@
 {
   "name": "Advanced Sports Clock",
   "description": "שעון ספורט מתקדם עם ניהול אימונים, היסטוריה, סנכרון ענן (Google/Firestore), צלילים מותאמים אישית ומצב סבבים (Circuit Mode).",
-  "requestFramePermissions": []
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
