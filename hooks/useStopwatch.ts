@@ -1,29 +1,49 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
+import { useBackgroundTick } from './useBackgroundTick';
 
 export const useStopwatch = () => {
   const [time, setTime] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
 
   const animationFrameRef = useRef<number | null>(null);
-  // This ref will store the timestamp when the stopwatch was started or resumed.
+  const lastRafTimeRef = useRef<number>(0);
   const startTimeRef = useRef<number>(0);
-  // This ref will store the elapsed time when the stopwatch was paused.
   const pausedTimeRef = useRef<number>(0);
 
   const animate = useCallback((timestamp: number) => {
-    // Calculate time elapsed since the last start/resume
+    lastRafTimeRef.current = performance.now();
     const elapsedSinceStart = timestamp - startTimeRef.current;
-    // Total time is the time from previous pauses + time since the last resume
     setTime(pausedTimeRef.current + elapsedSinceStart);
     animationFrameRef.current = requestAnimationFrame(animate);
   }, []);
 
+  useBackgroundTick(
+    isRunning,
+    () => {
+      if (document.hidden || performance.now() - lastRafTimeRef.current > 400) {
+        const elapsedSinceStart = performance.now() - startTimeRef.current;
+        setTime(pausedTimeRef.current + elapsedSinceStart);
+      }
+    },
+    500
+  );
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && isRunning) {
+        const elapsedSinceStart = performance.now() - startTimeRef.current;
+        setTime(pausedTimeRef.current + elapsedSinceStart);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [isRunning]);
+
   const start = useCallback(() => {
     setIsRunning(running => {
       if (running) {
-        return true; // Already running, do nothing
+        return true;
       }
-      // Set the start time for this new running interval
       startTimeRef.current = performance.now();
       animationFrameRef.current = requestAnimationFrame(animate);
       return true;
@@ -33,12 +53,11 @@ export const useStopwatch = () => {
   const stop = useCallback(() => {
     setIsRunning(running => {
       if (!running || !animationFrameRef.current) {
-        return false; // Already stopped, do nothing
+        return false;
       }
       cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = null;
       
-      // Calculate the time elapsed during the last run and add it to pausedTimeRef
       const elapsedSinceStart = performance.now() - startTimeRef.current;
       pausedTimeRef.current = pausedTimeRef.current + elapsedSinceStart;
 

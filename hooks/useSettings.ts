@@ -60,6 +60,7 @@ export interface Settings {
   warmupSteps: WorkoutStep[];
   restAfterWarmupDuration: number;
   showLogSessionButton: boolean;
+  keepScreenAwake: boolean;
   userProfile?: UserProfile;
 }
 
@@ -90,32 +91,60 @@ const defaultSettings: Settings = {
   restBackgroundColor: '#FFFFFF',
   showRestTitleOnDefaultCountdown: true,
   preWorkoutCountdownDuration: 10,
-  settingsCategoryOrder: ['sounds', 'customSounds', 'countdown', 'stopwatch', 'workoutDisplay', 'displaySizes', 'displayColors', 'developer'],
+  settingsCategoryOrder: ['sounds', 'workoutDisplay', 'countdown', 'stopwatch', 'displaySizes', 'displayColors', 'customSounds', 'developer'],
   customSounds: {},
   isWarmupEnabled: false,
   warmupSteps: [],
   restAfterWarmupDuration: 15,
   showLogSessionButton: true,
+  keepScreenAwake: true,
 };
+
+const ORDER_MIGRATION_KEY = 'settings_order_v2_migrated';
 
 const getInitialSettings = (): Settings => {
   const localSettings = getLocalSettings();
-  // Ensure the developer category is present for existing users
-  if (localSettings && !localSettings.settingsCategoryOrder?.includes('developer')) {
-    localSettings.settingsCategoryOrder = [...(localSettings.settingsCategoryOrder || defaultSettings.settingsCategoryOrder), 'developer'];
-  }
-  // Ensure the customSounds category is present for existing users
-  if (localSettings && !localSettings.settingsCategoryOrder?.includes('customSounds')) {
-      const soundsIndex = localSettings.settingsCategoryOrder?.indexOf('sounds') ?? -1;
-      if (soundsIndex > -1) {
-          localSettings.settingsCategoryOrder?.splice(soundsIndex + 1, 0, 'customSounds');
-      } else {
-          localSettings.settingsCategoryOrder = [
-              'sounds', 
-              'customSounds', 
-              ...(localSettings.settingsCategoryOrder || defaultSettings.settingsCategoryOrder)
-          ];
+  if (localSettings) {
+    const order = Array.isArray(localSettings.settingsCategoryOrder)
+      ? [...localSettings.settingsCategoryOrder]
+      : [...defaultSettings.settingsCategoryOrder];
+
+    if (!order.includes('developer')) {
+      order.push('developer');
+    }
+
+    if (!order.includes('customSounds')) {
+      const devIndex = order.indexOf('developer');
+      order.splice(devIndex > -1 ? devIndex : order.length, 0, 'customSounds');
+    }
+
+    if (!order.includes('workoutDisplay')) {
+      const soundsIndex = order.indexOf('sounds');
+      order.splice(soundsIndex > -1 ? soundsIndex + 1 : 0, 0, 'workoutDisplay');
+    }
+
+    try {
+      if (!localStorage.getItem(ORDER_MIGRATION_KEY)) {
+        const customIdx = order.indexOf('customSounds');
+        const workoutIdx = order.indexOf('workoutDisplay');
+        if (workoutIdx > -1 && customIdx > -1 && workoutIdx !== customIdx) {
+          order.splice(workoutIdx, 1);
+          const adjustedCustomIdx = order.indexOf('customSounds');
+          order.splice(adjustedCustomIdx, 0, 'workoutDisplay');
+        }
+        const newCustomIdx = order.indexOf('customSounds');
+        if (newCustomIdx > -1) {
+          order.splice(newCustomIdx, 1);
+        }
+        const devIdx = order.indexOf('developer');
+        order.splice(devIdx > -1 ? devIdx : order.length, 0, 'customSounds');
+        localStorage.setItem(ORDER_MIGRATION_KEY, 'true');
       }
+    } catch {
+      // Ignore storage access errors
+    }
+
+    localSettings.settingsCategoryOrder = order;
   }
   return localSettings ? { ...defaultSettings, ...localSettings } : defaultSettings;
 };

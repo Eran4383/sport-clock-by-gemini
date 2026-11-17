@@ -6,11 +6,15 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Settings } from './useSettings';
 import { playNotificationSound, playEndSound, playTickSound, playStartSound } from '../utils/sound';
+import { useBackgroundTick } from './useBackgroundTick';
 
 type Phase = 'stopped' | 'running' | 'resting';
 
 export const useCountdown = (initialDuration: number, restDuration: number, settings: Settings, onCycleComplete?: () => void, stepKey?: string | number, isRestStep: boolean = false) => {
   const animationFrameRef = useRef<number | undefined>(undefined);
+  const transitionTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const isTransitioningRef = useRef(false);
+  const lastRafTimeRef = useRef<number>(0);
   const endTimeRef = useRef<number>(0);
   const phaseRef = useRef<Phase>('stopped');
   const durationMsRef = useRef(initialDuration * 1000);
@@ -43,12 +47,12 @@ export const useCountdown = (initialDuration: number, restDuration: number, sett
     _setPhase(newPhase);
   };
 
-  const animate = useCallback(() => {
+  const animateRef = useRef<() => void>(() => {});
+
+  const stepCountdown = useCallback((): boolean => {
     const currentPhase = phaseRef.current;
-    if (currentPhase === 'stopped') {
-        if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = undefined;
-        return;
+    if (currentPhase === 'stopped' || isTransitioningRef.current) {
+      return false;
     }
 
     const remaining = endTimeRef.current - performance.now();
@@ -56,82 +60,122 @@ export const useCountdown = (initialDuration: number, restDuration: number, sett
     const { allSoundsEnabled, isMuted, volume, stealthModeEnabled, customSounds } = currentSettings;
     const canPlaySound = allSoundsEnabled && !isMuted && !stealthModeEnabled;
 
-    // Handle end of a phase (running or resting)
     if (remaining <= 0) {
-        setTimeLeft(0);
-        if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = undefined;
-        
-        // Play the end sound as soon as ANY countdown hits zero.
-        if (canPlaySound && currentSettings.playSoundAtEnd && (currentPhase === 'running' || currentPhase === 'resting')) {
-            playEndSound(volume, customSounds?.end?.dataUrl);
+      isTransitioningRef.current = true;
+      setTimeLeft(0);
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = undefined;
+
+      if (canPlaySound && currentSettings.playSoundAtEnd && (currentPhase === 'running' || currentPhase === 'resting')) {
+        playEndSound(volume, customSounds?.end?.dataUrl);
+      }
+
+      transitionTimeoutRef.current = setTimeout(() => {
+        transitionTimeoutRef.current = undefined;
+        isTransitioningRef.current = false;
+        if (phaseRef.current === 'stopped') return;
+
+        if (currentPhase === 'running') {
+          setCycleCount(c => c + 1);
+
+          if (onCycleCompleteRef.current) {
+            setPhase('stopped');
+            onCycleCompleteRef.current();
+            return;
+          }
+
+          if (restDurationMsRef.current > 0) {
+            setPhase('resting');
+            endTimeRef.current = performance.now() + restDurationMsRef.current;
+          } else {
+            setPhase('running');
+            halfwaySoundPlayedRef.current = false;
+            lastSecondPlayedRef.current = null;
+            setTimeLeft(durationMsRef.current);
+            endTimeRef.current = performance.now() + durationMsRef.current;
+          }
+        } else if (currentPhase === 'resting') {
+          setPhase('running');
+          halfwaySoundPlayedRef.current = false;
+          lastSecondPlayedRef.current = null;
+          setTimeLeft(durationMsRef.current);
+          endTimeRef.current = performance.now() + durationMsRef.current;
         }
 
-        // Use a timeout to allow the '0' to render for a full second before transitioning.
-        setTimeout(() => {
-            if (currentPhase === 'running') {
-                setCycleCount(c => c + 1);
-                
-                if (onCycleCompleteRef.current) {
-                    setPhase('stopped');
-                    onCycleCompleteRef.current();
-                    return; // The component will re-trigger the hook for the next step.
-                }
+        if (phaseRef.current !== 'stopped') {
+          if (canPlaySound && currentSettings.playSoundOnRestart) {
+            playStartSound(volume, customSounds?.start?.dataUrl);
+          }
+          if (!document.hidden && !animationFrameRef.current) {
+            animationFrameRef.current = requestAnimationFrame(animateRef.current);
+          }
+        }
+      }, 1000);
 
-                if (restDurationMsRef.current > 0) {
-                    setPhase('resting');
-                    endTimeRef.current = performance.now() + restDurationMsRef.current;
-                } else {
-                    // No rest, restart immediately. The end sound is sufficient notification.
-                    setPhase('running');
-                    halfwaySoundPlayedRef.current = false;
-                    lastSecondPlayedRef.current = null;
-                    setTimeLeft(durationMsRef.current);
-                    endTimeRef.current = performance.now() + durationMsRef.current;
-                }
-            } else if (currentPhase === 'resting') {
-                // Restarting the next phase. The end sound is sufficient notification.
-                setPhase('running');
-                halfwaySoundPlayedRef.current = false;
-                lastSecondPlayedRef.current = null;
-                setTimeLeft(durationMsRef.current);
-                endTimeRef.current = performance.now() + durationMsRef.current;
-            }
-
-            // After transitioning, restart the animation loop
-            if (phaseRef.current !== 'stopped') {
-                if (canPlaySound && currentSettings.playSoundOnRestart) {
-                    playStartSound(volume, customSounds?.start?.dataUrl);
-                }
-                animationFrameRef.current = requestAnimationFrame(animate);
-            }
-        }, 1000);
-
-        return; // End this frame's execution
+      return false;
     }
 
-    // Default case: update time left and continue animation
     setTimeLeft(remaining);
-    
-    // Halfway sound logic for the running phase
+
     const isCurrentlyResting = phaseRef.current === 'resting' || isRestStepRef.current;
     if (!isCurrentlyResting && currentPhase === 'running' && canPlaySound && currentSettings.playSoundAtHalfway && !halfwaySoundPlayedRef.current && remaining <= durationMsRef.current / 2) {
-        playNotificationSound(volume, customSounds?.notification?.dataUrl);
-        halfwaySoundPlayedRef.current = true;
+      playNotificationSound(volume, customSounds?.notification?.dataUrl);
+      halfwaySoundPlayedRef.current = true;
     }
 
     const currentSecond = Math.ceil(remaining / 1000);
     if (canPlaySound && currentSecond <= 3 && currentSecond > 0 && lastSecondPlayedRef.current !== currentSecond) {
-        playTickSound(volume, customSounds?.tick?.dataUrl);
-        lastSecondPlayedRef.current = currentSecond;
+      playTickSound(volume, customSounds?.tick?.dataUrl);
+      lastSecondPlayedRef.current = currentSecond;
     }
 
-    animationFrameRef.current = requestAnimationFrame(animate);
-}, []);
+    return true;
+  }, []);
+
+  const animate = useCallback(() => {
+    lastRafTimeRef.current = performance.now();
+    if (stepCountdown()) {
+      animationFrameRef.current = requestAnimationFrame(animate);
+    } else {
+      animationFrameRef.current = undefined;
+    }
+  }, [stepCountdown]);
+
+  useEffect(() => {
+    animateRef.current = animate;
+  }, [animate]);
+
+  // Keep ticking via unthrottled Web Worker whenever rAF is paused (e.g. tab/window switched)
+  useBackgroundTick(
+    phase !== 'stopped',
+    () => {
+      if (document.hidden || performance.now() - lastRafTimeRef.current > 400) {
+        stepCountdown();
+      }
+    },
+    500
+  );
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && phaseRef.current !== 'stopped' && !isTransitioningRef.current) {
+        stepCountdown();
+        if (!animationFrameRef.current) {
+          animationFrameRef.current = requestAnimationFrame(animate);
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [animate, stepCountdown]);
 
   const start = useCallback(() => {
-    // Check phaseRef directly as state update might be async, or if animation frame was cancelled
     if (phaseRef.current === 'stopped' || !animationFrameRef.current) {
+      if (transitionTimeoutRef.current) {
+        clearTimeout(transitionTimeoutRef.current);
+        transitionTimeoutRef.current = undefined;
+      }
+      isTransitioningRef.current = false;
       if (!timeLeftOnPauseRef.current || timeLeftOnPauseRef.current <= 0) {
         timeLeftOnPauseRef.current = durationMsRef.current;
       }
@@ -151,6 +195,11 @@ export const useCountdown = (initialDuration: number, restDuration: number, sett
   }, [animate]);
 
   const stop = useCallback(() => {
+    if (transitionTimeoutRef.current) {
+      clearTimeout(transitionTimeoutRef.current);
+      transitionTimeoutRef.current = undefined;
+    }
+    isTransitioningRef.current = false;
     if (phaseRef.current !== 'stopped') {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = undefined;
@@ -167,8 +216,12 @@ export const useCountdown = (initialDuration: number, restDuration: number, sett
   const reset = useCallback(() => {
     if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     animationFrameRef.current = undefined;
+    if (transitionTimeoutRef.current) {
+      clearTimeout(transitionTimeoutRef.current);
+      transitionTimeoutRef.current = undefined;
+    }
+    isTransitioningRef.current = false;
     
-    // During a workout, reset shouldn't reset the cycle count
     if (!onCycleCompleteRef.current) {
         setCycleCount(0);
     }
@@ -193,6 +246,12 @@ export const useCountdown = (initialDuration: number, restDuration: number, sett
   }, []);
 
   useEffect(() => {
+    if (transitionTimeoutRef.current) {
+      clearTimeout(transitionTimeoutRef.current);
+      transitionTimeoutRef.current = undefined;
+    }
+    isTransitioningRef.current = false;
+
     const newDurationMs = initialDuration * 1000;
     const wasActive = phaseRef.current !== 'stopped' || onCycleCompleteRef.current !== undefined;
     
@@ -203,7 +262,6 @@ export const useCountdown = (initialDuration: number, restDuration: number, sett
     halfwaySoundPlayedRef.current = false;
     lastSecondPlayedRef.current = null;
     
-    // Only reset cycles if not in a workout context
     if (!onCycleCompleteRef.current) {
         setCycleCount(0); 
     }
@@ -219,15 +277,12 @@ export const useCountdown = (initialDuration: number, restDuration: number, sett
         animationFrameRef.current = requestAnimationFrame(animate);
       }
     } else {
-      // If it wasn't active, ensure it stays stopped.
       setPhase('stopped');
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = undefined;
       }
     }
-    // The stepKey is crucial. It ensures this effect re-runs when the step changes,
-    // even if the new step has the same duration as the old one.
   }, [initialDuration, stepKey, animate]);
   
   useEffect(() => {
@@ -240,6 +295,11 @@ export const useCountdown = (initialDuration: number, restDuration: number, sett
         cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = undefined;
       }
+      if (transitionTimeoutRef.current) {
+        clearTimeout(transitionTimeoutRef.current);
+        transitionTimeoutRef.current = undefined;
+      }
+      isTransitioningRef.current = false;
       phaseRef.current = 'stopped';
     };
   }, []);

@@ -522,6 +522,7 @@ export const SettingsMenu: React.FC<{ isOpen: boolean; setIsOpen: (open: boolean
       content: (
         <div className="bg-gray-700/50 p-3 rounded-lg space-y-4">
           <Toggle id="showNextExercise" label="Show Next Exercise" checked={settings.showNextExercise} onChange={(e) => updateSettings({ showNextExercise: e.target.checked })} />
+          <Toggle id="keepScreenAwake" label="Keep Screen Awake (Workout)" checked={settings.keepScreenAwake} onChange={(e) => updateSettings({ keepScreenAwake: e.target.checked })} />
         </div>
       )
     },

@@ -13,6 +13,8 @@ import { GuestDataMergeModal } from './components/GuestDataMergeModal';
 import { LogSessionModal } from './components/LogSessionModal';
 import { useStopwatch } from './hooks/useStopwatch';
 import { useCountdown } from './hooks/useCountdown';
+import { useWakeLock } from './hooks/useWakeLock';
+import { useBackgroundTick } from './hooks/useBackgroundTick';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
 import { WorkoutProvider, useWorkout, ActiveWorkout } from './contexts/WorkoutContext';
 import { playNotificationSound, resumeAudioContext } from './utils/sound';
@@ -131,6 +133,12 @@ const AppContent: React.FC = () => {
   const isRepStep = isWorkoutActive && currentStep.isRepBased;
   const countdownDuration = isWorkoutActive && !isRepStep ? currentStep.duration : (isWorkoutActive && isRepStep ? 0 : settings.countdownDuration);
   const isRestStep = isWorkoutActive && currentStep.type === 'rest';
+  const shouldKeepScreenAwake =
+    settings.keepScreenAwake &&
+    !workoutCompleted &&
+    (isPreparingWorkout || (isWorkoutActive && !isWorkoutPaused && (isRepStep || !isCountdownPaused)));
+
+  useWakeLock(shouldKeepScreenAwake);
   
   const countdown = useCountdown(
     countdownDuration, 
@@ -206,31 +214,51 @@ const AppContent: React.FC = () => {
     document.body.style.backgroundColor = settings.backgroundColor;
   }, [settings.backgroundColor]);
   
-  // Handle the pre-workout countdown
+  const preWorkoutEndTimeRef = useRef<number>(0);
+  const preWorkoutCommittedRef = useRef(false);
+  const preWorkoutCommitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Handle the pre-workout countdown using wall-clock time so tab switches stay accurate
   useEffect(() => {
-    let timer: ReturnType<typeof setInterval> | undefined;
-    if (isPreparingWorkout) {
-        let countdown = settings.preWorkoutCountdownDuration;
-        setPreWorkoutTimeLeft(countdown);
-
-        timer = setInterval(() => {
-            countdown -= 1;
-            setPreWorkoutTimeLeft(countdown);
-            
-            if (countdown <= 0) {
-                clearInterval(timer);
-                // After displaying 0, wait a full second before starting the workout.
-                setTimeout(() => {
-                    commitStartWorkout();
-                }, 1000);
-            }
-        }, 1000);
-
-        return () => { if (timer) clearInterval(timer); };
-    } else {
-        setPreWorkoutTimeLeft(null); // Ensure countdown stops if workout is aborted
+    if (preWorkoutCommitTimeoutRef.current) {
+      clearTimeout(preWorkoutCommitTimeoutRef.current);
+      preWorkoutCommitTimeoutRef.current = null;
     }
-  }, [isPreparingWorkout, commitStartWorkout, settings.preWorkoutCountdownDuration]);
+
+    if (isPreparingWorkout) {
+      preWorkoutCommittedRef.current = false;
+      preWorkoutEndTimeRef.current = performance.now() + settings.preWorkoutCountdownDuration * 1000;
+      setPreWorkoutTimeLeft(settings.preWorkoutCountdownDuration);
+    } else {
+      preWorkoutEndTimeRef.current = 0;
+      preWorkoutCommittedRef.current = false;
+      setPreWorkoutTimeLeft(null);
+    }
+
+    return () => {
+      if (preWorkoutCommitTimeoutRef.current) {
+        clearTimeout(preWorkoutCommitTimeoutRef.current);
+        preWorkoutCommitTimeoutRef.current = null;
+      }
+    };
+  }, [isPreparingWorkout, settings.preWorkoutCountdownDuration]);
+
+  useBackgroundTick(
+    isPreparingWorkout,
+    () => {
+      if (!isPreparingWorkout || preWorkoutCommittedRef.current) return;
+      const remainingSec = Math.max(0, Math.ceil((preWorkoutEndTimeRef.current - performance.now()) / 1000));
+      setPreWorkoutTimeLeft(remainingSec);
+      if (remainingSec <= 0) {
+        preWorkoutCommittedRef.current = true;
+        preWorkoutCommitTimeoutRef.current = setTimeout(() => {
+          preWorkoutCommitTimeoutRef.current = null;
+          commitStartWorkout();
+        }, 1000);
+      }
+    },
+    250
+  );
 
 
   const toggleFullScreen = useCallback(() => {
@@ -418,22 +446,25 @@ const AppContent: React.FC = () => {
   // Update document title with countdown
   useEffect(() => {
     const mutePrefix = settings.isMuted ? '🔇 ' : '';
+    let nextTitle = `${mutePrefix}⏱️`;
 
     if (workoutCompleted) {
-        document.title = `${mutePrefix}סוף האימון!`;
+        nextTitle = `${mutePrefix}סוף האימון!`;
     } else if (preWorkoutTimeLeft !== null) {
-        document.title = `${mutePrefix}מתחילים בעוד ${preWorkoutTimeLeft}s`;
+        nextTitle = `${mutePrefix}מתחילים בעוד ${preWorkoutTimeLeft}s`;
     } else if (settings.showCountdown && (countdown.isRunning || countdown.isResting || isWorkoutActive) && !isWorkoutPaused) {
         const timeLeftFormatted = Math.ceil(countdown.timeLeft);
         if (isWorkoutActive && currentStep) {
-            document.title = `${mutePrefix}${timeLeftFormatted}s - ${getStepDisplayName(currentStep)}`;
+            nextTitle = `${mutePrefix}${timeLeftFormatted}s - ${getStepDisplayName(currentStep)}`;
         } else {
-            document.title = `${mutePrefix}${timeLeftFormatted}s`;
+            nextTitle = `${mutePrefix}${timeLeftFormatted}s`;
         }
     } else if (isWorkoutPaused) {
-        document.title = `${mutePrefix}Paused`;
-    } else {
-        document.title = `${mutePrefix}⏱️`;
+        nextTitle = `${mutePrefix}Paused`;
+    }
+
+    if (document.title !== nextTitle) {
+        document.title = nextTitle;
     }
   }, [countdown.isRunning, countdown.isResting, countdown.timeLeft, settings.showCountdown, isWorkoutActive, currentStep, isWorkoutPaused, settings.isMuted, workoutCompleted, preWorkoutTimeLeft]);
 
